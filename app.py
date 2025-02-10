@@ -3,6 +3,10 @@ from app.config.config import Config
 from app.extensions import db, jwt
 from app.controllers.auth_controller import auth_bp
 from app.controllers.protected_controller import protected_bp
+from app.controllers.partner_controller import partner_bp
+from app.controllers.outlet_controller import outlet_bp
+from app.controllers.product_controller import product_bp
+from app.controllers.expense_category_controller import expense_category_bp
 
 def create_app():
     app = Flask(__name__)
@@ -15,6 +19,11 @@ def create_app():
     # Register Blueprints (Routes)
     app.register_blueprint(auth_bp)
     app.register_blueprint(protected_bp)
+    app.register_blueprint(partner_bp)
+    app.register_blueprint(outlet_bp)
+    app.register_blueprint(product_bp)
+    app.register_blueprint(expense_category_bp)
+
 
     @app.route('/')
     def welcome():
