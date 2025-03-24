@@ -37,7 +37,7 @@ def create_app():
 
     @app.route('/')
     def welcome():
-        return jsonify({'message': 'Welcome to the Flask Auth API'})
+        return jsonify({'message': 'Welcome to the MP78 API'})
     
 
     return app

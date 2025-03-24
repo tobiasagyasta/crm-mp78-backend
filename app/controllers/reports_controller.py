@@ -525,44 +525,42 @@ def get_reports_totals():
 
         # Apply date filters if provided
         if start_date_param and end_date_param:
-            # Parse dates and set time to beginning and end of day
-            start_date = datetime.strptime(start_date_param, '%Y-%m-%d').replace(hour=0, minute=0, second=0)
-            end_date = datetime.strptime(end_date_param, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
+            start_date = datetime.strptime(start_date_param, '%Y-%m-%d')
+            end_date = datetime.strptime(end_date_param, '%Y-%m-%d')
             
-            # Debug print
-            print(f"Filtering dates from {start_date} to {end_date}")
+            # Add one day to end_date to include the entire end date
+            end_date_inclusive = datetime(end_date.year, end_date.month, end_date.day, 23, 59, 59)
             
             gojek_query = gojek_query.filter(
                 GojekReport.waktu_transaksi >= start_date,
-                GojekReport.waktu_transaksi <= end_date
+                GojekReport.waktu_transaksi <= end_date_inclusive
             )
             grab_query = grab_query.filter(
                 GrabFoodReport.tanggal_dibuat >= start_date,
-                GrabFoodReport.tanggal_dibuat <= end_date
+                GrabFoodReport.tanggal_dibuat <= end_date_inclusive
             )
             shopee_query = shopee_query.filter(
                 ShopeeReport.order_create_time >= start_date,
-                ShopeeReport.order_create_time <= end_date
+                ShopeeReport.order_create_time <= end_date_inclusive
             )
             
-            # For cash reports, use date() function to compare only the date part
-            cash_query = cash_query.filter(
-                func.date(CashReport.tanggal) >= func.date(start_date),
-                func.date(CashReport.tanggal) <= func.date(end_date)
+            # Use SQLAlchemy filtering for cash reports instead of post-filtering
+            cash_income_query = cash_query.filter(
+                CashReport.type == 'income',
+                CashReport.tanggal >= start_date,
+                CashReport.tanggal <= end_date_inclusive
+            )
+            
+            cash_expense_query = cash_query.filter(
+                CashReport.type == 'expense',
+                CashReport.tanggal >= start_date,
+                CashReport.tanggal <= end_date_inclusive
             )
             
             manual_entries_query = manual_entries_query.filter(
                 ManualEntry.start_date >= start_date,
-                ManualEntry.end_date <= end_date
+                ManualEntry.end_date <= end_date_inclusive
             )
-
-        # Get all filtered cash reports
-        cash_reports = cash_query.all()
-        
-        # Debug print
-        print(f"Found {len(cash_reports)} cash reports")
-        for report in cash_reports[:5]:  # Print first 5 for debugging
-            print(f"Cash report: {report.tanggal} - {report.type} - {report.total}")
 
         # Calculate totals for each platform
         gojek_total = sum(float(report.nett_sales or 0) for report in gojek_query.all())
@@ -570,9 +568,9 @@ def get_reports_totals():
         shopee_reports = shopee_query.all()
         shopee_total = sum(float(report.net_income or 0) for report in shopee_reports if report.order_status != "Cancelled")
         
-        # Calculate cash totals
-        cash_income = sum(float(report.total or 0) for report in cash_reports if report.type == 'income')
-        cash_expense = sum(float(report.total or 0) for report in cash_reports if report.type == 'expense')
+        # Calculate cash totals using the filtered queries
+        cash_income = sum(float(report.total or 0) for report in cash_income_query.all())
+        cash_expense = sum(float(report.total or 0) for report in cash_expense_query.all())
         cash_net = cash_income - cash_expense
 
         # Calculate manual entries totals (expenses)
