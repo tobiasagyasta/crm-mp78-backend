@@ -10,8 +10,8 @@ class Partner(db.Model):
     rekening_number = db.Column(db.String(50), nullable=False)
     last_updated = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Relationship with Outlet
-    outlets = db.relationship("Outlet", backref="partner", cascade="all, delete", lazy=True)
+    # # Relationship with Outlet
+    # outlets = db.relationship("Outlet", backref="partner", cascade="all, delete", lazy=True)
 
     def to_dict(self):
         return {

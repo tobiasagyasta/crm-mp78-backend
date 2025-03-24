@@ -7,6 +7,10 @@ from app.controllers.partner_controller import partner_bp
 from app.controllers.outlet_controller import outlet_bp
 from app.controllers.product_controller import product_bp
 from app.controllers.expense_category_controller import expense_category_bp
+from app.controllers.income_category_controller import income_category_bp
+from app.controllers.reports_controller import reports_bp
+from app.controllers.manual_entry_controller import manual_entries_bp
+from flask_cors import CORS
 
 def create_app():
     app = Flask(__name__)
@@ -16,6 +20,9 @@ def create_app():
     db.init_app(app)
     jwt.init_app(app)
 
+     # Enable CORS for all domains and ports
+    CORS(app)
+
     # Register Blueprints (Routes)
     app.register_blueprint(auth_bp)
     app.register_blueprint(protected_bp)
@@ -23,11 +30,15 @@ def create_app():
     app.register_blueprint(outlet_bp)
     app.register_blueprint(product_bp)
     app.register_blueprint(expense_category_bp)
+    app.register_blueprint(income_category_bp)
+    app.register_blueprint(reports_bp)
+    app.register_blueprint(manual_entries_bp)
 
 
     @app.route('/')
     def welcome():
         return jsonify({'message': 'Welcome to the Flask Auth API'})
+    
 
     return app
 

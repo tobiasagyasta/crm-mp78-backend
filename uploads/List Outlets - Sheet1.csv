@@ -1,0 +1,127 @@
+No.,Kode,Nama Outlet,Area,Alamat Outlet,Admin
+1,AGS-001,AGUS SALIM,Bekasi,"Jl. KH. Agus Salim Teluk Angsan 26 No.103, Bekasi Jaya, Kec. Bekasi Tim., Kota Bks, Jawa Barat 17112",Isna
+2,ABN-002,AMBON,Maluku Utara,"Jl. Diponegoro No.1A, Kel Ahusen, Kec. Sirimau, Kota Ambon, Maluku 97127",Isna
+3,ATP-003,ANTAPANI,Bandung,"Jl. Purwakarta No.22, Antapani Kidul, Kec. Antapani, kabupaten Bandung, Jawa Barat 40281",Dita
+4,BLP-004,BALIKPAPAN,Kalimantan Timur,"Komplek Balikpapan Permai Blok J2 No 7, Balikpapan City, East Kalimantan 76111",Dita
+5,BJB-005,BANJAR BARU,Kalimantan Selatan,"Jl. A. Yani KM. 35 No. 1, Loktabat Selatan, Banjarbaru Selatan, Banjarbaru",Isna
+6,BJM-006,BANJARMASIN,Kalimantan Selatan,"Jl. Pramuka, Pemurus Luar, Kec. Banjarmasin Tim., Kota Banjarmasin (Seberang Universitas Sari Mulia)",Dita
+7,BTC-007,BATAM CENTER,Kepulauan Riau,Jl. Raja M. Tahir No. 5 - Patokan Martabak Pecenongan 78),Dilla
+8,BKL-008,BENGKULU,Bengkulu,"Jl. S. Parman No. 36, Kebun Kenanga, Ratu Samban, Bengkulu",Ines
+9,BTR-009,BINTARO,Banten,"Jl. Bintaro Utama 3A No.38, Pd. Karya, Kec. Pd. Aren, Kota Tangerang Selatan, Banten 15225",Dilla
+10,BNS-010,BINUS,Jakarta Barat,"Jl. Rw. Belong Jl. Raya Kb. Jeruk No.11, RT.6/RW.12, Palmerah, Kec. Palmerah, Kota Jakarta Barat, Daerah Khusus Ibukota Jakarta 11530",Ines
+11,BGR-011,BOGOR 1,Bogor,"Jl. Pajajaran Indah 5, Bogor Timur, Bogor",Isna
+12,BGR-012,BOGOR 2,Bogor,"Jl. Bangbarung Raya No. 11, Bantar Jati, Bogor Utara, Bogor",Isna
+13,BJI-013,BOJONG INDAH,Jakarta Barat,"Jl. Kacang Tanah Raya No. 45-47, Rawa Buaya, Cengkareng, Jakarta Barat",Ines
+14,BJS-014,BOJONGSARI,Bogor,"Jl. Raya Bojongsari No. 44, Bojongsari Baru, Bojongsari, Depok",Lala
+15,BRB-015,BOROBUDUR,Banten,"Jl. Borobudur Raya No. 143-157, Bencongan Indah, Kelapa Dua, Tangerang",Dita
+16,BSD-016,BSD,Banten,"Jl. Raya Serpong Kilometer 7, Lengkong Karya, Serpong Utara, Tangerang Selatan",Ines
+17,BKD-017,BUKIT DAGO,Bogor,"Jl. Pendidikan Ruko Bukit Dago No. 5, Rawakalong, Gunung Sindur, Bogor",Lala
+18,CWG-018,CAWANG,Jakarta Timur,"Jl. Dewi Sartika No.5, RT.3/RW.4, Cawang, Kec. Kramat jati, Kota Jakarta Timur, Daerah Khusus Ibukota Jakarta 13630",Dita
+19,CJR-019,CIANJUR,Cianjur,"Jl. Dr. Muwardi, Bojongherang, Kec. Cianjur, Kabupaten Cianjur, Jawa Barat 43216",Lala
+20,CTR-020,CIATER,Banten,"Jl. Ciater Raya, Rw. Mekar Jaya, Kec. Serpong, Kota Tangerang Selatan, Banten 15310",Ines
+21,CKM-021,CIKAMPEK,Karawang,"Jl. Kertabumi No.77a, Karawang Kulon, Kec. Karawang Bar., Karawang, Jawa Barat 41311",Isna
+22,CKG-022,CIKARANG,Bekasi,"Jl. Kedasih Raya No.62, Mekarmukti, Kec. Cikarang Utara, Kabupaten Bekasi, Jawa Barat 17530",Ines
+23,CKP-023,CIKUPA,Banten,"Jl. Citra Raya Boulevard (Sebelah Sate Maranggi Ka Igun), Cikupa, Tangerang",Ines
+24,CLP-024,CILACAP,Cilacap - Jawa Tengah,"Jl. S. Parman, Cilacap, Sidanegara, Kec. Cilacap Tengah, Kabupaten Cilacap, Jawa Tengah",Dilla
+25,CLG-025,CILEGON,Banten,"Jl. SA. Tirtayasa, Masigit, Kec. Jombang, Kota Cilegon, Banten 42414",Lala
+26,CLD-026,CILODONG,Depok,"Jl. Margonda No.27, Depok, Kec. Pancoran Mas, Kota Depok, Jawa Barat 16431",Isna
+27,CMG-027,CIMANGGIS,Depok,"Jl. Cimanggis Boulevard No.2, RW.11, Tapos, Kec. Tapos, Kota Depok, Jawa Barat 16457",Dita
+28,CNR-028,CINERE,Depok,"Jl. Cinere Raya (Martabak Pecenongan 78), Cinere, Depok",Ines
+29,CIO-029,CIOMAS,Bogor,"Jl. Raya Ciomas No.341, RT.1/RW.10, Ciomas Rahayu, Kec. Ciomas, Kabupaten Bogor, Jawa Barat 16610",Isna
+30,YAS-030,CIOMAS 2 (YASMIN),Bogor,"Dekat KVL (Khesena Vape Lounge), Jl. Ring Road Taman Yasmin No. 1, Cibadak, Tanah Sereal, Bogor",Isna
+31,CRC-031,CIRACAS,Jakarta Timur,"Jl. Tanjung No.6 5, RT.5/RW.5, Ciracas, Kec. Ciracas, Kota Jakarta Timur, Daerah Khusus Ibukota Jakarta 13740",Ines
+32,CRB-032,CIREBON,Cirebon,"Jl. DR. Cipto Mangunkusumo No.4c, Pekiringan, Kec. Kesambi, Kota Cirebon, Jawa Barat 45131",Dilla
+33,CRB-033,CIREBON 2,Cirebon,"Jl. Ir. Haji. Juanda No. 9-11, Dawuan, Tengah Tani, Weru, Cirebon",Dilla
+34,CRD-034,CIRENDEU,Depok,"Jl. Raya Cirendeu No.20, Cireundeu, Kec. Ciputat Tim., Kota Tangerang Selatan, Banten 12440",Lala
+35,DPT-035,DIPATIUKUR,Bandung,"Jl. Dipati Ukur No.92, Lebakgede, Kecamatan Coblong, Kota Bandung, Jawa Barat 40132",Dita
+36,DMI-036,DUMAI,Kepulauan Riau,"Jl. Sultan Hasanuddin No.23, RW.RW, Ratu Sima, Kec. Dumai Kota, Kota Dumai, Riau 28826",Dilla
+37,DRI-037,DURI,Kepulauan Riau,"Jl. Jend. Sudirman, Air Jamban, Mandau, Bengkalis",Dilla
+38,GDS-038,GADING SERPONG,Banten,"Paramount - Gading Serpong, Ruko 7CS, DF3, No.1, Curug Sangereng, Kelapa Dua, Tangerang Regency, Banten 15810",Dilla
+39,GLX-039,GALAXY,Bekasi,"Jl. Boulevard Raya No.83, RT.001/RW.002, Jaka Setia, Kec. Bekasi Sel., Kota Bks, Jawa Barat 17147",Lala
+40,GND-040,GANDARIA,Jakarta Selatan,"Jl. Panglima Polim IX no.22 2, RT. 2/RW.7, Melawai, Kec. Kby. Baru",Lala
+41,GRT-041,GARUT,Garut,"Jl. Cimanuk No.71, Jayaraga, Kec. Tarogong Kidul, Kabupaten Garut, Jawa Barat 44151",Dita
+42,GLC-042,GLC,Banten,"Green Lake City Rukan Colosseum No.67, RT.003/RW.009, Petir, Kec. Cipondoh, Kota Tangerang, Banten 15147",Ines
+43,GTL-043,GORONTALO,Sulawesi Utara,"Jl. Nani Wartabone, Limba U I, Kota Sel., Kota Gorontalo, Gorontalo 96138",Isna
+44,GRH-044,GRAHA RAYA,Banten,"Jl. Akses Graha Raya A No.7, Sudimara Pinang, Kec. Pinang, Kota Tangerang, Banten 15220",Dita
+45,GDS-045,GS 2,Banten,"Ruko South Sorrento No. 25, Jl. Ir. Soekarno, Gading, Serpong, Tangerang",Ines
+46,IMY-046,INDRAMAYU,Indramayu,"Jl. Jend. Sudirman No.123, Lemahmekar, Kec. Indramayu, Kabupaten Indramayu, Jawa Barat 45212",Dilla
+47,JTW-047,JATIWARNA,Bekasi,"Jl. Raya Kranggan. Seberang McDonald's Jatiwarna, RT.001/RW.005, Jatimelati, Kec. Pd. Melati, Kota Bks, Daerah Khusus Ibukota Jakarta 17415",Lala
+48,JLB-048,JELAMBAR,Jakarta Barat,"Jl. Jelambar Baru Raya No.41C, RW.2, Jelambar, Kec. Grogol petamburan, Kota Jakarta Barat, Daerah Khusus Ibukota Jakarta 11460",Dita
+49,JGL-049,JOGLO,Jakarta Barat,Jl. Joglo Raya No 12 kec kembangan kota jakarta barat depan Martabak Pecenongan samping Beer Boss,Ines
+50,KLB-050,KALIBATA,Jakarta Selatan,Apartement kalibata city tower Cendana AL 05 (samping ayam guling madinah),Isna
+51,KLU-051,KALIURANG,DIY,"Jl. Jelambar Baru Raya No.41C, RW.2, Jelambar, Kec. Grogol petamburan, Kota Jakarta Barat, Daerah Khusus Ibukota Jakarta 11460",Dilla
+52,KRW-052,KARAWANG,Karawang,"Jl. Kertabumi No.77a, Karawang Kulon, Kec. Karawang Bar., Karawang, Jawa Barat 41311",Lala
+53,KPD-053,KARET PEDURENAN,Jakarta Selatan,"Jl. Pedurenan Masjid Raya No. 8, Setiabudi, Jakarta Selatan",Lala
+54,KRS-054,KARET SEMANGGI,Jakarta Pusat,"Jl. Guru Mughni No.8B, RT.1/RW.3, Karet Semanggi, Kecamatan Setiabudi, Kota Jakarta Selatan, Daerah Khusus Ibukota Jakarta 12930",Lala
+55,KTB-055,KARTINI BEKASI,Kartini,"Jl. RA Kartini No.44, RT.002/RW.02, Margahayu, Kec. Bekasi Tim., Kota Bks, Jawa Barat 17113",Dilla
+56,KTM-056,KATAMSO,Jakarta Barat,"JI. Brigjen Katamso No. 32, Kota Bambu Selatan, Palmerah, Jakarta Barat",Dilla
+57,KBK-057,KEBON KACANG,Jakarta Pusat,"Jl. Kebon Kacang 30 No.13, RT.5/RW.4, Kb. Kacang, Kecamatan Tanah Abang, Kota Jakarta Pusat, Daerah Khusus Ibukota Jakarta 10240",Lala
+58,KGD-058,KELAPA GADING,Jakarta Utara,"Jl. Sumagung 3 No.K5/3A, RT.9/RW.2, East Kelapa, GadingKelapa Gading, Jkt Utara, Daerah Khusus Ibukota Jakarta 14240",Lala
+59,KLT-059,KLATEN,Klaten - Jawa Tengah,"Jl. Merbabu No.44-18, Mlinjon, Tonggalan, Kec. Klaten Tengah, Kabupaten Klaten, Jawa Tengah 57423",Dilla
+60,KOP-060,KOPO,Bandung,"Jl. Raya Taman Kopo Indah 2 No.no, Rahayu, Kec. Margaasih, Kabupaten Bandung, Jawa Barat",Dita
+61,KUD-061,KUDUS,Kudus - Jawa Tengah,"JI. Sunan Kudus No. 113, Demaan, Kudus Kota, Kudus",Dilla
+62,ACH-062,LAMPINEUNG ACEH,Aceh,"Jl. T. Panglima Nyak Makam No. 21, Doi, Ulee Kareng, Banda Aceh",Isna
+63,LPC-063,LIPPO CIKARANG,Bekasi,"Jl. Gn. Panderman, Cibatu, Cikarang Sel., Kabupaten Bekasi, Jawa Barat 17530",Dilla
+64,LPK-064,LIPPO KARAWACI,Banten,"Jl. Permata Sari No.5 Blok B16, Binong, Kec. Curug, Kabupaten Tangerang, Banten 15810",Lala
+65,LBK-065,LOMBOK,NTB,"Jl. Dodokan II BTN No.4, Kekalik Jaya, Kec. Mataram, Kota Mataram, Nusa Tenggara Bar. 83127",Dilla
+66,MGL-066,MAGELANG,Magelang - Jawa Tengah,"Jl. Pemuda No.183, Rejowinangun Utara, Kec. Magelang Tengah, Kota Magelang, Jawa Tengah 56122",Dilla
+67,MKS-067,MAKASSAR 1,Sulawesi Selatan,"Jl. Rappocini Raya No.82B, Rappocini, Kec. Rappocini, Kota Makassar, Sulawesi Selatan 90222",Isna
+68,MKS-068,MAKASSAR 2,Sulawesi Selatan,"Kios Urip, Jl. Urip Sumoharjo KM 7 (Depan PLTD Tello), Tello Baru, Panakkukang, Makassar",Isna
+69,MND-069,MANADO,Sulawesi Utara,"Jl. R E Martadinata No.16, Paal Dua, Kec. Paal Dua, Kota Manado, Sulawesi Utara",Isna
+70,MGB-070,MANGGA BESAR,Jakarta Barat,"Jl. Mangga Besar 9/3 No. 22E-10, Mangga Dua Selatan, Sawah Besar, Jakarta Pusat",Lala
+71,MGY-071,MARGAHAYU,Bandung,"Jl. Tata Surya, Manjahlega, Kec. Rancasari, Kota Bandung, Jawa Barat 40286",Dita
+72,MGD-072,MARGONDA,Depok,"Jl. Margonda No.27, Depok, Kec. Pancoran Mas, Kota Depok, Jawa Barat 16431",Lala
+73,MDN-073,MEDAN 1,Sumatera Utara,"Jl. Setia Budi No.190, Tj. Rejo, Kec. Medan Sunggal, Kota Medan, Sumatera Utara 20122",Ines
+74,MDN-074,MEDAN 2,Sumatera Utara,"Jl. Cemara Asri Boulevard Raya No. 141, Medan Estate, Percut Sei Tuan, Deli Serdang",Ines
+75,MDN-075,MEDAN 3,Sumatera Utara,"Jl. Asia Raya No. 34 Blok B, Sukaramai 2, Medan Area, Medan",Ines
+76,MDN-076,MEDAN 4,Sumatera Utara,"Jl. Sisingamangaraja No .21 (Patokan Martabak Pecenongan 78 SM Raja), Teladan Barat, Medan Kota, Medan",Isna
+77,MDN-077,MEDAN 5,Sumatera Utara,"Jl. Kapten Muslim No.23ASei, Sikambing C. II, Kec. Medan Helvetia, Kota Medan, Sumatera Utara 20118",Ines
+78,MKW-078,MEKARWANGI,Bandung,"Jl. Indrayasa No.9e, Cibaduyut, Kec. Bojongloa Kidul, Kota Bandung, Jawa Barat",Dita
+79,MRY-079,MERUYA,Jakarta Barat,"Jl. Meruya Selatan, RT.1/RW.2, Meruya Sel., Kec. Kembangan, Kota Jakarta Barat, Daerah Khusus Ibukota Jakarta",Ines
+80,MLC-080,MILLENIUM CITY,Bogor,"Milenium City Blk. F20, Cluster Jl. Monaco No.02, Kabasiran, Kec. Parung Panjang, Kabupaten Bogor, Jawa Barat 16360",Isna
+81,MRS-081,MIROTO SEMARANG,Semarang - Jawa Tengah,"Jl. Moch. Suyudi No.79, Miroto, Kec. Semarang Tengah, Kota Semarang, Jawa Tengah 50134",Dilla
+82,MDL-082,MODERNLAND,Banten,"Jl. Hartono Raya No.6, Klp. Indah, Kec. Tangerang, Kota Tangerang, Banten 15117",Ines
+83,MKR-083,MUARA KARANG,Jakarta Utara,"Jl. Pluit Karang Sari 15, Pluit, Penjaringan, Jakarta Utara",Lala
+84,NGB-084,NAGOYA BATAM,Kepulauan Riau,"Dekat Primagama NITC, Ruko Bukit Mas, Jl. Perum Batam Park No.06 Blok A, Lubuk Baja Kota, Lubuk Baja, Batam City, Riau Islands 29444",Isna
+85,PDG-085,PADANG,Sumatera Barat,"Jalan Bandar Purus 1-8 Pd Pasir l, Kota Padang, Sebrang Mcd Ahmad Yani, Padang, Sumatera Barat, 25115",Dita
+86,PDM-086,PADEMANGAN,Jakarta Utara,"Jl. Pademangan Raya No.17-18, RT.2/RW.6, Pademangan Tim., Kec. Pademangan, Jkt Utara, Daerah Khusus Ibukota Jakarta 14410",Lala
+87,PLM-087,PALEMBANG 02,Sumatera Selatan,"Jl. Sumpah Pemuda No.10a, Lorok Pakjo, Kec. Ilir Bar. I, Kota Palembang, Sumatera Selatan 30126",Dita
+88,PLM-088,PALEMBANG 03,Sumatera Selatan,"Depan SD Paramount, Jl. MP. Mangkunegara No. 3A, 8 Ilir, Ilir Timur 2, Palembang",Dita
+89,PAL-089,PALU,Sulawesi Tengah,"Jl. Emmy Saelan No 16, Lolu Sel., Kec. Palu Sel., Kota Palu, Sulawesi Tengah 94235 (Martabak Pecenongan 78 Palu)",Isna
+90,PEC-090,PECENONGAN,Jakarta Pusat,"Jl. Pecenongan No. 49, Kebon Kelapa, Gambir, Jakarta Pusat",Ines
+91,PEJ-091,PEJATEN,Jakarta Selatan,"Jl. Siaga No. 12, Pejaten Barat, Pasar Minggu, Jakarta Selatan",Ines
+92,PKL-092,PEKALONGAN,Pekalongan - Jawa Tengah,"Jl. Urip Sumoharjo, Pringlangu, Pekalongan Barat, Pekalongan",Dilla
+93,PKB-093,PEKANBARU,Kepulauan Riau,"Jl. Sudirman No. 300 (Patokan Martabak Pecenongan 78), Pekanbaru Kota, Pekanbaru",Dita
+94,PIK-094,PIK,Jakarta Utara,"Food plaza fresh market PIK, Jl. Pantai Indah Kapuk Boulevard Ruko fmb28, RT.UtaraRT.6/RW.2, Kamal Muara, Kec. Penjaringan, Jkt Utara, Daerah Khusus Ibukota Jakarta 14470",Ines
+95,PIK-095,PIK 2,Jakarta Utara,"Rukan La Riviera Blok RLRA No. 50, Jl. Otista, PIK 2, Lemo, Teluknaga, Tangerang",Isna
+96,PDB-096,PONDOK BAMBU,Jakarta Timur,"Jl. Pahlawan Revolusi No.55, RT.4/RW.5, Pd. Bambu, Kec. Duren Sawit, Kota Jakarta Timur, Daerah Khusus Ibukota Jakarta 13430",Dita
+97,PDK-097,PONDOK KOPI,Jakarta Timur,"Jl. Pondok Kopi IA No.12, RT.2/RW.9, Pd. Kopi, Kec. Duren Sawit, Kota Jakarta Timur, Daerah Khusus Ibukota Jakarta 13460",Lala
+98,PTK-098,PONTIANAK,Kalimantan Barat,"Jl. Patimura No. 224-250, Darat Sekip, Pontianak Kota, Pontian",Ines
+99,PRW-099,PRINGSEWU,Lampung,,Ines
+100,PTA-100,PURWAKARTA,Purwakarta - Jawa Barat,"Jl. Jendral Sudirman No.204, Nagri Kaler, Kec. Purwakarta, Kabupaten Purwakarta, Jawa Barat 41115",Lala
+101,PTO-101,PURWOKERTO,Banyumas - Jawa Tengah,"Jl. Jend. Sudirman, Purwokerto Wetan, Kec. Purwokerto Tim., Kabupaten Banyumas, Jawa Tengah",Dilla
+102,PWO-102,PURWOREJO,Purworejo - Jawa Tengah,"Jl. Mayjen Sutoyo, Kepatihan, Purworejo, Kec. Purworejo, Kabupaten Purworejo, Jawa Tengah",Dilla
+103,RSL-103,RADEN SALEH (EX METRO PERMATA),Banten,"Jl. Raden Saleh, Rt.003/Rw.009, Karang mulya, kec. Karang tengah, kota tangerang, banten 15157",Ines
+104,RSB-104,RANGKASBITUNG,Banten,"Jl. Rt Hardiwinangun No.21, Muara Ciujung Bar., Kec. Rangkasbitung, Kabupaten Lebak, Banten 42312",Lala
+105,RWL-105,RAWA LUMBU,Bekasi,"Jl. Pramuka Ruko No. 4, Pengasinan, Rawalumbu, Bekasi",Lala
+106,RWM-106,RAWAMANGUN,Jakarta Timur,"Dekat Sinar Abadi Electronic, Jl. Paus No.8A-B 1, RT.3/RW.7, Rawamangun, Kec. Pulo Gadung, Kota Jakarta Timur, Daerah Khusus Ibukota Jakarta 13220",Dita
+107,RGP-107,REGENCY PRIUK,Banten,"Jl. Raya Villa Tangerang Indah, RT.010/RW.007, Gebang Raya, Kec. Periuk, Kota Tangerang, Banten 15132",Ines
+108,SBG-108,SABANG,Jakarta Pusat,"Jl. Haji Agus Salim No. 40-42, Kebon Sirih. Menteng, Jakarta Pusat",Isna
+109,SLT-109,SALATIGA,Salatiga - Jawa Tengah,"Jl. Sukowati No.9KalicacingKec, Kec. Sidomukti, Kota Salatiga, Jawa Tengah 50724",Dita
+110,SWG-110,SAWANGAN,Depok,"Jl. Raya Sawangan No.37, Rangkapan Jaya Baru, Kec. Pancoran Mas, Kota Depok, Jawa Barat 16434",Isna
+111,SLK-111,SELOKAN,DIY,"Jl. Selokan Mataram No.200, Kledokan, Caturtunggal, Kec. Depok, Kabupaten Sleman, Daerah Istimewa Yogyakarta 55281",Dilla
+112,SMG-112,SEMARANG 02,Semarang - Jawa Tengah,"Jl. Setia Budi No. 67-68A, Sumurboto, Banyumanik, Semarang",Dita
+113,SMP-113,SEMPER,Jakarta Utara,"Jl. Kramat Jaya Raya, RW.13, Semper Bar., Kec. Koja, Jkt Utara, Daerah Khusus Ibukota Jakarta",Lala
+114,SRG-114,SERANG,Banten,"Jl. Pangeran Diponegoro No.71, Pocis, Kec. Serang, Kota Serang, Banten 42119",Isna
+115,SOL-115,SOLO,Surakarta - Jawa Tengah,"Jl.Yos sudarso, soloRt.01, RW.08, kel.jayengan, kec.serengan, No.140,",Dilla
+116,SOR-116,SOREANG,Bandung,"Depan borma, Jl. Raya Soreang No.131, Soreang, Kec. Soreang, Kabupaten Bandung, Jawa Barat 40911",Dita
+117,STC-117,ST CIKARANG,Bekasi,"Jl. Yos Sudarso No. 27 (Depan Pasar Lama) Karang Baru, Cikarang Utara, Bekasi",Dilla
+118,SUG-118,SUBANG,Subang - Jawa Barat,"Jl. Letjend Suprapto No. 119, Karanganyar, Subang",Lala
+119,SUM-119,SUMEDANG,Sumedang - Jawa Barat,"Jl. Prabu Geusan Ulun No. 109, Kotakulon, Kec. Sumedang Sel., Kabupaten Sumedang, Jawa Barat 45311",Dilla
+120,SUN-120,SUNTER,Jakarta Utara,"Jl. Danau Sunter Utara, RT.16/RW.11, Sunter Agung, Kec. Tj. Priok, Jkt Utara, Daerah Khusus Ibukota Jakarta 14350",Ines
+121,TMB-121,TAMBUN,Bekasi,"Jl. Mekarsari Tengah No.33, RT.005/RW.13, Mekarsari, Kec. Tambun Sel., Kabupaten Bekasi, Jawa Barat 17510",Ines
+122,TJD-122,TANJUNG DUREN,Jakarta Barat,"Jl. Tj. Duren Barat 1 No.5, RT.1/RW.4, Tj. Duren Utara, Kec. Grogol petamburan, Kota Jakarta Barat, Daerah Khusus Ibukota Jakarta 11470",Lala
+123,TSK-123,TASIKMALAYA,Tasikmalaya - Jawa Barat,"Jl. Tentara Pelajar No.42, Nagarawangi, Kec. Cihideung, Kab. Tasikmalaya, Jawa Barat 46124",Lala
+124,TGL-124,TEGAL,Tegal - Jawa Tengah,"Jl. Kapten Sudibyo No. 109-117, Kemandungan, Tegal Selatan, Tegal",Dilla
+125,TLG-125,TELUK GONG,Jakarta Utara,"Jl. Teluk Gong Raya No. 20B, Pejagalan, Penjaringan, Jakarta Utara",Lala
+126,WNB-126,WONOSOBO,Wonosobo - Jawa Tengah,"Jl. S. Parman No. 24a, Wonosobo Timur, Wonosobo Kota, Wonosobo",DIlla
