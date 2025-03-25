@@ -44,8 +44,45 @@ def create_outlet():
 # Get all outlets
 @outlet_bp.route("", methods=["GET"])
 def get_outlets():
-    outlets = Outlet.query.all()
-    return jsonify([outlet.to_dict() for outlet in outlets])
+    # Get query parameters for filtering
+    search_term = request.args.get('search', '')
+    brand = request.args.get('brand', '')
+    
+    # Get pagination parameters
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 10, type=int)
+    
+    # Start with base query
+    query = Outlet.query
+    
+    # Apply filters if provided
+    if search_term:
+        query = query.filter(
+            (Outlet.outlet_code.ilike(f'%{search_term}%')) |
+            (Outlet.outlet_name_gojek.ilike(f'%{search_term}%')) |
+            (Outlet.outlet_name_grab.ilike(f'%{search_term}%'))
+        )
+    
+    if brand:
+        query = query.filter(Outlet.brand == brand)
+    
+    # Apply pagination
+    paginated_outlets = query.paginate(page=page, per_page=per_page, error_out=False)
+    
+    # Prepare response
+    response = {
+        'outlets': [outlet.to_dict() for outlet in paginated_outlets.items],
+        'pagination': {
+            'total_items': paginated_outlets.total,
+            'total_pages': paginated_outlets.pages,
+            'current_page': page,
+            'per_page': per_page,
+            'has_next': paginated_outlets.has_next,
+            'has_prev': paginated_outlets.has_prev
+        }
+    }
+    
+    return jsonify(response)
 
 # Get a single outlet by ID
 @outlet_bp.route("/<int:outlet_id>", methods=["GET"])
@@ -76,18 +113,9 @@ def update_outlet(outlet_id):
     if "outlet_code" in data and data["outlet_code"] != outlet.outlet_code:
         if Outlet.query.filter_by(outlet_code=data["outlet_code"]).first():
             return jsonify({"error": "Outlet code already exists"}), 400
-    
-    # If updating partner, validate new partner
-    if "partner_id" in data:
-        partner = Partner.query.get(data["partner_id"])
-        if not partner:
-            return jsonify({"error": "New partner not found"}), 404
-        outlet.partner_id = partner.id
-        outlet.partner_name = partner.name
 
     # Update fields
     outlet.outlet_code = data.get("outlet_code", outlet.outlet_code)
-    outlet.outlet_name = data.get("outlet_name", outlet.outlet_name)
     outlet.outlet_name_gojek = data.get("outlet_name_gojek", outlet.outlet_name_gojek)
     outlet.outlet_name_grab = data.get("outlet_name_grab", outlet.outlet_name_grab)
     outlet.outlet_phone = data.get("outlet_phone", outlet.outlet_phone)
@@ -96,7 +124,6 @@ def update_outlet(outlet_id):
     outlet.service_area = data.get("service_area", outlet.service_area)
     outlet.city_grouping = data.get("city_grouping", outlet.city_grouping)
     outlet.address = data.get("address", outlet.address)
-    outlet.admin = data.get("admin", outlet.admin)
     outlet.partner_phone = data.get("partner_phone", outlet.partner_phone)
     outlet.pic_partner_name = data.get("pic_partner_name", outlet.pic_partner_name)
     outlet.pic_phone = data.get("pic_phone", outlet.pic_phone)
