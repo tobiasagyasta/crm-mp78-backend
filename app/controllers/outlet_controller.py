@@ -49,8 +49,8 @@ def get_outlets():
     brand = request.args.get('brand', '')
     
     # Get pagination parameters
-    page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 10, type=int)
+    page = request.args.get('page', None, type=int)
+    per_page = request.args.get('per_page', None, type=int)
     
     # Start with base query
     query = Outlet.query
@@ -66,21 +66,30 @@ def get_outlets():
     if brand:
         query = query.filter(Outlet.brand == brand)
     
-    # Apply pagination
-    paginated_outlets = query.paginate(page=page, per_page=per_page, error_out=False)
-    
-    # Prepare response
-    response = {
-        'outlets': [outlet.to_dict() for outlet in paginated_outlets.items],
-        'pagination': {
-            'total_items': paginated_outlets.total,
-            'total_pages': paginated_outlets.pages,
-            'current_page': page,
-            'per_page': per_page,
-            'has_next': paginated_outlets.has_next,
-            'has_prev': paginated_outlets.has_prev
+    # Determine if pagination is requested
+    if page or per_page:
+        # Use default page/per_page if not specified
+        page = page or 1
+        per_page = per_page or 10
+        paginated_outlets = query.paginate(page=page, per_page=per_page, error_out=False)
+        
+        response = {
+            'outlets': [outlet.to_dict() for outlet in paginated_outlets.items],
+            'pagination': {
+                'total_items': paginated_outlets.total,
+                'total_pages': paginated_outlets.pages,
+                'current_page': page,
+                'per_page': per_page,
+                'has_next': paginated_outlets.has_next,
+                'has_prev': paginated_outlets.has_prev
+            }
         }
-    }
+    else:
+        # Return all results without pagination
+        all_outlets = query.all()
+        response = {
+            'outlets': [outlet.to_dict() for outlet in all_outlets]
+        }
     
     return jsonify(response)
 
