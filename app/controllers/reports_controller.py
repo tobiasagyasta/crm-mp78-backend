@@ -6,7 +6,7 @@ from app.models.grabfood_reports import GrabFoodReport
 from app.models.cash_reports import CashReport
 from app.models.manual_entry import ManualEntry
 from app.extensions import db
-import pdfkit
+# import pdfkit
 import csv
 from io import StringIO
 from sqlalchemy import func
@@ -15,7 +15,7 @@ from sqlalchemy.exc import IntegrityError
 from app.models.outlet import Outlet
 from app.utils.report_generator import generate_daily_report
 
-config = pdfkit.configuration(wkhtmltopdf='C:/Program Files/wkhtmltopdf/bin/wkhtmltopdf.exe')
+# config = pdfkit.configuration(wkhtmltopdf='C:/Program Files/wkhtmltopdf/bin/wkhtmltopdf.exe')
 reports_bp = Blueprint('reports', __name__, url_prefix='/reports')
 
 import os
@@ -610,35 +610,35 @@ def get_reports_totals():
 
 
 
-@reports_bp.route('/generate', methods=['GET'])
-def generate_report():
-    # Get parameters from query string
-    outlet_code = request.args.get('outlet_code')
-    start_date = request.args.get('start_date')
-    end_date = request.args.get('end_date')
+# @reports_bp.route('/generate', methods=['GET'])
+# def generate_report():
+#     # Get parameters from query string
+#     outlet_code = request.args.get('outlet_code')
+#     start_date = request.args.get('start_date')
+#     end_date = request.args.get('end_date')
 
-    # Validate parameters
-    if not all([outlet_code, start_date, end_date]):
-        return jsonify({'error': 'Missing required parameters: outlet_code, start_date, end_date'}), 400
+#     # Validate parameters
+#     if not all([outlet_code, start_date, end_date]):
+#         return jsonify({'error': 'Missing required parameters: outlet_code, start_date, end_date'}), 400
 
-    try:
-        # Convert date strings to datetime objects
-        start_date = datetime.strptime(start_date, '%Y-%m-%d')
-        end_date = datetime.strptime(end_date, '%Y-%m-%d')
+#     try:
+#         # Convert date strings to datetime objects
+#         start_date = datetime.strptime(start_date, '%Y-%m-%d')
+#         end_date = datetime.strptime(end_date, '%Y-%m-%d')
 
-        # Generate the report
-        filename = generate_daily_report(start_date, end_date, outlet_code)
+#         # Generate the report
+#         filename = generate_daily_report(start_date, end_date, outlet_code)
 
-        # Return the generated PDF file
-        return send_file(
-            f'reports/{filename}',
-            mimetype='application/pdf',
-            as_attachment=True,
-            download_name=filename
-        )
+#         # Return the generated PDF file
+#         return send_file(
+#             f'reports/{filename}',
+#             mimetype='application/pdf',
+#             as_attachment=True,
+#             download_name=filename
+#         )
 
-    except ValueError as e:
-        return jsonify({'error': str(e)}), 400
-    except Exception as e:
-        print(f"Error generating report: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+#     except ValueError as e:
+#         return jsonify({'error': str(e)}), 400
+#     except Exception as e:
+#         print(f"Error generating report: {str(e)}")
+#         return jsonify({'error': str(e)}), 500
