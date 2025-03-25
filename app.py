@@ -1,5 +1,6 @@
 from flask import Flask, jsonify
 from app.config.config import Config
+from app.config.env import init_env
 from app.extensions import db, jwt
 from app.controllers.auth_controller import auth_bp
 from app.controllers.protected_controller import protected_bp
@@ -13,6 +14,8 @@ from app.controllers.manual_entry_controller import manual_entries_bp
 from flask_cors import CORS
 
 def create_app():
+    # Initialize environment variables
+    init_env()
     app = Flask(__name__)
     app.config.from_object(Config)
 
