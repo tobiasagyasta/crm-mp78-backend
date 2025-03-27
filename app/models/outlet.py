@@ -16,6 +16,11 @@ class Outlet(db.Model):
     address = db.Column(db.String(500), nullable=True)
     brand = db.Column(db.String(100), nullable=True)
     
+    # Store IDs for different platforms
+    store_id_gojek = db.Column(db.String(50), nullable=True, unique=True)
+    store_id_grab = db.Column(db.String(50), nullable=True, unique=True)
+    store_id_shopee = db.Column(db.String(50), nullable=True, unique=True)
+    
     # Partner Information
     partner_name = db.Column(db.String(255), nullable=True)
     partner_phone = db.Column(db.String(20), nullable=True)
@@ -43,6 +48,9 @@ class Outlet(db.Model):
             "city_grouping": self.city_grouping,
             "address": self.address,
             "brand": self.brand,
+            "store_id_gojek": self.store_id_gojek,
+            "store_id_grab": self.store_id_grab,
+            "store_id_shopee": self.store_id_shopee,
             "partner_name": self.partner_name,
             "partner_phone": self.partner_phone,
             "pic_partner_name": self.pic_partner_name,

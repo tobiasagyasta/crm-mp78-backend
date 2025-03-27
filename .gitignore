@@ -52,3 +52,7 @@ Thumbs.db
 
 # PyCharm project settings
 .idea/
+store_ids.csv
+update_store_ids.py
+store_id_getter.py
+example_gojek.csv
