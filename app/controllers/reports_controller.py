@@ -34,34 +34,53 @@ def upload_report_grab():
     try:
         total_reports = 0
         unmatched_stores = set()  # Track stores without mapping
+        processed_transactions = set()  # Track processed transaction IDs
+        skipped_rows = []  # Track skipped rows and reasons
         
         for file in files:
             # Read the file contents and parse as CSV
             file_contents = file.read().decode('utf-8')
             csv_file = StringIO(file_contents)
             reader = csv.DictReader(csv_file)
+            
+            # Debug: Print CSV headers
+            print("CSV Headers:", reader.fieldnames)
 
             reports = []
-            for row in reader:
+            for idx, row in enumerate(reader, 1):
+                # Debug: Print each row's data
+                print(f"Processing row {idx}:", row)
+                
                 # Skip empty rows
                 if not row.get('ID transaksi'):
+                    reason = f"Row {idx}: Missing ID transaksi"
+                    print(reason)
+                    skipped_rows.append(reason)
                     continue
 
                 # Skip if transaction ID already processed
                 transaction_id = row.get('ID transaksi')
                 if transaction_id in processed_transactions or GrabFoodReport.query.filter_by(id_transaksi=transaction_id).first():
+                    reason = f"Row {idx}: Duplicate transaction ID: {transaction_id}"
+                    print(reason)
+                    skipped_rows.append(reason)
                     continue
-                processed_transactions.add(transaction_id)
 
                 # Get store ID from the CSV
                 store_id = row.get('ID toko')
                 if not store_id:
+                    reason = f"Row {idx}: Missing ID toko"
+                    print(reason)
+                    skipped_rows.append(reason)
                     continue
 
                 # Find matching outlet using store_id_grab
                 outlet = Outlet.query.filter_by(store_id_grab=store_id).first()
                 if not outlet:
+                    reason = f"Row {idx}: Unmatched store ID: {store_id}"
+                    print(reason)
                     unmatched_stores.add((store_id, row.get('Nama toko', '')))
+                    skipped_rows.append(reason)
                     continue
 
                 # Use outlet's code and brand name
@@ -166,14 +185,24 @@ def upload_report_grab():
         # Commit all changes after processing all files
         if total_reports > 0:
             db.session.commit()
-            return jsonify({
+            response = {
                 'msg': 'Reports uploaded successfully',
                 'type': 'GrabFood',
                 'files_processed': len(files),
-                'total_records': total_reports
-            }), 201
+                'total_records': total_reports,
+                'skipped_rows': skipped_rows
+            }
+            if unmatched_stores:
+                response['unmatched_stores'] = list(unmatched_stores)
+            return jsonify(response), 201
         else:
-            return jsonify({'msg': 'No valid records found in the CSV files'}), 400
+            return jsonify({
+                'msg': 'No valid records found in the CSV files',
+                'debug_info': {
+                    'skipped_rows': skipped_rows,
+                    'unmatched_stores': list(unmatched_stores)
+                }
+            }), 400
 
     except IntegrityError as e:
         db.session.rollback()
@@ -183,7 +212,7 @@ def upload_report_grab():
         db.session.rollback()
         print(f"Error details: {str(e)}")
         return jsonify({'msg': str(e)}), 500
-  
+
 
 @reports_bp.route('/upload/shopee', methods=['POST'])
 def upload_report_shopee():
