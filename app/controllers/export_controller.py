@@ -56,7 +56,7 @@ def export_reports():
         dataset.append(['Period:', f'{start_date.strftime("%Y-%m-%d")} to {end_date.strftime("%Y-%m-%d")}', '', '', '', '', '', '', ''])
         dataset.append(['Outlet:', outlet.outlet_name_gojek, '', '', '', '', '', '', ''])
         dataset.append([]) # Empty row for spacing
-        
+        dataset.append(['Date', 'Gojek Gross', 'Gojek Net', 'Grab Gross', 'Grab Net', 'Shopee Gross', 'Shopee Net', 'Cash Income', 'Cash Expense'])
         # Query reports with inclusive end date
         end_date_inclusive = datetime(end_date.year, end_date.month, end_date.day, 23, 59, 59)
         
