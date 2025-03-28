@@ -35,53 +35,7 @@ def export_reports():
         if not outlet:
             return jsonify({"error": "Outlet not found"}), 404
 
-        # Query reports
-        gojek_reports = GojekReport.query.filter(
-            GojekReport.outlet_code == outlet_code,
-            GojekReport.transaction_date.between(start_date, end_date)
-        ).all()
-
-        grab_reports = GrabFoodReport.query.filter(
-            GrabFoodReport.outlet_code == outlet_code,
-            GrabFoodReport.tanggal_dibuat.between(start_date, end_date)
-        ).all()
-
-        shopee_reports = ShopeeReport.query.filter(
-            ShopeeReport.outlet_code == outlet_code,
-            ShopeeReport.order_create_time.between(start_date, end_date)
-        ).all()
-
-        # Query cash reports
-        cash_reports = CashReport.query.filter(
-            CashReport.outlet_code == outlet_code,
-            CashReport.tanggal.between(start_date, end_date)
-        ).all()
-
-        # Create dataset with updated headers and initialize totals
-        headers = ('Date', 
-                  'Gojek Gross', 'Gojek Net', 
-                  'Grab Gross', 'Grab Net', 
-                  'Shopee Gross', 'Shopee Net', 
-                  'Cash Income', 'Cash Expense')
-        # Create dataset without headers first
-        dataset = tablib.Dataset()
-        dataset.title = 'Daily'
-        
-        # Add title rows
-        dataset.append(['Sales Report', '', '', '', '', '', '', '', ''])
-        dataset.append(['Period:', f'{start_date.strftime("%Y-%m-%d")} to {end_date.strftime("%Y-%m-%d")}', '', '', '', '', '', '', ''])
-        dataset.append(['Outlet:', outlet.outlet_name_gojek, '', '', '', '', '', '', ''])
-        dataset.append([]) # Empty row for spacing
-        
-        # Add the header row as regular data
-        dataset.append([
-            'Date', 
-            'Gojek Gross', 'Gojek Net', 
-            'Grab Gross', 'Grab Net', 
-            'Shopee Gross', 'Shopee Net', 
-            'Cash Income', 'Cash Expense'
-        ])
-     
+        # Initialize daily_totals dictionary
         daily_totals = {}
 
         # Initialize dictionary structure
@@ -93,36 +47,87 @@ def export_reports():
                 'Cash_Income': 0, 'Cash_Expense': 0
             }
 
+        # Create dataset without headers first
+        dataset = tablib.Dataset()
+        dataset.title = 'Daily'
+        
+        # Add title rows
+        dataset.append(['Sales Report', '', '', '', '', '', '', '', ''])
+        dataset.append(['Period:', f'{start_date.strftime("%Y-%m-%d")} to {end_date.strftime("%Y-%m-%d")}', '', '', '', '', '', '', ''])
+        dataset.append(['Outlet:', outlet.outlet_name_gojek, '', '', '', '', '', '', ''])
+        dataset.append([]) # Empty row for spacing
+        
+        # Query reports with inclusive end date
+        end_date_inclusive = datetime(end_date.year, end_date.month, end_date.day, 23, 59, 59)
+        
+        gojek_reports = GojekReport.query.filter(
+            GojekReport.outlet_code == outlet_code,
+            GojekReport.transaction_date >= start_date,
+            GojekReport.transaction_date <= end_date_inclusive
+        ).all()
+
+        grab_reports = GrabFoodReport.query.filter(
+            GrabFoodReport.outlet_code == outlet_code,
+            GrabFoodReport.tanggal_dibuat >= start_date,
+            GrabFoodReport.tanggal_dibuat <= end_date_inclusive
+        ).all()
+
+        shopee_reports = ShopeeReport.query.filter(
+            ShopeeReport.outlet_code == outlet_code,
+            ShopeeReport.order_create_time >= start_date,
+            ShopeeReport.order_create_time <= end_date_inclusive
+        ).all()
+
+        # Query cash reports with separate income and expense queries
+        cash_income_reports = CashReport.query.filter(
+            CashReport.outlet_code == outlet_code,
+            CashReport.type == 'income',
+            CashReport.tanggal >= start_date,
+            CashReport.tanggal <= end_date_inclusive
+        ).all()
+        
+        cash_expense_reports = CashReport.query.filter(
+            CashReport.outlet_code == outlet_code,
+            CashReport.type == 'expense',
+            CashReport.tanggal >= start_date,
+            CashReport.tanggal <= end_date_inclusive
+        ).all()
+
         # Aggregate all data by date
         for report in gojek_reports:
             date = report.transaction_date
             if date not in daily_totals:
                 daily_totals[date] = init_daily_total()
-            daily_totals[date]['Gojek_Gross'] += report.amount or 0
-            daily_totals[date]['Gojek_Net'] += report.nett_amount or 0
+            daily_totals[date]['Gojek_Net'] += float(report.nett_amount or 0)
+            daily_totals[date]['Gojek_Gross'] += float(report.amount or 0)
 
         for report in grab_reports:
             date = report.tanggal_dibuat.date()
             if date not in daily_totals:
                 daily_totals[date] = init_daily_total()
-            daily_totals[date]['Grab_Gross'] += report.amount or 0
-            daily_totals[date]['Grab_Net'] += report.total or 0
+            daily_totals[date]['Grab_Net'] += float(report.total or 0)
+            daily_totals[date]['Grab_Gross'] += float(report.amount or 0)
 
         for report in shopee_reports:
-            date = report.order_create_time.date()
-            if date not in daily_totals:
-                daily_totals[date] = init_daily_total()
-            daily_totals[date]['Shopee_Gross'] += report.order_amount or 0
-            daily_totals[date]['Shopee_Net'] += report.net_income or 0
+            if report.order_status != "Cancelled":
+                date = report.order_create_time.date()
+                if date not in daily_totals:
+                    daily_totals[date] = init_daily_total()
+                daily_totals[date]['Shopee_Net'] += float(report.net_income or 0)
+                daily_totals[date]['Shopee_Gross'] += float(report.order_amount or 0)
 
-        for report in cash_reports:
+        # Handle cash reports separately for income and expense
+        for report in cash_income_reports:
             date = report.tanggal.date()
             if date not in daily_totals:
                 daily_totals[date] = init_daily_total()
-            if report.type == 'income':
-                daily_totals[date]['Cash_Income'] += report.total or 0
-            else:
-                daily_totals[date]['Cash_Expense'] += report.total or 0
+            daily_totals[date]['Cash_Income'] += float(report.total or 0)
+
+        for report in cash_expense_reports:
+            date = report.tanggal.date()
+            if date not in daily_totals:
+                daily_totals[date] = init_daily_total()
+            daily_totals[date]['Cash_Expense'] += float(report.total or 0)
 
         # Add aggregated data to dataset, sorted by date
         for date in sorted(daily_totals.keys()):
@@ -194,8 +199,8 @@ def export_reports():
         ).all()
 
         # Calculate manual entry totals
-        manual_income = sum(entry.amount for entry in manual_entries if entry.entry_type == 'income')
-        manual_expense = sum(entry.amount for entry in manual_entries if entry.entry_type == 'expense')
+        manual_income = sum(float(entry.amount or 0) for entry in manual_entries if entry.entry_type == 'income')
+        manual_expense = sum(float(entry.amount or 0) for entry in manual_entries if entry.entry_type == 'expense')
 
         # Add combined income/expense summary
         summary_dataset.append(['Income/Expense Summary', '', '', '', '', '', '', '', ''])
