@@ -279,7 +279,7 @@ def upload_report_grab():
                         subkategori=row.get('Subkategori', ''),
                         status=row.get('Status', ''),
                         id_transaksi=row.get('ID transaksi', ''),
-                        poin_diberikan=safe_float(row.get('Poin diberikan')),
+                        # poin_diberikan=safe_float(row.get('Poin diberikan')),
                         komisi_grabkitchen=safe_float(row.get('Komisi GrabKitchen')),
                         total=safe_float(row.get('Total')),
                         amount=safe_float(row.get('Amount')),
