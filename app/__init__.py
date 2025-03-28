@@ -11,6 +11,7 @@ from app.controllers.expense_category_controller import expense_category_bp
 from app.controllers.income_category_controller import income_category_bp
 from app.controllers.reports_controller import reports_bp
 from app.controllers.manual_entry_controller import manual_entries_bp
+from app.controllers.export_controller import export_bp
 from flask_cors import CORS
 
 def create_app():
@@ -36,6 +37,7 @@ def create_app():
     app.register_blueprint(income_category_bp)
     app.register_blueprint(reports_bp)
     app.register_blueprint(manual_entries_bp)
+    app.register_blueprint(export_bp)
 
     @app.route('/')
     def welcome():
