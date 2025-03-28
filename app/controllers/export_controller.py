@@ -1,4 +1,5 @@
 from flask import Blueprint, request, jsonify, send_file
+from flask_cors import cross_origin
 from datetime import datetime
 from io import BytesIO
 from app.models.outlet import Outlet
@@ -12,9 +13,15 @@ import os
 
 export_bp = Blueprint('export', __name__, url_prefix="/export")
 
-@export_bp.route('/', methods=['POST'])
+@export_bp.route('', methods=['POST', 'OPTIONS'])
 def export_reports():
     try:
+        if request.method == 'OPTIONS':
+            response = jsonify({'status': 'OK'})
+            response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+            response.headers.add('Access-Control-Allow-Methods', 'POST')
+            return response, 200
+
         data = request.get_json()
         outlet_code = data.get('outlet_code')
         start_date = datetime.strptime(data.get('start_date'), '%Y-%m-%d')
@@ -58,6 +65,7 @@ def export_reports():
                   'Cash Income', 'Cash Expense')
         # Create dataset without headers first
         dataset = tablib.Dataset()
+        dataset.title = 'Daily'
         
         # Add title rows
         dataset.append(['Sales Report', '', '', '', '', '', '', '', ''])
@@ -159,6 +167,7 @@ def export_reports():
 
         # Create new dataset for summary
         summary_dataset = tablib.Dataset()
+        summary_dataset.title = 'Summary'
         
         # Add title for summary (match the 9 columns from main dataset)
         summary_dataset.append(['Summary Report', '', '', '', '', '', '', '', ''])
@@ -169,7 +178,7 @@ def export_reports():
         # Add grand totals summary (match the 9 columns)
         summary_dataset.append(['Online Platform Summary', '', '', '', '', '', '', '', ''])
         summary_dataset.append(['Platform', 'Gross', 'Net', 'Difference', '', '', '', '', ''])
-        summary_dataset.append(['Gojek', grand_totals['Gojek_Gross'], grand_totals['Gojek_Net'], 
+        summary_dataset.append(['Gojek', grand_totals['Gojek_Gross'], grand_totals['Gojek_Net'],
                               grand_totals['Gojek_Gross'] - grand_totals['Gojek_Net'], '', '', '', '', ''])
         summary_dataset.append(['Grab', grand_totals['Grab_Gross'], grand_totals['Grab_Net'],
                               grand_totals['Grab_Gross'] - grand_totals['Grab_Net'], '', '', '', '', ''])
@@ -245,42 +254,22 @@ def export_reports():
         try:
             book = tablib.Databook([dataset, summary_dataset])
             output = book.export('xlsx')
+            
+            filename = f"reports_{outlet_code}_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}.xlsx"
+            
+            response = jsonify()
+            response.data = output
+            response.headers['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            response.headers['Content-Disposition'] = f'attachment; filename={filename}'
+            response.headers['Access-Control-Allow-Origin'] = '*'
+            response.headers['Access-Control-Allow-Credentials'] = 'true'
+            return response
+
         except Exception as excel_error:
             return jsonify({
                 "error": "Excel generation failed",
                 "details": str(excel_error),
                 "step": "excel_export"
-            }), 400
-
-        # File handling with better error tracking
-        try:
-            local_path = f"c:\\Users\\agyas\\Documents\\Repos\\crm-mp78-backend\\exports\\reports_{outlet_code}_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}.xlsx"
-            os.makedirs(os.path.dirname(local_path), exist_ok=True)
-            
-            with open(local_path, 'wb') as f:
-                f.write(output)
-        except Exception as file_error:
-            return jsonify({
-                "error": "File saving failed",
-                "details": str(file_error),
-                "path": local_path,
-                "step": "file_save"
-            }), 400
-
-        # File download with error handling
-        try:
-            return send_file(
-                local_path,
-                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                as_attachment=True,
-                download_name=os.path.basename(local_path)
-            )
-        except Exception as download_error:
-            return jsonify({
-                "error": "File download failed",
-                "details": str(download_error),
-                "path": local_path,
-                "step": "file_download"
             }), 400
 
     except Exception as e:

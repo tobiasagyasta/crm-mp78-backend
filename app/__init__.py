@@ -24,8 +24,19 @@ def create_app():
     db.init_app(app)
     jwt.init_app(app)
 
-    # Enable CORS for all domains and ports
-    CORS(app)
+    # Configure CORS globally with all necessary settings
+    CORS(app, resources={
+        r"/*": {
+            "origins": "*",
+            "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+            "allow_headers": ["Content-Type", "Authorization"],
+            "expose_headers": ["Content-Disposition", "Content-Type"],
+            "supports_credentials": True
+        }
+    })
+
+    # Remove the duplicate CORS configuration
+    # CORS(export_bp, supports_credentials=True, expose_headers=["Content-Disposition"])
 
     # Register Blueprints (Routes)
     app.register_blueprint(auth_bp)
