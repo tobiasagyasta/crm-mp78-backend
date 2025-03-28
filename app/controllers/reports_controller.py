@@ -21,275 +21,63 @@ reports_bp = Blueprint('reports', __name__, url_prefix='/reports')
 import os
 
 
-@reports_bp.route('/upload/grab', methods=['POST'])
-def upload_report_grab():
-    # Handle both single and multiple file uploads
-    files = request.files.getlist('file')
-    if not files:
-        files = [request.files.get('file')]
+def update_store_ids_batch(store_id_map, platform):
+    """Update store IDs in batches to prevent timeout"""
+    batch_size = 100
+    updated = 0
     
-    if not files or not files[0]:
-        return jsonify({'msg': 'No files uploaded'}), 400
-
-    try:
-        total_reports = 0
-        unmatched_stores = set()  # Track stores without mapping
-        processed_transactions = set()  # Track processed transaction IDs
-        skipped_rows = []  # Track skipped rows and reasons
-        
-        for file in files:
-            # Read the file contents and parse as CSV
-            file_contents = file.read().decode('utf-8')
-            csv_file = StringIO(file_contents)
-            reader = csv.DictReader(csv_file)
-            
-            # Debug: Print CSV headers
-            print("CSV Headers:", reader.fieldnames)
-
-            reports = []
-            for idx, row in enumerate(reader, 1):
-                # Debug: Print each row's data
-                print(f"Processing row {idx}:", row)
+    # Process in batches
+    store_items = list(store_id_map.items())
+    for i in range(0, len(store_items), batch_size):
+        batch = store_items[i:i + batch_size]
+        for store_name, store_id in batch:
+            try:
+                # For Gojek
+                if platform == 'gojek':
+                    # Check if store_id already exists
+                    existing_outlet = Outlet.query.filter_by(store_id_gojek=store_id).first()
+                    if existing_outlet:
+                        continue
+                    
+                    outlet = Outlet.query.filter_by(outlet_name_gojek=store_name).first()
+                    if outlet and not outlet.store_id_gojek:
+                        outlet.store_id_gojek = store_id
+                        updated += 1
                 
-                # Skip empty rows
-                if not row.get('ID transaksi'):
-                    reason = f"Row {idx}: Missing ID transaksi"
-                    print(reason)
-                    skipped_rows.append(reason)
-                    continue
+                # For Grab
+                elif platform == 'grab':
+                    existing_outlet = Outlet.query.filter_by(store_id_grab=store_id).first()
+                    if existing_outlet:
+                        continue
+                    
+                    outlet = Outlet.query.filter_by(outlet_name_grab=store_name).first()
+                    if outlet and not outlet.store_id_grab:
+                        outlet.store_id_grab = store_id
+                        updated += 1
 
-                # Skip if transaction ID already processed
-                transaction_id = row.get('ID transaksi')
-                if transaction_id in processed_transactions or GrabFoodReport.query.filter_by(id_transaksi=transaction_id).first():
-                    reason = f"Row {idx}: Duplicate transaction ID: {transaction_id}"
-                    print(reason)
-                    skipped_rows.append(reason)
-                    continue
-
-                # Get store ID from the CSV
-                store_id = row.get('ID toko')
-                if not store_id:
-                    reason = f"Row {idx}: Missing ID toko"
-                    print(reason)
-                    skipped_rows.append(reason)
-                    continue
-
-                # Find matching outlet using store_id_grab
-                outlet = Outlet.query.filter_by(store_id_grab=store_id).first()
-                if not outlet:
-                    reason = f"Row {idx}: Unmatched store ID: {store_id}"
-                    print(reason)
-                    unmatched_stores.add((store_id, row.get('Nama toko', '')))
-                    skipped_rows.append(reason)
-                    continue
-
-                # Use outlet's code and brand name
-                outlet_code = outlet.outlet_code
-                brand_name = outlet.brand
-
-                def parse_number(value):
-                    if value is None or value == '':
-                        return None
-                    cleaned_value = value.replace(',', '')
-                    try:
-                        return float(cleaned_value)
-                    except ValueError:
-                        return None
-
-                def parse_date(date_str):
-                    if not date_str:
-                        return None
-                    try:
-                        return datetime.strptime(date_str.strip(), "%d %b %Y %I:%M %p")
-                    except ValueError:
-                        return None
-
-                report = GrabFoodReport(
-                    outlet_code=outlet_code,
-                    brand_name=brand_name,
-                    nama_merchant=row.get('Nama Merchant','').strip(),  # Get first column and ensure it's not empty
-                    id_merchant=row.get('ID Merchant'),
-                    nama_toko=row.get('Nama toko'),
-                    id_toko=row.get('ID toko'),
-                    diperbarui_pada=parse_date(row.get('Diperbarui Pada')),
-                    tanggal_dibuat=parse_date(row.get('Tanggal dibuat')),
-                    jenis=row.get('Jenis'),
-                    kategori=row.get('Kategori'),
-                    subkategori=row.get('Subkategori'),
-                    status=row.get('Status'),
-                    id_transaksi=row.get('ID transaksi'),
-                    id_transaksi_dihubungkan=row.get('ID Transaksi yang Dihubungkan'),
-                    id_transaksi_partner_1=row.get('ID transaksi partner 1'),
-                    id_transaksi_partner_2=row.get('ID transaksi partner 2'),
-                    id_pesanan_panjang=row.get('ID pesanan panjang') or '',
-                    id_pesanan_pendek=row.get('ID pesanan pendek') or '',
-                    kode_booking=row.get('Kode booking') or '',
-                    saluran_pesanan=row.get('Saluran pesanan') or '',
-                    jenis_pesanan=row.get('Jenis pesanan') or '',
-                    metode_pembayaran=row.get('Metode pembayaran') or '',
-                    id_terminal=row.get('ID terminal'),
-                    saluran=row.get('Saluran'),
-                    tipe_promo=row.get('Tipe promo'),
-                    biaya_grab_persen=parse_number(row.get('Biaya Grab (%)')),
-                    pengali_poin=parse_number(row.get('Pengali Poin')),
-                    poin_diberikan=parse_number(row.get('Poin yang Diberikan')),
-                    id_pencairan_dana=row.get('ID pencairan dana'),
-                    tanggal_transfer=parse_date(row.get('Tanggal transfer')),
-                    amount=parse_number(row.get('Amount')) or 0,
-                    pajak_atas_pesanan=parse_number(row.get('Pajak atas pesanan')),
-                    biaya_kemasan=parse_number(row.get('Biaya kemasan')),
-                    biaya_pelanggan_tidak_ikut_keanggotaan=parse_number(row.get('Biaya untuk Pelanggan yang Tidak Ikut Keanggotaan')),
-                    biaya_layanan_restoran=parse_number(row.get('Biaya layanan restoran')),
-                    promo=parse_number(row.get('Promo')),
-                    diskon_dibiayai_merchant=parse_number(row.get('Diskon (Dibiayai Merchant)')),
-                    diskon_ongkos_kirim_dibiayai_merchant=parse_number(row.get('Diskon Ongkos Kirim (Dibiayai Merchant)')),
-                    ongkos_kirim_ditanggung_merchant_online=parse_number(row.get('Ongkos Kirim yang Ditanggung Merchant (untuk Toko Online Grab)')),
-                    ongkos_kirim_ditanggung_merchant_pengantaran=parse_number(row.get('Ongkos Kirim yang Ditanggung Merchant (Pengantaran oleh Merchant)')),
-                    biaya_layanan_pengiriman_grabexpress=parse_number(row.get('Biaya Layanan Pengiriman GrabExpress')),
-                    penjualan_bersih=parse_number(row.get('Penjualan bersih')) or 0,
-                    nilai_mdr_bersih=parse_number(row.get('Nilai MDR bersih')),
-                    pajak_mdr=parse_number(row.get('Pajak MDR')),
-                    biaya_grab=parse_number(row.get('Biaya Grab')) or 0,
-                    biaya_sukses_pemasaran=parse_number(row.get('Biaya sukses pemasaran')) or 0,
-                    komisi_pengantaran=parse_number(row.get('Komisi pengantaran')),
-                    komisi_saluran=parse_number(row.get('Komisi saluran')),
-                    komisi_pesanan=parse_number(row.get('Komisi Pesanan')),
-                    komisi_lain_grabfood_grabmart=parse_number(row.get('Komisi Lain dari GrabFood / GrabMart')),
-                    komisi_grabkitchen=parse_number(row.get('Komisi GrabKitchen')),
-                    komisi_lain_grabkitchen=parse_number(row.get('Komisi Lain dari GrabKitchen')),
-                    pajak_pemotongan=parse_number(row.get('Pajak pemotongan')),
-                    total=parse_number(row.get('Total')) or 0,
-                    pajak_atas_mdr_persen=parse_number(row.get('Pajak atas MDR (%)')),
-                    komisi_pengantaran_persen=parse_number(row.get('Komisi Pengantaran (%)')),
-                    komisi_saluran_persen=parse_number(row.get('Komisi Saluran (%)')),
-                    komisi_pesanan_persen=parse_number(row.get('Komisi Pesanan (%)')),
-                    pajak_atas_komisi_grabfood_grabmart=parse_number(row.get('Pajak atas Komisi GrabFood / GrabMart, Penyesuaian, Iklan')) or 0,
-                    penyesuaian_iklan=parse_number(row.get('Penyesuaian Iklan')),
-                    pajak_atas_total_komisi_grabkitchen=parse_number(row.get('Pajak atas Total Komisi GrabKitchen')),
-                    alasan_pembatalan=row.get('Alasan pembatalan'),
-                    dibatalkan_oleh=row.get('Dibatalkan oleh'),
-                    alasan_pengembalian_dana=row.get('Alasan pengembalian dana'),
-                    deskripsi=row.get('Deskripsi'),
-                    kelompok_insiden=row.get('Kelompok insiden'),
-                    nama_insiden=row.get('Nama insiden'),
-                    item_terdampak=row.get('Item yang terdampak'),
-                    link_untuk_banding=row.get('Link untuk banding'),
-                    status_banding=row.get('Status banding')
-                )
-                reports.append(report)
-
-            if reports:
-                db.session.bulk_save_objects(reports)
-                total_reports += len(reports)
-
-        # Commit all changes after processing all files
-        if total_reports > 0:
+                # For Shopee
+                elif platform == 'shopee':
+                    existing_outlet = Outlet.query.filter_by(store_id_shopee=store_id).first()
+                    if existing_outlet:
+                        continue
+                    
+                    outlet = Outlet.query.filter_by(outlet_name_shopee=store_name).first()
+                    if outlet and not outlet.store_id_shopee:
+                        outlet.store_id_shopee = store_id
+                        updated += 1
+                
+            except Exception as e:
+                print(f"Error updating {store_name}: {str(e)}")
+                continue
+        
+        # Commit each batch
+        try:
             db.session.commit()
-            response = {
-                'msg': 'Reports uploaded successfully',
-                'type': 'GrabFood',
-                'files_processed': len(files),
-                'total_records': total_reports,
-                'skipped_rows': skipped_rows
-            }
-            if unmatched_stores:
-                response['unmatched_stores'] = list(unmatched_stores)
-            return jsonify(response), 201
-        else:
-            return jsonify({
-                'msg': 'No valid records found in the CSV files',
-                'debug_info': {
-                    'skipped_rows': skipped_rows,
-                    'unmatched_stores': list(unmatched_stores)
-                }
-            }), 400
+        except Exception as e:
+            db.session.rollback()
+            print(f"Error committing batch: {str(e)}")
 
-    except IntegrityError as e:
-        db.session.rollback()
-        print(f"IntegrityError details: {str(e)}")
-        return jsonify({'msg': 'Duplicate entry error', 'error': str(e)}), 400
-    except Exception as e:
-        db.session.rollback()
-        print(f"Error details: {str(e)}")
-        return jsonify({'msg': str(e)}), 500
-
-
-@reports_bp.route('/upload/shopee', methods=['POST'])
-def upload_report_shopee():
-    # Handle both single and multiple file uploads
-    files = request.files.getlist('file')
-    if not files:
-        files = [request.files.get('file')]
-    
-    outlet_code = request.form.get('outlet_code')
-    brand_name = request.form.get('brand_name')
-    
-    if not files or not files[0]:
-        return jsonify({'msg': 'No files uploaded'}), 400
-    if not outlet_code:
-        return jsonify({'msg': 'Outlet code is required'}), 400
-
-    try:
-        total_reports = 0
-        for file in files:
-            # Read the file contents and parse as CSV
-            file_contents = file.read().decode('utf-8')
-            csv_file = StringIO(file_contents)
-            reader = csv.DictReader(csv_file)
-
-            reports = []
-            for row in reader:
-                # Convert empty strings to None or 0 where appropriate
-                def parse_number(value):
-                    return None if value == '' else float(value) if value.replace('.', '', 1).isdigit() else None
-
-                report = ShopeeReport(
-                    outlet_code=outlet_code,  # Add this line
-                    brand_name = brand_name,
-                    transaction_type=row['Transaction Type'],
-                    order_id=row['Order ID'],
-                    order_pick_up_id=row.get('Order Pick up ID'),
-                    store_id=row.get('Store ID'),
-                    store_name=row.get('Store Name'),
-                    order_create_time=datetime.strptime(row['Order Create Time'], "%d/%m/%Y %H:%M:%S"),
-                    order_complete_cancel_time=datetime.strptime(row['Order Complete/Cancel Time'], "%d/%m/%Y %H:%M:%S") if row.get('Order Complete/Cancel Time') else None,
-                    order_amount=parse_number(row['Order Amount']),
-                    merchant_service_charge=parse_number(row['Merchant Service Charge']),
-                    pb1=parse_number(row['PB1']),
-                    merchant_surcharge_fee=parse_number(row['Merchant Surcharge Fee']),
-                    merchant_shipping_fee_voucher_subsidy=parse_number(row['Merchant Shipping Fee Voucher Subsidy']),
-                    food_direct_discount=parse_number(row['Food Direct Discount']),
-                    merchant_food_voucher_subsidy=parse_number(row['Merchant Food Voucher Subsidy']),
-                    subtotal=parse_number(row['Subtotal']),
-                    total=parse_number(row['Total']),
-                    commission=parse_number(row['Commission']),
-                    net_income=parse_number(row['Net Income']),
-                    order_status=row.get('Order Status'),
-                    order_type=row.get('Order Type')
-                )
-                reports.append(report)
-
-            # Insert reports into the database
-            db.session.bulk_save_objects(reports)
-            total_reports += len(reports)
-
-        # Commit all changes after processing all files
-        db.session.commit()
-        return jsonify({
-            'msg': 'Reports uploaded successfully',
-            'type': 'Shopee',
-            'files_processed': len(files),
-            'total_records': total_reports
-        }), 201
-
-    except IntegrityError as e:
-        db.session.rollback()
-        print(f"IntegrityError details: {str(e)}")  # Add this for debugging
-        return jsonify({'msg': f'Duplicate entry error: {str(e)}'}), 500
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'msg': str(e)}), 500
-
+    return updated
 
 @reports_bp.route('/upload/gojek', methods=['POST'])
 def upload_report_gojek():
@@ -302,141 +90,355 @@ def upload_report_gojek():
 
     try:
         total_reports = 0
-        unmatched_stores = set()
-        processed_transactions = set()  # Track processed transaction IDs
+        skipped_reports = 0
+        store_id_map = {}  # To collect store IDs
         
         for file in files:
             file_contents = file.read().decode('utf-8')
             csv_file = StringIO(file_contents)
             reader = csv.DictReader(csv_file)
-
+            
             reports = []
             for row in reader:
-                # Skip rows that aren't GO-PAY payments
-                if row.get('Payment Type') != 'GO-PAY':
-                    continue
-
-                # Skip empty rows
-                if not row.get('Transaction ID'):
-                    continue
-
-                # Skip if transaction ID already processed
-                transaction_id = row['Transaction ID']
-                if transaction_id in processed_transactions or GojekReport.query.filter_by(transaction_id=transaction_id).first():
-                    continue
-                processed_transactions.add(transaction_id)
-
-                # Get store ID from the CSV
+                merchant_name = row.get('Merchant name', '').strip()
                 merchant_id = row.get('Merchant ID')
-                if not merchant_id:
-                    continue
+                if merchant_name and merchant_id:
+                    store_id_map[merchant_name] = merchant_id
 
-                # Find matching outlet using store_id_gojek
-                outlet = Outlet.query.filter_by(store_id_gojek=merchant_id).first()
+                # Get outlet code from store ID first, then fallback to name
+                outlet = None
+                if merchant_id:
+                    outlet = Outlet.query.filter_by(store_id_gojek=merchant_id).first()
+                if not outlet and merchant_name:
+                    outlet = Outlet.query.filter_by(outlet_name_gojek=merchant_name).first()
                 if not outlet:
-                    unmatched_stores.add((merchant_id, row.get('Merchant name', '')))
-                    continue
+                    continue  # Skip if outlet not found by either ID or name
 
-                def parse_number(value):
-                    if value is None or value == '':
-                        return None
-                    cleaned_value = value.replace(',', '')
+                # Check if transaction already exists
+                order_no = row.get('Order No', '')
+                if order_no:
+                    existing_report = GojekReport.query.filter_by(nomor_pesanan=order_no).first()
+                    if existing_report:
+                        skipped_reports += 1
+                        continue
+
+                try:
+                    # Parse the date and time
+                    date_str = row.get('Transaction Date', '')
+                    time_str = row.get('Transaction time', '')
+                    
                     try:
-                        return float(cleaned_value)
+                        # Parse MM/DD/YYYY format for date
+                        transaction_date = datetime.strptime(date_str, '%m/%d/%Y').date()
                     except ValueError:
-                        return None
-
-                def parse_datetime(date_str, time_str):
-                    if not date_str:
-                        return None, None
+                        print(f"Error parsing date: {date_str}")
+                        continue
+                    
+                    # Parse ISO format timestamp for time
                     try:
-                        # Handle MM/DD/YYYY format
-                        date_obj = datetime.strptime(date_str.strip(), "%m/%d/%Y").date()
-                        
-                        # Handle ISO format time string
-                        if time_str and 'T' in time_str:
-                            time_str = time_str.split('T')[1].split('+')[0]  # Extract time part
-                            time_obj = datetime.strptime(time_str, "%H:%M:%S.%f").time()
-                        else:
-                            time_obj = None
-                            
-                        return date_obj, time_obj
-                    except ValueError as e:
-                        print(f"Date parsing error: {e} for date: {date_str}, time: {time_str}")
-                        return None, None
-
-                # Parse transaction and settlement dates
-                trans_date, trans_time = parse_datetime(row.get('Transaction Date'), row.get('Transaction time'))
-                settle_date, settle_time = parse_datetime(row.get('Settlement Date'), None)
-
-                # Skip if transaction date is missing
-                if not trans_date:
+                        transaction_time = datetime.fromisoformat(time_str.replace('Z', '+00:00')).time()
+                    except ValueError:
+                        transaction_time = None
+                    
+                    report = GojekReport(
+                        brand_name=outlet.brand,
+                        outlet_code=outlet.outlet_code,
+                        transaction_id=row.get('Transaction ID', '').strip("'"),
+                        transaction_date=transaction_date,
+                        transaction_time=transaction_time,
+                        stan=row.get('Stan', ''),
+                        nett_amount=row.get('Nett Amount', 0),
+                        amount=row.get('Amount', 0),
+                        transaction_status=row.get('Transaction Status', ''),
+                        transaction_reference=row.get('Transaction Reference', '').strip("'"),
+                        order_id=row.get('Order ID', '').strip("'"),
+                        feature=row.get('Feature', ''),
+                        payment_type=row.get('Payment Type', ''),
+                        merchant_name=merchant_name,
+                        merchant_id=merchant_id,
+                        promo_type=row.get('Promo Type', ''),
+                        promo_name=row.get('Promo Name', ''),
+                        gopay_promo=float(row.get('Gopay promo', 0).replace(',', '') or 0),
+                        gofood_discount=float(row.get('GoFood discount', 0).replace(',', '') or 0),
+                        voucher_commission=float(row.get('Voucher commission', 0).replace(',', '') or 0),
+                        tax=float(row.get('Tax', 0).replace(',', '') or 0),
+                        witholding_tax=float(row.get('Witholding tax', 0).replace(',', '') or 0),
+                        currency=row.get('Currency', 'IDR')
+                    )
+                    reports.append(report)
+                    total_reports += 1
+                except (ValueError, TypeError) as e:
+                    print(f"Error processing row: {e}")
                     continue
 
-                report = GojekReport(
-                    outlet_code=outlet.outlet_code,
-                    brand_name=outlet.brand,
-                    transaction_id=row['Transaction ID'],
-                    transaction_date=trans_date,
-                    transaction_time=trans_time,
-                    stan=row.get('Stan'),
-                    nett_amount=parse_number(row.get('Nett Amount')),
-                    currency=row.get('Currency'),
-                    amount=parse_number(row.get('Amount')),
-                    transaction_status=row.get('Transaction Status'),
-                    transaction_reference=row.get('Transaction Reference'),
-                    order_id=row.get('Order ID'),
-                    settlement_time=settle_time,
-                    settlement_date=settle_date,
-                    feature=row.get('Feature'),
-                    payment_type=row.get('Payment Type'),
-                    gopay_transaction_id_reference=row.get('Gopay Transaction ID reference'),
-                    merchant_name=row.get('Merchant name'),
-                    merchant_id=merchant_id,
-                    promo_type=row.get('Promo Type'),
-                    promo_name=row.get('Promo Name'),
-                    gopay_promo=parse_number(row.get('Gopay promo')),
-                    gofood_discount=parse_number(row.get('GoFood discount')),
-                    voucher_commission=parse_number(row.get('Voucher commission')),
-                    tax=parse_number(row.get('Tax')),
-                    witholding_tax=parse_number(row.get('Witholding tax'))
-                )
-                reports.append(report)
-
+            # Bulk save reports for this file
             if reports:
-                db.session.bulk_save_objects(reports)
-                total_reports += len(reports)
+                try:
+                    db.session.bulk_save_objects(reports)
+                    db.session.commit()
+                except IntegrityError:
+                    db.session.rollback()
+                    # Handle reports one by one if bulk insert fails
+                    for report in reports:
+                        try:
+                            db.session.add(report)
+                            db.session.commit()
+                        except IntegrityError:
+                            db.session.rollback()
+                            skipped_reports += 1
+                        except Exception as e:
+                            db.session.rollback()
+                            print(f"Error saving report: {str(e)}")
 
-        # Commit all changes after processing all files
-        if total_reports > 0:
-            db.session.commit()
-            response = {
-                'msg': 'Reports uploaded successfully',
-                'type': 'Gojek',
-                'files_processed': len(files),
-                'total_records': total_reports
-            }
-            
-            # Add unmatched stores to response if any
-            if unmatched_stores:
-                response['unmatched_stores'] = [
-                    {'merchant_id': mid, 'merchant_name': name} 
-                    for mid, name in unmatched_stores
-                ]
-            
-            return jsonify(response), 201
-        else:
-            return jsonify({'msg': 'No valid records found in the CSV files'}), 400
+        # Update store IDs in batches
+        updated_count = update_store_ids_batch(store_id_map, 'gojek')
+        
+        return jsonify({
+            'msg': 'Reports uploaded successfully',
+            'total_records': total_reports,
+            'skipped_records': skipped_reports,
+            'store_ids_updated': updated_count
+        }), 201
 
-    except IntegrityError as e:
-        db.session.rollback()
-        print(f"IntegrityError details: {str(e)}")
-        return jsonify({'msg': 'Duplicate entry error', 'error': str(e)}), 400
     except Exception as e:
         db.session.rollback()
-        print(f"Error details: {str(e)}")
-        return jsonify({'msg': str(e)}), 500
+        return jsonify({'error': str(e)}), 500
 
+@reports_bp.route('/upload/grab', methods=['POST'])
+def upload_report_grab():
+    files = request.files.getlist('file')
+    if not files:
+        files = [request.files.get('file')]
+    
+    if not files or not files[0]:
+        return jsonify({'msg': 'No files uploaded'}), 400
+
+    try:
+        total_reports = 0
+        skipped_reports = 0
+        store_id_map = {}  # To collect store IDs
+        
+        for file in files:
+            # Process CSV and collect store IDs
+            file_contents = file.read().decode('utf-8')
+            csv_file = StringIO(file_contents)
+            reader = csv.DictReader(csv_file)
+            
+            reports = []
+            for row in reader:
+                store_name = row.get('Nama toko', '').strip()
+                store_id = row.get('ID toko')
+                if store_name and store_id:
+                    store_id_map[store_name] = store_id
+
+                outlet = None
+                if store_id:
+                    outlet = Outlet.query.filter_by(store_id_grab=store_id).first()
+                if not outlet and store_name:
+                    outlet = Outlet.query.filter_by(outlet_name_grab=store_name).first()
+                if not outlet:
+                    continue  # Skip if outlet not found by either ID or name
+
+                # Check if transaction already exists
+                transaction_id = row.get('ID transaksi', '')
+                if transaction_id:
+                    existing_report = GrabFoodReport.query.filter_by(id_transaksi=transaction_id).first()
+                    if existing_report:
+                        skipped_reports += 1
+                        continue
+
+                try:
+                    # Create GrabFoodReport instance
+                    # Parse the date with the correct format
+                    date_str = row.get('Tanggal dibuat', '')
+                    try:
+                        tanggal_dibuat = datetime.strptime(date_str, '%d %b %Y %I:%M %p')
+                    except ValueError:
+                        # Try alternate format if first attempt fails
+                        tanggal_dibuat = datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S')
+
+                    def safe_float(value):
+                        if not value:
+                            return 0
+                        try:
+                            # Remove commas and convert to float
+                            return float(str(value).replace(',', ''))
+                        except (ValueError, TypeError):
+                            return 0
+
+                    report = GrabFoodReport(
+                        brand_name=outlet.brand,
+                        outlet_code=outlet.outlet_code,
+                        nama_merchant=row.get('Nama merchant', ''),
+                        id_merchant=row.get('ID merchant', ''),
+                        nama_toko=store_name,
+                        id_toko=store_id,
+                        tanggal_dibuat=tanggal_dibuat,
+                        jenis=row.get('Jenis', ''),
+                        kategori=row.get('Kategori', ''),
+                        subkategori=row.get('Subkategori', ''),
+                        status=row.get('Status', ''),
+                        id_transaksi=row.get('ID transaksi', ''),
+                        poin_diberikan=safe_float(row.get('Poin diberikan')),
+                        komisi_grabkitchen=safe_float(row.get('Komisi GrabKitchen')),
+                        total=safe_float(row.get('Total')),
+                        amount=safe_float(row.get('Amount')),
+                        penjualan_bersih=safe_float(row.get('Penjualan bersih'))
+                    )
+                    reports.append(report)
+                    total_reports += 1
+                except (ValueError, TypeError) as e:
+                    print(f"Error processing row: {e}")
+                    continue
+
+            # Bulk save reports for this file
+            if reports:
+                try:
+                    db.session.bulk_save_objects(reports)
+                    db.session.commit()
+                except IntegrityError:
+                    db.session.rollback()
+                    # Handle reports one by one if bulk insert fails
+                    for report in reports:
+                        try:
+                            db.session.add(report)
+                            db.session.commit()
+                            total_reports += 1
+                        except IntegrityError:
+                            db.session.rollback()
+                            skipped_reports += 1
+                        except Exception as e:
+                            db.session.rollback()
+                            print(f"Error saving report: {str(e)}")
+
+        # Update store IDs in batches
+        updated_count = update_store_ids_batch(store_id_map, 'grab')
+        
+        return jsonify({
+            'msg': 'Reports uploaded successfully',
+            'total_records': total_reports,
+            'skipped_records': skipped_reports,
+            'store_ids_updated': updated_count
+        }), 201
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@reports_bp.route('/upload/shopee', methods=['POST'])
+def upload_report_shopee():
+    files = request.files.getlist('file')
+    if not files:
+        files = [request.files.get('file')]
+    
+    if not files or not files[0]:
+        return jsonify({'msg': 'No files uploaded'}), 400
+
+    try:
+        total_reports = 0
+        skipped_reports = 0
+        store_id_map = {}  # To collect store IDs
+        
+        for file in files:
+            file_contents = file.read().decode('utf-8')
+            csv_file = StringIO(file_contents)
+            reader = csv.DictReader(csv_file)
+            
+            reports = []
+            for row in reader:
+                store_name = row.get('Store Name', '').strip()
+                store_id = row.get('Store ID')
+                if store_name and store_id:
+                    store_id_map[store_name] = store_id
+
+                # Get outlet code from store name
+                # Get outlet code from store ID first, then fallback to name
+                outlet = None
+                if store_id:
+                    outlet = Outlet.query.filter_by(store_id_shopee=store_id).first()
+                if not outlet and store_name:
+                    outlet = Outlet.query.filter_by(outlet_name_shopee=store_name).first()
+                if not outlet:
+                    continue  # Skip if outlet not found by either ID or name
+
+                # Check if order already exists
+                order_id = row.get('Order ID', '')
+                if order_id:
+                    existing_report = ShopeeReport.query.filter_by(order_id=order_id).first()
+                    if existing_report:
+                        skipped_reports += 1
+                        continue
+
+                try:
+                    # Parse dates with the correct format (dd/MM/yyyy HH:mm:ss)
+                    create_time = datetime.strptime(row.get('Order Create Time', ''), '%d/%m/%Y %H:%M:%S')
+                    complete_time = None
+                    if row.get('Order Complete/Cancel Time'):
+                        complete_time = datetime.strptime(row.get('Order Complete/Cancel Time', ''), '%d/%m/%Y %H:%M:%S')
+
+                    report = ShopeeReport(
+                        brand_name=outlet.brand,
+                        outlet_code=outlet.outlet_code,
+                        transaction_type=row.get('Transaction Type', ''),
+                        order_id=row.get('Order ID', ''),
+                        order_pick_up_id=row.get('Order Pick up ID', ''),
+                        store_id=store_id,
+                        store_name=store_name,
+                        order_create_time=create_time,
+                        order_complete_cancel_time=complete_time,
+                        order_amount=float(row.get('Order Amount', 0) or 0),
+                        merchant_service_charge=float(row.get('Merchant Service Charge', 0) or 0),
+                        pb1=float(row.get('PB1', 0) or 0),
+                        merchant_surcharge_fee=float(row.get('Merchant Surcharge Fee', 0) or 0),
+                        merchant_shipping_fee_voucher_subsidy=float(row.get('Merchant Shipping Fee Voucher Subsidy', 0) or 0),
+                        food_direct_discount=float(row.get('Food Direct Discount', 0) or 0),
+                        merchant_food_voucher_subsidy=float(row.get('Merchant Food Voucher Subsidy', 0) or 0),
+                        subtotal=float(row.get('Subtotal', 0) or 0),
+                        total=float(row.get('Total', 0) or 0),
+                        commission=float(row.get('Commission', 0) or 0),
+                        net_income=float(row.get('Net Income', 0) or 0),
+                        order_status=row.get('Order Status', ''),
+                        order_type=row.get('Order Type', '')
+                    )
+                    reports.append(report)
+                    total_reports += 1
+                except (ValueError, TypeError) as e:
+                    print(f"Error processing row: {e}")
+                    continue
+
+            # Bulk save reports for this file
+            if reports:
+                try:
+                    db.session.bulk_save_objects(reports)
+                    db.session.commit()
+                except IntegrityError:
+                    db.session.rollback()
+                    # Handle reports one by one if bulk insert fails
+                    for report in reports:
+                        try:
+                            db.session.add(report)
+                            db.session.commit()
+                        except IntegrityError:
+                            db.session.rollback()
+                            skipped_reports += 1
+                        except Exception as e:
+                            db.session.rollback()
+                            print(f"Error saving report: {str(e)}")
+
+        # Update store IDs in batches
+        updated_count = update_store_ids_batch(store_id_map, 'shopee')
+        
+        return jsonify({
+            'msg': 'Reports uploaded successfully',
+            'total_records': total_reports,
+            'skipped_records': skipped_reports,
+            'store_ids_updated': updated_count
+        }), 201
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
 
 
 @reports_bp.route('/', methods=['GET'])
@@ -454,7 +456,7 @@ def get_reports():
         # Determine the model and date attribute based on the report type
         if report_type == 'gojek':
             model = GojekReport
-            date_attr = GojekReport.waktu_transaksi
+            date_attr = GojekReport.transaction_time
             convert_to_dict = convert_gojek_report_to_dict
         elif report_type == 'grabfood':
             model = GrabFoodReport

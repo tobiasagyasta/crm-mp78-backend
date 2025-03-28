@@ -143,7 +143,10 @@ def update_outlet(outlet_id):
     outlet.closing_date = datetime.fromisoformat(data["closing_date"]) if data.get("closing_date") else outlet.closing_date
     outlet.operating_hours = data.get("operating_hours", outlet.operating_hours)
     outlet.coordinator_avenger = data.get("coordinator_avenger", outlet.coordinator_avenger)
-
+    outlet.store_id_gojek = data.get("store_id_gojek", outlet.store_id_gojek)
+    outlet.store_id_grab = data.get("store_id_grab", outlet.store_id_grab)
+    outlet.store_id_shopee = data.get("store_id_shopee", outlet.store_id_shopee)
+    
     db.session.commit()
     return jsonify(outlet.to_dict())
 
