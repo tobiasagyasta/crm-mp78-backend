@@ -98,7 +98,7 @@ def export_reports():
             if date not in daily_totals:
                 daily_totals[date] = init_daily_total()
             daily_totals[date]['Grab_Gross'] += report.amount or 0
-            daily_totals[date]['Grab_Net'] += report.penjualan_bersih or 0
+            daily_totals[date]['Grab_Net'] += report.total or 0
 
         for report in shopee_reports:
             date = report.order_create_time.date()
@@ -154,25 +154,139 @@ def export_reports():
                        grand_totals['Cash_Expense']])
 
         # Export to Excel
-        output = dataset.export('xlsx')
+        # Export first sheet with daily details
+        daily_sheet = dataset.export('xlsx')
 
-        # Save locally first
-        local_path = f"c:\\Users\\agyas\\Documents\\Repos\\crm-mp78-backend\\exports\\reports_{outlet_code}_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}.xlsx"
+        # Create new dataset for summary
+        summary_dataset = tablib.Dataset()
+        
+        # Add title for summary (match the 9 columns from main dataset)
+        summary_dataset.append(['Summary Report', '', '', '', '', '', '', '', ''])
+        summary_dataset.append(['Period:', f'{start_date.strftime("%Y-%m-%d")} to {end_date.strftime("%Y-%m-%d")}', '', '', '', '', '', '', ''])
+        summary_dataset.append(['Outlet:', outlet.outlet_name_gojek, '', '', '', '', '', '', ''])
+        summary_dataset.append(['', '', '', '', '', '', '', '', '']) # Empty row
+        
+        # Add grand totals summary (match the 9 columns)
+        summary_dataset.append(['Online Platform Summary', '', '', '', '', '', '', '', ''])
+        summary_dataset.append(['Platform', 'Gross', 'Net', 'Difference', '', '', '', '', ''])
+        summary_dataset.append(['Gojek', grand_totals['Gojek_Gross'], grand_totals['Gojek_Net'], 
+                              grand_totals['Gojek_Gross'] - grand_totals['Gojek_Net'], '', '', '', '', ''])
+        summary_dataset.append(['Grab', grand_totals['Grab_Gross'], grand_totals['Grab_Net'],
+                              grand_totals['Grab_Gross'] - grand_totals['Grab_Net'], '', '', '', '', ''])
+        summary_dataset.append(['Shopee', grand_totals['Shopee_Gross'], grand_totals['Shopee_Net'],
+                              grand_totals['Shopee_Gross'] - grand_totals['Shopee_Net'], '', '', '', '', ''])
+        summary_dataset.append(['', '', '', '', '', '', '', '', '']) # Empty row
 
-        # Ensure exports directory exists
-        os.makedirs(os.path.dirname(local_path), exist_ok=True)
+        # Query manual entries first
+        manual_entries = ManualEntry.query.filter(
+            ManualEntry.outlet_code == outlet_code,
+            ManualEntry.start_date <= end_date,
+            ManualEntry.end_date >= start_date
+        ).all()
 
-        # Save file locally
-        with open(local_path, 'wb') as f:
-            f.write(output)
+        # Calculate manual entry totals
+        manual_income = sum(entry.amount for entry in manual_entries if entry.entry_type == 'income')
+        manual_expense = sum(entry.amount for entry in manual_entries if entry.entry_type == 'expense')
 
-        # Return file for download
-        return send_file(
-            local_path,
-            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            as_attachment=True,
-            download_name=os.path.basename(local_path)
+        # Add combined income/expense summary
+        summary_dataset.append(['Income/Expense Summary', '', '', '', '', '', '', '', ''])
+        summary_dataset.append(['Category', 'Income', 'Expense', 'Net Total', '', '', '', '', ''])
+        summary_dataset.append(['Cash', 
+                              grand_totals['Cash_Income'],
+                              grand_totals['Cash_Expense'],
+                              grand_totals['Cash_Income'] - grand_totals['Cash_Expense'],
+                              '', '', '', '', ''])
+        summary_dataset.append(['Manual Entries',
+                              manual_income,
+                              manual_expense,
+                              manual_income - manual_expense,
+                              '', '', '', '', ''])
+        summary_dataset.append(['Total',
+                              grand_totals['Cash_Income'] + manual_income,
+                              grand_totals['Cash_Expense'] + manual_expense,
+                              (grand_totals['Cash_Income'] + manual_income) - (grand_totals['Cash_Expense'] + manual_expense),
+                              '', '', '', '', ''])
+        summary_dataset.append(['', '', '', '', '', '', '', '', '']) # Empty row
+
+        # Calculate total net income from all sources
+        online_net_total = (
+            grand_totals['Gojek_Net'] +
+            grand_totals['Grab_Net'] +
+            grand_totals['Shopee_Net']
         )
+        cash_manual_net_total = (
+            (grand_totals['Cash_Income'] + manual_income) -
+            (grand_totals['Cash_Expense'] + manual_expense)
+        )
+        total_net_income = online_net_total + cash_manual_net_total
+
+        # Add grand total net income summary
+        summary_dataset.append(['Overall Net Income Summary', '', '', '', '', '', '', '', ''])
+        summary_dataset.append(['Source', 'Amount', '', '', '', '', '', '', ''])
+        summary_dataset.append(['Online Platforms Net', online_net_total, '', '', '', '', '', '', ''])
+        summary_dataset.append(['Cash & Manual Net', cash_manual_net_total, '', '', '', '', '', '', ''])
+        summary_dataset.append(['GRAND TOTAL NET INCOME', total_net_income, '', '', '', '', '', '', ''])
+        summary_dataset.append(['', '', '', '', '', '', '', '', '']) # Empty row
+
+        # Add manual entries detail if exists
+        if manual_entries:
+            summary_dataset.append(['Manual Entries Detail', '', '', '', '', '', '', '', ''])
+            summary_dataset.append(['Date Range', 'Description', 'Amount', 'Type', '', '', '', '', ''])
+            for entry in manual_entries:
+                summary_dataset.append([
+                    f"{entry.start_date} - {entry.end_date}",
+                    entry.description,
+                    entry.amount,
+                    entry.entry_type,
+                    '', '', '', '', ''
+                ])
+
+        # Export both sheets to Excel
+        try:
+            book = tablib.Databook([dataset, summary_dataset])
+            output = book.export('xlsx')
+        except Exception as excel_error:
+            return jsonify({
+                "error": "Excel generation failed",
+                "details": str(excel_error),
+                "step": "excel_export"
+            }), 400
+
+        # File handling with better error tracking
+        try:
+            local_path = f"c:\\Users\\agyas\\Documents\\Repos\\crm-mp78-backend\\exports\\reports_{outlet_code}_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}.xlsx"
+            os.makedirs(os.path.dirname(local_path), exist_ok=True)
+            
+            with open(local_path, 'wb') as f:
+                f.write(output)
+        except Exception as file_error:
+            return jsonify({
+                "error": "File saving failed",
+                "details": str(file_error),
+                "path": local_path,
+                "step": "file_save"
+            }), 400
+
+        # File download with error handling
+        try:
+            return send_file(
+                local_path,
+                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                as_attachment=True,
+                download_name=os.path.basename(local_path)
+            )
+        except Exception as download_error:
+            return jsonify({
+                "error": "File download failed",
+                "details": str(download_error),
+                "path": local_path,
+                "step": "file_download"
+            }), 400
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 400
+        return jsonify({
+            "error": "General process failed",
+            "details": str(e),
+            "type": type(e).__name__,
+            "step": "general"
+        }), 400

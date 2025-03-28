@@ -61,7 +61,7 @@ def update_store_ids_batch(store_id_map, platform):
                     if existing_outlet:
                         continue
                     
-                    outlet = Outlet.query.filter_by(outlet_name_shopee=store_name).first()
+                    outlet = Outlet.query.filter_by(outlet_name_grab=store_name).first()
                     if outlet and not outlet.store_id_shopee:
                         outlet.store_id_shopee = store_id
                         updated += 1
@@ -358,7 +358,7 @@ def upload_report_shopee():
                 if store_id:
                     outlet = Outlet.query.filter_by(store_id_shopee=store_id).first()
                 if not outlet and store_name:
-                    outlet = Outlet.query.filter_by(outlet_name_shopee=store_name).first()
+                    outlet = Outlet.query.filter_by(outlet_name_grab=store_name).first()
                 if not outlet:
                     continue  # Skip if outlet not found by either ID or name
 
