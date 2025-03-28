@@ -269,8 +269,8 @@ def upload_report_grab():
                     report = GrabFoodReport(
                         brand_name=outlet.brand,
                         outlet_code=outlet.outlet_code,
-                        nama_merchant=row.get('Nama merchant', ''),
-                        id_merchant=row.get('ID merchant', ''),
+                        # nama_merchant=row.get('Nama merchant', ''),
+                        # id_merchant=row.get('ID merchant', ''),
                         nama_toko=store_name,
                         id_toko=store_id,
                         tanggal_dibuat=tanggal_dibuat,
