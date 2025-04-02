@@ -37,7 +37,14 @@ def create_outlet():
         closing_date=data.get("closing_date"),
         operating_hours=data.get("operating_hours"),
         coordinator_avenger=data.get("coordinator_avenger"),
-        brand=data.get("brand")
+        brand=data.get("brand"),
+        # Add admin credentials
+        gojek_admin_email=data.get("gojek_admin_email"),
+        gojek_admin_password=data.get("gojek_admin_password"),
+        grab_admin_email=data.get("grab_admin_email"),
+        grab_admin_password=data.get("grab_admin_password"),
+        shopee_admin_email=data.get("shopee_admin_email"),
+        shopee_admin_password=data.get("shopee_admin_password")
     )
 
     db.session.add(outlet)
@@ -146,6 +153,13 @@ def update_outlet(outlet_id):
     outlet.store_id_gojek = data.get("store_id_gojek", outlet.store_id_gojek)
     outlet.store_id_grab = data.get("store_id_grab", outlet.store_id_grab)
     outlet.store_id_shopee = data.get("store_id_shopee", outlet.store_id_shopee)
+    # Add admin credentials
+    outlet.gojek_admin_email = data.get("gojek_admin_email", outlet.gojek_admin_email)
+    outlet.gojek_admin_password = data.get("gojek_admin_password", outlet.gojek_admin_password)
+    outlet.grab_admin_email = data.get("grab_admin_email", outlet.grab_admin_email)
+    outlet.grab_admin_password = data.get("grab_admin_password", outlet.grab_admin_password)
+    outlet.shopee_admin_email = data.get("shopee_admin_email", outlet.shopee_admin_email)
+    outlet.shopee_admin_password = data.get("shopee_admin_password", outlet.shopee_admin_password)
     
     db.session.commit()
     return jsonify(outlet.to_dict())

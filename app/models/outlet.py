@@ -35,6 +35,14 @@ class Outlet(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    # Admin Credentials
+    gojek_admin_email = db.Column(db.String(255), nullable=True)
+    gojek_admin_password = db.Column(db.String(255), nullable=True)
+    grab_admin_email = db.Column(db.String(255), nullable=True)
+    grab_admin_password = db.Column(db.String(255), nullable=True)
+    shopee_admin_email = db.Column(db.String(255), nullable=True)
+    shopee_admin_password = db.Column(db.String(255), nullable=True)
+
     def to_dict(self):
         return {
             "id": self.id,

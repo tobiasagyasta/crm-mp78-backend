@@ -1,10 +1,12 @@
 from app.extensions import db
+from datetime import datetime
 
 class GojekReport(db.Model):
     __tablename__ = 'gojek_reports'
 
     brand_name = db.Column(db.String, nullable=False)
     outlet_code = db.Column(db.String, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
     transaction_id = db.Column(db.String, nullable=False)
     transaction_date = db.Column(db.Date, nullable=False)
     stan = db.Column(db.String, nullable=True)

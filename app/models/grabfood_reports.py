@@ -1,4 +1,5 @@
 from app.extensions import db
+from datetime import datetime
 
 class GrabFoodReport(db.Model):
     __tablename__ = 'grabfood_reports'
@@ -8,6 +9,7 @@ class GrabFoodReport(db.Model):
     outlet_code = db.Column(db.String, nullable=False)
     # nama_merchant = db.Column(db.String, nullable=True)
     # id_merchant = db.Column(db.String, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
     nama_toko = db.Column(db.String, nullable=True)
     id_toko = db.Column(db.String, nullable=False)
     diperbarui_pada = db.Column(db.DateTime, nullable=True)
