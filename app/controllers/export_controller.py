@@ -406,14 +406,18 @@ def export_reports():
             ('GRAND TOTAL NET INCOME', total_net_income)
         ]
 
+        # Define yellow background for grand total
+        yellow_fill = PatternFill(start_color='FFFF00', end_color='FFFF00', fill_type='solid')  # Yellow background
+        
         for label, amount in summary_data:
             cell = summary_sheet.cell(row=current_row, column=1, value=label)
-            if label == 'GRAND TOTAL NET INCOME':
-                cell.font = header_font
             amount_cell = summary_sheet.cell(row=current_row, column=2, value=amount)
             amount_cell.number_format = '#,##0.00'
             if label == 'GRAND TOTAL NET INCOME':
+                cell.font = header_font
                 amount_cell.font = header_font
+                cell.fill = yellow_fill
+                amount_cell.fill = yellow_fill
             current_row += 1
 
         current_row += 2  # Add spacing
@@ -423,7 +427,7 @@ def export_reports():
         summary_sheet.cell(row=current_row, column=1, value='Commission Summary').font = header_font
         current_row += 1
         
-        commission_headers = ['Category', 'Base Amount', 'Rate', 'Commission']
+        commission_headers = ['Category','Rate', 'Commission']
         for col, header in enumerate(commission_headers, 1):
             cell = summary_sheet.cell(row=current_row, column=col)
             cell.value = header
@@ -436,16 +440,16 @@ def export_reports():
         partner_commission = grand_totals['Grab_Gross'] * 0.01
 
         commission_data = [
-            ('Management Commission (Grab)', grand_totals['Grab_Gross'], '1%', management_commission),
-            ('Partner Commission (Grab)', grand_totals['Grab_Gross'], '1%', partner_commission),
+            ('Management Commission (Grab)', '1%', management_commission),
+            ('Partner Commission (Grab)', '1%', partner_commission),
         ]
 
-        for category, base, rate, commission in commission_data:
-            row_data = [category, base, rate, commission]
+        for category,rate, commission in commission_data:
+            row_data = [category, rate, commission]
             for col, value in enumerate(row_data, 1):
                 cell = summary_sheet.cell(row=current_row, column=col)
                 cell.value = value
-                if col in [2, 4]:  # Format numbers for Base Amount and Commission columns
+                if col in [3]:  # Format numbers for Base Amount and Commission columns
                     cell.number_format = '#,##0.00'
             current_row += 1
 
