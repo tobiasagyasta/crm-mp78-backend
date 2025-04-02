@@ -18,6 +18,9 @@ export_bp = Blueprint('export', __name__, url_prefix="/export")
 @export_bp.route('', methods=['POST', 'OPTIONS'])
 def export_reports():
     try:
+
+          # Define yellow background for grand total
+        yellow_fill = PatternFill(start_color='FFFF00', end_color='FFFF00', fill_type='solid')  # Yellow background
         if request.method == 'OPTIONS':
             response = jsonify({'status': 'OK'})
             response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
@@ -188,8 +191,10 @@ def export_reports():
         date_fill = PatternFill(start_color='C9F0FF', end_color='C9F0FF', fill_type='solid')  # Light green
         gojek_fill = PatternFill(start_color='00AA13', end_color='00AA13', fill_type='solid')  # Light green
         grab_fill = PatternFill(start_color='98FB98', end_color='98FB98', fill_type='solid')   # Pale green
-        shopee_fill = PatternFill(start_color='FF6600', end_color='FF6600', fill_type='solid') # Light pink
+        shopee_fill = PatternFill(start_color='FF7A00', end_color='FF7A00', fill_type='solid') # Light pink
         cash_fill = PatternFill(start_color='ADD8E6', end_color='ADD8E6', fill_type='solid')   # Light blue
+        commision_fill = PatternFill(start_color='C6CCB2', end_color='C6CCB2', fill_type='solid') # Light pink
+
 
         # Headers with their corresponding colors
         header_colors = {
@@ -255,6 +260,8 @@ def export_reports():
             cell = daily_sheet.cell(row=grand_total_row, column=col)
             cell.value = value
             cell.font = header_font
+            cell.fill = yellow_fill
+            cell.alignment = Alignment(horizontal='center', vertical='center') 
             cell.number_format = '#,##0.00'
 
         # Summary Sheet Formatting
@@ -267,7 +274,9 @@ def export_reports():
 
         # Online Platform Summary
         current_row = 5
-        summary_sheet.cell(row=current_row, column=1, value='Online Platform Summary').font = header_font
+        summary_title_cell = summary_sheet.cell(row=current_row, column=1, value='Online Platform Summary')
+        summary_title_cell.font = header_font
+        summary_title_cell.fill = grab_fill
         current_row += 1
         
         platform_headers = ['Platform', 'Gross', 'Net', 'Difference']
@@ -275,7 +284,7 @@ def export_reports():
             cell = summary_sheet.cell(row=current_row, column=col)
             cell.value = header
             cell.font = header_font
-            cell.fill = header_fill
+            cell.fill = grab_fill
         current_row += 1
 
         # Add platform data
@@ -295,6 +304,7 @@ def export_reports():
             for col, value in enumerate(row_data, 1):
                 cell = summary_sheet.cell(row=current_row, column=col)
                 cell.value = value
+                cell.fill = grab_fill
                 if col > 1:
                     cell.number_format = '#,##0.00'
             current_row += 1
@@ -302,7 +312,9 @@ def export_reports():
         current_row += 1  # Add spacing
 
         # Income/Expense Summary
-        summary_sheet.cell(row=current_row, column=1, value='Income/Expense Summary').font = header_font
+        summary_title_cell = summary_sheet.cell(row=current_row, column=1, value='Income/Expense Summary')
+        summary_title_cell.font = header_font
+        summary_title_cell.fill = cash_fill
         current_row += 1
         
         expense_headers = ['Category', 'Income', 'Expense', 'Net Total', 'Description', 'Date Range']
@@ -310,7 +322,7 @@ def export_reports():
             cell = summary_sheet.cell(row=current_row, column=col)
             cell.value = header
             cell.font = header_font
-            cell.fill = header_fill
+            cell.fill = cash_fill
         current_row += 1
 
         # Query manual entries first
@@ -330,6 +342,7 @@ def export_reports():
         for col, value in enumerate(cash_row, 1):
             cell = summary_sheet.cell(row=current_row, column=col)
             cell.value = value
+            cell.fill = cash_fill
             if 1 < col <= 4:  # Format numbers for Income, Expense, and Net Total columns
                 cell.number_format = '#,##0.00'
         current_row += 1
@@ -352,6 +365,7 @@ def export_reports():
             for col, value in enumerate(row_data, 1):
                 cell = summary_sheet.cell(row=current_row, column=col)
                 cell.value = value
+                cell.fill = cash_fill
                 if 1 < col <= 4:  # Format numbers for Income, Expense, and Net Total columns
                     cell.number_format = '#,##0.00'
             current_row += 1
@@ -370,6 +384,7 @@ def export_reports():
             cell = summary_sheet.cell(row=current_row, column=col)
             cell.value = value
             cell.font = header_font
+            cell.fill = cash_fill
             if 1 < col <= 4:  # Format numbers for Income, Expense, and Net Total columns
                 cell.number_format = '#,##0.00'
         current_row += 1
@@ -394,10 +409,13 @@ def export_reports():
 
         # Overall Net Income Summary
         summary_sheet.cell(row=current_row, column=1, value='Overall Net Income Summary').font = header_font
+        summary_sheet.cell(row=current_row, column=1, value='Overall Net Income Summary').fill = shopee_fill
         current_row += 1
         
         summary_sheet.cell(row=current_row, column=1, value='Source').font = header_font
         summary_sheet.cell(row=current_row, column=2, value='Amount').font = header_font
+        summary_sheet.cell(row=current_row, column=1, value='Source').fill = shopee_fill
+        summary_sheet.cell(row=current_row, column=2, value='Amount').fill = shopee_fill
         current_row += 1
 
         summary_data = [
@@ -406,13 +424,15 @@ def export_reports():
             ('GRAND TOTAL NET INCOME', total_net_income)
         ]
 
-        # Define yellow background for grand total
-        yellow_fill = PatternFill(start_color='FFFF00', end_color='FFFF00', fill_type='solid')  # Yellow background
+      
         
+
         for label, amount in summary_data:
             cell = summary_sheet.cell(row=current_row, column=1, value=label)
             amount_cell = summary_sheet.cell(row=current_row, column=2, value=amount)
+            cell.fill = shopee_fill
             amount_cell.number_format = '#,##0.00'
+            amount_cell.fill = shopee_fill
             if label == 'GRAND TOTAL NET INCOME':
                 cell.font = header_font
                 amount_cell.font = header_font
@@ -424,7 +444,9 @@ def export_reports():
 
 
         # Commission Summary
-        summary_sheet.cell(row=current_row, column=1, value='Commission Summary').font = header_font
+        summary_title_cell = summary_sheet.cell(row=current_row, column=1, value='Commission Summary')
+        summary_title_cell.font = header_font
+        summary_title_cell.fill = commision_fill
         current_row += 1
         
         commission_headers = ['Category','Rate', 'Commission']
@@ -432,7 +454,7 @@ def export_reports():
             cell = summary_sheet.cell(row=current_row, column=col)
             cell.value = header
             cell.font = header_font
-            cell.fill = header_fill
+            cell.fill = commision_fill
         current_row += 1
 
         # Calculate commissions (1% each)
@@ -444,11 +466,12 @@ def export_reports():
             ('Partner Commission (Grab)', '1%', partner_commission),
         ]
 
-        for category,rate, commission in commission_data:
+        for category, rate, commission in commission_data:
             row_data = [category, rate, commission]
             for col, value in enumerate(row_data, 1):
                 cell = summary_sheet.cell(row=current_row, column=col)
                 cell.value = value
+                cell.fill = commision_fill
                 if col in [3]:  # Format numbers for Base Amount and Commission columns
                     cell.number_format = '#,##0.00'
             current_row += 1

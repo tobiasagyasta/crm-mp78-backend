@@ -57,6 +57,7 @@ def get_outlets():
     # Get query parameters for filtering
     search_term = request.args.get('search', '')
     brand = request.args.get('brand', '')
+    missing_store_ids = request.args.get('missing_store_ids', '').lower() == 'true'
     
     # Get pagination parameters
     page = request.args.get('page', None, type=int)
@@ -75,6 +76,17 @@ def get_outlets():
     
     if brand:
         query = query.filter(Outlet.brand == brand)
+    
+    # Add filter for missing store IDs
+    if missing_store_ids:
+        query = query.filter(
+            (Outlet.store_id_gojek.is_(None)) |
+            (Outlet.store_id_gojek == '') |
+            (Outlet.store_id_grab.is_(None)) |
+            (Outlet.store_id_grab == '') |
+            (Outlet.store_id_shopee.is_(None)) |
+            (Outlet.store_id_shopee == '')
+        )
     
     # Determine if pagination is requested
     if page or per_page:
