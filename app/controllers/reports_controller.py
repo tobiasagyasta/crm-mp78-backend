@@ -5,6 +5,7 @@ from app.models.shopee_reports import ShopeeReport
 from app.models.grabfood_reports import GrabFoodReport
 from app.models.cash_reports import CashReport
 from app.models.manual_entry import ManualEntry
+from app.models.shopeepay_reports import ShopeepayReport
 from app.extensions import db
 # import pdfkit
 import csv
@@ -192,6 +193,135 @@ def upload_report_gojek():
 
         # Update store IDs in batches
         updated_count = update_store_ids_batch(store_id_map, 'gojek')
+        
+        return jsonify({
+            'msg': 'Reports uploaded successfully',
+            'total_records': total_reports,
+            'skipped_records': skipped_reports,
+            'store_ids_updated': updated_count
+        }), 201
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@reports_bp.route('/upload/shopeepay', methods=['POST'])
+def upload_report_shopeepay():
+    files = request.files.getlist('file')
+    if not files:
+        files = [request.files.get('file')]
+    
+    if not files or not files[0]:
+        return jsonify({'msg': 'No files uploaded'}), 400
+
+    try:
+        total_reports = 0
+        skipped_reports = 0
+        store_id_map = {}  # To collect store IDs
+        
+        for file in files:
+            file_contents = file.read().decode('utf-8')
+            csv_file = StringIO(file_contents)
+            reader = csv.DictReader(csv_file)
+            
+            reports = []
+            for row in reader:
+                store_name = row.get('Merchant/Store Name', '').strip()
+                entity_id = row.get('Entity ID')
+                if store_name and entity_id:
+                    store_id_map[store_name] = entity_id
+
+                # Get outlet code from entity ID first, then fallback to name
+                outlet = None
+                if entity_id:
+                    outlet = Outlet.query.filter_by(store_id_shopee=entity_id).first()
+                if not outlet and store_name:
+                    outlet = Outlet.query.filter_by(outlet_name_grab=store_name).first()
+                if not outlet:
+                    continue  # Skip if outlet not found by either ID or name
+
+                # Check if transaction already exists
+                transaction_id = row.get('Transaction ID', '')
+                if transaction_id:
+                    existing_report = ShopeepayReport.query.filter_by(transaction_id=transaction_id).first()
+                    if existing_report:
+                        skipped_reports += 1
+                        continue
+
+                try:
+                    # Parse dates with the correct format
+                    create_time = datetime.strptime(row.get('Create Time', ''), '%Y-%m-%d %H:%M:%S')
+                    update_time = None
+                    if row.get('Update Time'):
+                        update_time = datetime.strptime(row.get('Update Time', ''), '%Y-%m-%d %H:%M:%S')
+
+                    def safe_float(value):
+                        if not value:
+                            return 0
+                        try:
+                            return float(str(value).replace(',', ''))
+                        except (ValueError, TypeError):
+                            return 0
+
+                    report = ShopeepayReport(
+                        brand_name=outlet.brand,
+                        outlet_code=outlet.outlet_code,
+                        merchant_host=row.get('Merchant Host', ''),
+                        partner_merchant_id=row.get('Partner Merchant ID', ''),
+                        merchant_store_name=store_name,
+                        transaction_type=row.get('Transaction Type', ''),
+                        merchant_scope=row.get('Merchant Scope', ''),
+                        transaction_id=transaction_id,
+                        reference_id=row.get('Reference ID', ''),
+                        parent_id=row.get('Parent ID', ''),
+                        external_reference_id=row.get('External Reference ID', ''),
+                        issuer_identifier=row.get('Issuer Identifier', ''),
+                        transaction_amount=safe_float(row.get('Transaction Amount')),
+                        fee_mdr=safe_float(row.get('Fee (MDR)')),
+                        settlement_amount=safe_float(row.get('Settlement Amount')),
+                        terminal_id=row.get('Terminal ID', ''),
+                        create_time=create_time,
+                        update_time=update_time,
+                        adjustment_reason=row.get('Adjustment Reason', ''),
+                        entity_id=entity_id,
+                        fee_cofunding=safe_float(row.get('Fee (Cofunding)')),
+                        reward_amount=safe_float(row.get('Reward Amount')),
+                        reward_type=row.get('Reward Type', ''),
+                        promo_type=row.get('Promo Type', ''),
+                        payment_method=row.get('Payment Method', ''),
+                        currency_code=row.get('Currency Code', ''),
+                        voucher_promotion_event_name=row.get('Voucher Promotion Event Name', ''),
+                        payment_option=row.get('Payment Option', ''),
+                        fee_withdrawal=safe_float(row.get('Fee (Withdrawal)')),
+                        fee_handling=safe_float(row.get('Fee (Handling)'))
+                    )
+                    reports.append(report)
+                    total_reports += 1
+                except (ValueError, TypeError) as e:
+                    print(f"Error processing row: {e}")
+                    continue
+
+            # Bulk save reports for this file
+            if reports:
+                try:
+                    db.session.bulk_save_objects(reports)
+                    db.session.commit()
+                except IntegrityError:
+                    db.session.rollback()
+                    # Handle reports one by one if bulk insert fails
+                    for report in reports:
+                        try:
+                            db.session.add(report)
+                            db.session.commit()
+                        except IntegrityError:
+                            db.session.rollback()
+                            skipped_reports += 1
+                        except Exception as e:
+                            db.session.rollback()
+                            print(f"Error saving report: {str(e)}")
+
+        # Update store IDs in batches
+        updated_count = update_store_ids_batch(store_id_map, 'shopeepay')
         
         return jsonify({
             'msg': 'Reports uploaded successfully',
@@ -632,6 +762,7 @@ def get_reports_totals():
         gojek_query = GojekReport.query
         grab_query = GrabFoodReport.query
         shopee_query = ShopeeReport.query
+        shopeepay_query = ShopeepayReport.query
         cash_query = CashReport.query
         manual_entries_query = ManualEntry.query
 
@@ -640,6 +771,7 @@ def get_reports_totals():
             gojek_query = gojek_query.filter(GojekReport.outlet_code == outlet_code)
             grab_query = grab_query.filter(GrabFoodReport.outlet_code == outlet_code)
             shopee_query = shopee_query.filter(ShopeeReport.outlet_code == outlet_code)
+            shopeepay_query = shopeepay_query.filter(ShopeepayReport.outlet_code == outlet_code)
             cash_query = cash_query.filter(CashReport.outlet_code == outlet_code)
             manual_entries_query = manual_entries_query.filter(ManualEntry.outlet_code == outlet_code)
 
@@ -663,6 +795,10 @@ def get_reports_totals():
             shopee_query = shopee_query.filter(
                 ShopeeReport.order_create_time >= start_date,
                 ShopeeReport.order_create_time <= end_date_inclusive
+            )
+            shopeepay_query = shopeepay_query.filter(
+                ShopeepayReport.create_time >= start_date,
+                ShopeepayReport.create_time <= end_date_inclusive
             )
             
             # Use SQLAlchemy filtering for cash reports instead of post-filtering
@@ -688,6 +824,11 @@ def get_reports_totals():
         grab_total = sum(float(report.total or 0) for report in grab_query.all())
         shopee_reports = shopee_query.all()
         shopee_total = sum(float(report.net_income or 0) for report in shopee_reports if report.order_status != "Cancelled")
+        shopeepay_total = sum(
+            float(report.settlement_amount or 0) 
+            for report in shopeepay_query.all() 
+            if report.transaction_type != "Withdrawal"
+        )
         
         # Calculate cash totals using the filtered queries
         cash_income = sum(float(report.total or 0) for report in cash_income_query.all())
@@ -698,7 +839,7 @@ def get_reports_totals():
         manual_entries_total = sum(float(entry.amount or 0) for entry in manual_entries_query.all())
 
         # Calculate running total
-        running_total = gojek_total + grab_total + shopee_total + cash_net - manual_entries_total
+        running_total = gojek_total + grab_total + shopee_total + cash_net + shopeepay_total - manual_entries_total
 
         # Prepare response
         response = {
@@ -711,6 +852,7 @@ def get_reports_totals():
                 'gojek': round(gojek_total, 2),
                 'grab': round(grab_total, 2),
                 'shopee': round(shopee_total, 2),
+                'shopeepay': round(shopeepay_total, 2),
                 'cash': {
                     'income': round(cash_income, 2),
                     'expense': round(cash_expense, 2),

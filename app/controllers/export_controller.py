@@ -8,6 +8,7 @@ from app.models.shopee_reports import ShopeeReport
 from app.models.grabfood_reports import GrabFoodReport
 from app.models.cash_reports import CashReport
 from app.models.manual_entry import ManualEntry
+from app.models.shopeepay_reports import ShopeepayReport
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill
 from openpyxl.utils import get_column_letter
@@ -48,6 +49,7 @@ def export_reports():
             return {
                 'Gojek_Gross': 0, 'Gojek_Net': 0,
                 'Grab_Gross': 0, 'Grab_Net': 0,
+                'ShopeePay_Gross': 0, 'ShopeePay_Net': 0,
                 'Shopee_Gross': 0, 'Shopee_Net': 0,
                 'Cash_Income': 0, 'Cash_Expense': 0
             }
@@ -58,7 +60,11 @@ def export_reports():
         dataset.append(['Period:', f'{start_date.strftime("%Y-%m-%d")} to {end_date.strftime("%Y-%m-%d")}', '', '', '', '', '', '', ''])
         dataset.append(['Outlet:', outlet.outlet_name_gojek, '', '', '', '', '', '', ''])
         dataset.append([]) # Empty row for spacing
-        dataset.append(['Date', 'Gojek Gross', 'Gojek Net', 'Grab Gross', 'Grab Net', 'Shopee Gross', 'Shopee Net', 'Cash Income', 'Cash Expense'])
+        # Update the initial headers to include ShopeePay
+        dataset.append(['Date', 'Gojek Gross', 'Gojek Net', 'Grab Gross', 'Grab Net', 
+                       'Shopee Gross', 'Shopee Net', 'ShopeePay Gross', 'ShopeePay Net',
+                       'Cash Income', 'Cash Expense'])
+
         # Query reports with inclusive end date
         end_date_inclusive = datetime(end_date.year, end_date.month, end_date.day, 23, 59, 59)
         
@@ -78,6 +84,12 @@ def export_reports():
             ShopeeReport.outlet_code == outlet_code,
             ShopeeReport.order_create_time >= start_date,
             ShopeeReport.order_create_time <= end_date_inclusive
+        ).all()
+
+        shopeepay_reports = ShopeepayReport.query.filter(
+            ShopeepayReport.outlet_code == outlet_code,
+            ShopeepayReport.create_time >= start_date,
+            ShopeepayReport.create_time <= end_date_inclusive
         ).all()
 
         # Query cash reports with separate income and expense queries
@@ -117,7 +129,13 @@ def export_reports():
                     daily_totals[date] = init_daily_total()
                 daily_totals[date]['Shopee_Net'] += float(report.net_income or 0)
                 daily_totals[date]['Shopee_Gross'] += float(report.order_amount or 0)
-
+        for report in shopeepay_reports:
+            if report.transaction_type != "Withdrawal":
+                date = report.create_time.date()
+                if date not in daily_totals:
+                    daily_totals[date] = init_daily_total()
+                daily_totals[date]['ShopeePay_Net'] += float(report.settlement_amount or 0)
+                daily_totals[date]['ShopeePay_Gross'] += float(report.transaction_amount or 0)
         # Handle cash reports separately for income and expense
         for report in cash_income_reports:
             date = report.tanggal.date()
@@ -132,6 +150,7 @@ def export_reports():
             daily_totals[date]['Cash_Expense'] += float(report.total or 0)
 
         # Add aggregated data to dataset, sorted by date
+        # Update the data output to include ShopeePay
         for date in sorted(daily_totals.keys()):
             totals = daily_totals[date]
             dataset.append([
@@ -142,11 +161,13 @@ def export_reports():
                 totals['Grab_Net'],
                 totals['Shopee_Gross'],
                 totals['Shopee_Net'],
+                totals['ShopeePay_Gross'],
+                totals['ShopeePay_Net'],
                 totals['Cash_Income'],
                 totals['Cash_Expense']
             ])
 
-        # Calculate and append grand totals
+        # Update grand totals to include ShopeePay
         grand_totals = {
             'Gojek_Gross': sum(day['Gojek_Gross'] for day in daily_totals.values()),
             'Gojek_Net': sum(day['Gojek_Net'] for day in daily_totals.values()),
@@ -154,10 +175,13 @@ def export_reports():
             'Grab_Net': sum(day['Grab_Net'] for day in daily_totals.values()),
             'Shopee_Gross': sum(day['Shopee_Gross'] for day in daily_totals.values()),
             'Shopee_Net': sum(day['Shopee_Net'] for day in daily_totals.values()),
+            'ShopeePay_Gross': sum(day['ShopeePay_Gross'] for day in daily_totals.values()),
+            'ShopeePay_Net': sum(day['ShopeePay_Net'] for day in daily_totals.values()),
             'Cash_Income': sum(day['Cash_Income'] for day in daily_totals.values()),
             'Cash_Expense': sum(day['Cash_Expense'] for day in daily_totals.values())
         }
 
+        # Update grand total row to include ShopeePay
         dataset.append(['Grand Total', 
                        grand_totals['Gojek_Gross'],
                        grand_totals['Gojek_Net'],
@@ -165,6 +189,8 @@ def export_reports():
                        grand_totals['Grab_Net'],
                        grand_totals['Shopee_Gross'],
                        grand_totals['Shopee_Net'],
+                       grand_totals['ShopeePay_Gross'],
+                       grand_totals['ShopeePay_Net'],
                        grand_totals['Cash_Income'],
                        grand_totals['Cash_Expense']])
 
@@ -194,7 +220,7 @@ def export_reports():
         shopee_fill = PatternFill(start_color='FF7A00', end_color='FF7A00', fill_type='solid') # Light pink
         cash_fill = PatternFill(start_color='ADD8E6', end_color='ADD8E6', fill_type='solid')   # Light blue
         commision_fill = PatternFill(start_color='C6CCB2', end_color='C6CCB2', fill_type='solid') # Light pink
-
+        shopeepay_fill = PatternFill(start_color='E31F26', end_color='E31F26', fill_type='solid')  # Shopee red
 
         # Headers with their corresponding colors
         header_colors = {
@@ -202,18 +228,50 @@ def export_reports():
             'Gojek Gross': gojek_fill, 'Gojek Net': gojek_fill,
             'Grab Gross': grab_fill, 'Grab Net': grab_fill,
             'Shopee Gross': shopee_fill, 'Shopee Net': shopee_fill,
+            'ShopeePay Gross': shopeepay_fill, 'ShopeePay Net': shopeepay_fill,
             'Cash Income': cash_fill, 'Cash Expense': cash_fill
         }
 
         headers = ['Date', 'Gojek Gross', 'Gojek Net', 'Grab Gross', 'Grab Net', 
-                  'Shopee Gross', 'Shopee Net', 'Cash Income', 'Cash Expense']
+                  'Shopee Gross', 'Shopee Net', 'ShopeePay Gross', 'ShopeePay Net',
+                  'Cash Income', 'Cash Expense']
         
         dataset.append(headers)
 
         # Later in the code, update the Excel sheet formatting (around line 190):
         # Headers
         headers = ['Date', 'Gojek Gross', 'Gojek Net', 'Grab Gross', 'Grab Net', 
-                  'Shopee Gross', 'Shopee Net', 'Cash Income', 'Cash Expense']
+                  'Shopee Gross', 'Shopee Net', 'ShopeePay Gross', 'ShopeePay Net',
+                  'Cash Income', 'Cash Expense']
+
+        # Update daily data row
+        row_data = [
+            date,
+            totals['Gojek_Gross'],
+            totals['Gojek_Net'],
+            totals['Grab_Gross'],
+            totals['Grab_Net'],
+            totals['Shopee_Gross'],
+            totals['Shopee_Net'],
+            totals['ShopeePay_Gross'],
+            totals['ShopeePay_Net'],
+            totals['Cash_Income'],
+            totals['Cash_Expense']
+        ]
+
+        # Update grand total data
+        grand_total_data = [
+            grand_totals['Gojek_Gross'],
+            grand_totals['Gojek_Net'],
+            grand_totals['Grab_Gross'],
+            grand_totals['Grab_Net'],
+            grand_totals['Shopee_Gross'],
+            grand_totals['Shopee_Net'],
+            grand_totals['ShopeePay_Gross'],
+            grand_totals['ShopeePay_Net'],
+            grand_totals['Cash_Income'],
+            grand_totals['Cash_Expense']
+        ]
         for col, header in enumerate(headers, 1):
             cell = daily_sheet.cell(row=5, column=col)
             cell.value = header
@@ -233,6 +291,8 @@ def export_reports():
                 totals['Grab_Net'],
                 totals['Shopee_Gross'],
                 totals['Shopee_Net'],
+                totals['ShopeePay_Gross'],    # Added ShopeePay Gross
+                totals['ShopeePay_Net'],      # Added ShopeePay Net
                 totals['Cash_Income'],
                 totals['Cash_Expense']
             ]
@@ -291,7 +351,8 @@ def export_reports():
         platforms = [
             ('Gojek', 'Gojek_Gross', 'Gojek_Net'),
             ('Grab', 'Grab_Gross', 'Grab_Net'),
-            ('Shopee', 'Shopee_Gross', 'Shopee_Net')
+            ('Shopee', 'Shopee_Gross', 'Shopee_Net'),
+            ('ShopeePay', 'ShopeePay_Gross', 'ShopeePay_Net')
         ]
         
         for platform, gross_key, net_key in platforms:
@@ -395,7 +456,8 @@ def export_reports():
         online_net_total = (
             grand_totals['Gojek_Net'] +
             grand_totals['Grab_Net'] +
-            grand_totals['Shopee_Net']
+            grand_totals['Shopee_Net'] +
+            grand_totals['ShopeePay_Net']
         )
         
         cash_manual_net_total = (
