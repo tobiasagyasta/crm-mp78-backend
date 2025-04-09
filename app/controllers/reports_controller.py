@@ -80,6 +80,102 @@ def update_store_ids_batch(store_id_map, platform):
 
     return updated
 
+@reports_bp.route('/upload/shopee_adjustment', methods=['POST'])
+def upload_report_shopee_adjustment():
+    files = request.files.getlist('file')
+    if not files:
+        files = [request.files.get('file')]
+    
+    if not files or not files[0]:
+        return jsonify({'msg': 'No files uploaded'}), 400
+
+    try:
+        total_reports = 0
+        skipped_reports = 0
+        store_id_map = {}
+        
+        for file in files:
+            file_contents = file.read().decode('utf-8')
+            csv_file = StringIO(file_contents)
+            reader = csv.DictReader(csv_file)
+            
+            reports = []
+            for row in reader:
+                store_name = row.get('Store Name', '').strip()
+                store_id = row.get('Store ID')
+                if store_name and store_id:
+                    store_id_map[store_name] = store_id
+
+                outlet = None
+                if store_id:
+                    outlet = Outlet.query.filter_by(store_id_shopee=store_id).first()
+                if not outlet and store_name:
+                    outlet = Outlet.query.filter_by(outlet_name_grab=store_name).first()
+                if not outlet:
+                    continue
+
+                # Check if adjustment already exists
+                refund_id = row.get('Wallet Adjustment ID', '')
+                if refund_id:
+                    existing_report = ShopeeReport.query.filter_by(order_id=refund_id).first()
+                    if existing_report:
+                        skipped_reports += 1
+                        continue
+
+                try:
+                    # Parse the adjustment time
+                    adjustment_time = datetime.strptime(row.get('Wallet Adjustment Time', ''), '%Y-%m-%d %H:%M:%S')
+
+                    report = ShopeeReport(
+                        brand_name=outlet.brand,
+                        outlet_code=outlet.outlet_code,
+                        transaction_type='Adjustment',  # Mark as adjustment
+                        order_id=refund_id,  # Use refund ID as order ID
+                        store_id=store_id,
+                        store_name=store_name,
+                        order_create_time=adjustment_time,
+                        order_amount=float(row.get('Wallet Adjustment Amount', 0) or 0),
+                        total=float(row.get('Wallet Adjustment Amount', 0) or 0),
+                        net_income=float(row.get('Wallet Adjustment Amount', 0) or 0),
+                        order_status='Completed',
+                        order_type=row.get('Wallet Adjustment Reason', 'Adjustment')
+                    )
+                    reports.append(report)
+                    total_reports += 1
+                except (ValueError, TypeError) as e:
+                    print(f"Error processing row: {e}")
+                    continue
+
+            if reports:
+                try:
+                    db.session.bulk_save_objects(reports)
+                    db.session.commit()
+                except IntegrityError:
+                    db.session.rollback()
+                    for report in reports:
+                        try:
+                            db.session.add(report)
+                            db.session.commit()
+                        except IntegrityError:
+                            db.session.rollback()
+                            skipped_reports += 1
+                        except Exception as e:
+                            db.session.rollback()
+                            print(f"Error saving report: {str(e)}")
+
+        updated_count = update_store_ids_batch(store_id_map, 'shopee')
+        
+        return jsonify({
+            'msg': 'Adjustment reports uploaded successfully',
+            'total_records': total_reports,
+            'skipped_records': skipped_reports,
+            'store_ids_updated': updated_count
+        }), 201
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
 @reports_bp.route('/upload/gojek', methods=['POST'])
 def upload_report_gojek():
     files = request.files.getlist('file')

@@ -1,7 +1,7 @@
 from flask import Flask, jsonify
 from app.config.config import Config
 from app.config.env import init_env
-from app.extensions import db, jwt
+from app.extensions import db, jwt, s3
 from app.controllers.auth_controller import auth_bp
 from app.controllers.protected_controller import protected_bp
 from app.controllers.partner_controller import partner_bp
@@ -23,6 +23,7 @@ def create_app():
     # Initialize extensions AFTER app creation
     db.init_app(app)
     jwt.init_app(app)
+    s3.init_app(app)
 
     # Configure CORS globally with all necessary settings
     CORS(app, resources={
@@ -53,5 +54,51 @@ def create_app():
     @app.route('/')
     def welcome():
         return jsonify({'message': 'Welcome to the MP78 API'})
+    
+    @app.route('/test-s3')
+    def test_s3_connection():
+        try:
+            # List objects in bucket
+            response = s3.client.list_objects_v2(Bucket=s3.bucket, MaxKeys=1)
+            
+            return jsonify({
+                'status': 'success',
+                'message': 'Successfully connected to S3',
+                'bucket': s3.bucket,
+                'sample_contents': response.get('Contents', [])
+            }), 200
+            
+        except Exception as e:
+            return jsonify({
+                'status': 'error',
+                'message': f'Failed to connect to S3: {str(e)}'
+            }), 500
+    
+    @app.route('/test-s3-upload')
+    def test_s3_upload():
+        try:
+            # Create a simple CSV content
+            csv_content = "id,name,value\n1,test,100\n2,sample,200"
+            
+            # Upload the CSV content
+            s3.client.put_object(
+                Bucket=s3.bucket,
+                Key='foo.csv',
+                Body=csv_content,
+                ContentType='text/csv'
+            )
+            
+            return jsonify({
+                'status': 'success',
+                'message': 'Successfully uploaded foo.csv to S3',
+                'file_name': 'foo.csv',
+                'bucket': s3.bucket
+            }), 200
+            
+        except Exception as e:
+            return jsonify({
+                'status': 'error',
+                'message': f'Failed to upload file: {str(e)}'
+            }), 500
 
     return app
