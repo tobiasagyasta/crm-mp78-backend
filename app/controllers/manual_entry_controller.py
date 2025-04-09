@@ -13,6 +13,7 @@ def create_entry():
     try:
         entry = ManualEntry(
             outlet_code=data['outlet_code'],
+            brand_name=data['brand_name'],
             entry_type=data['entry_type'],
             amount=data['amount'],
             description=data.get('description'),

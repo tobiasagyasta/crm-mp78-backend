@@ -6,6 +6,7 @@ from app.models.grabfood_reports import GrabFoodReport
 from app.models.cash_reports import CashReport
 from app.models.manual_entry import ManualEntry
 from app.models.shopeepay_reports import ShopeepayReport
+from app.models.bank_mutations import BankMutation
 from app.extensions import db
 # import pdfkit
 import csv
@@ -170,6 +171,109 @@ def upload_report_shopee_adjustment():
             'total_records': total_reports,
             'skipped_records': skipped_reports,
             'store_ids_updated': updated_count
+        }), 201
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@reports_bp.route('/upload/mutation', methods=['POST'])
+def upload_report_mutation():
+    files = request.files.getlist('file')
+    rekening_number = request.form.get('rekening_number')
+    if not files:
+        files = [request.files.get('file')]
+
+    if not files or not files[0]:
+        return jsonify({'msg': 'No files uploaded'}), 400
+    if not rekening_number:
+        return jsonify({'msg': 'Rekening number is required'}), 400
+    try:
+        total_mutations = 0
+        skipped_mutations = 0
+        
+        for file in files:
+            file_contents = file.read().decode('utf-8')
+            csv_file = StringIO(file_contents)
+                # Skip the first 4 rows
+            for _ in range(4):
+                next(csv_file)
+            
+            # Get headers from the 5th row
+            headers = [h.strip() for h in next(csv.reader(csv_file))]
+            csv_file.seek(0)
+            
+            # Skip first 5 rows again (4 + header)
+            for _ in range(5):
+                next(csv_file)
+            
+            reader = csv.DictReader(csv_file, fieldnames=headers)
+
+            mutations = []
+            for row in reader:
+                try:
+                 # Parse the date (format: D-MMM-YY)
+                    date_str = row.get('TANGGAL', '').strip()
+                    if not date_str:
+                        continue
+                        
+                    # Add leading zero for single-digit days
+                    parts = date_str.split('-')
+                    if len(parts) == 3:
+                        day = parts[0].zfill(2)  # Add leading zero if needed
+                        date_str = f"{day}-{parts[1]}-{parts[2]}"
+                    
+                    tanggal = datetime.strptime(date_str, '%d-%b-%y')
+                    
+                    # Clean numeric values
+                    def clean_numeric(value):
+                        if not value:
+                            return None
+                        return float(str(value).replace(',', '').strip() or 0)
+
+                    mutation = BankMutation(
+                        rekening_number=rekening_number,
+                        tanggal=tanggal,
+                        keterangan=row.get('KETERANGAN', '').strip(),
+                        masuk=clean_numeric(row.get('MASUK')),
+                        keluar=clean_numeric(row.get('KELUAR')),
+                        cr_cb=row.get('CR / CB', '').strip(),
+                        saldo=clean_numeric(row.get('SALDO')),
+                        transaksi=row.get('TRANSAKSI', '').strip(),
+                        outlet=row.get('OUTLET', '').strip(),
+                        closing=row.get('CLOSING', '').strip(),
+                        harga_per_outlet=row.get('HARGA / OUTLET').strip(),
+                        ket=row.get('KET', '').strip()
+                    )
+                    mutations.append(mutation)
+                    total_mutations += 1
+                    
+                except (ValueError, TypeError) as e:
+                    print(f"Error processing row: {e}")
+                    continue
+
+            if mutations:
+                try:
+                    db.session.bulk_save_objects(mutations)
+                    db.session.commit()
+                except IntegrityError:
+                    db.session.rollback()
+                    # Handle mutations one by one if bulk insert fails
+                    for mutation in mutations:
+                        try:
+                            db.session.add(mutation)
+                            db.session.commit()
+                        except IntegrityError:
+                            db.session.rollback()
+                            skipped_mutations += 1
+                        except Exception as e:
+                            db.session.rollback()
+                            print(f"Error saving mutation: {str(e)}")
+
+        return jsonify({
+            'msg': 'Bank mutations uploaded successfully',
+            'total_records': total_mutations,
+            'skipped_records': skipped_mutations
         }), 201
 
     except Exception as e:
@@ -852,6 +956,7 @@ def get_reports_totals():
     start_date_param = request.args.get('start_date')
     end_date_param = request.args.get('end_date')
     outlet_code = request.args.get('outlet_code')
+    brand_name = request.args.get('brand_name')
 
     try:
         # Initialize queries
@@ -861,9 +966,11 @@ def get_reports_totals():
         shopeepay_query = ShopeepayReport.query
         cash_query = CashReport.query
         manual_entries_query = ManualEntry.query
-
-        # Apply outlet_code filter if provided
-        if outlet_code:
+# Return error if outlet_code is not provided
+        if not outlet_code:
+            return jsonify({'error': 'outlet_code is required'}), 400
+         # Apply outlet_code filter if provided and not "ALL"
+        if outlet_code.upper() != "ALL":
             gojek_query = gojek_query.filter(GojekReport.outlet_code == outlet_code)
             grab_query = grab_query.filter(GrabFoodReport.outlet_code == outlet_code)
             shopee_query = shopee_query.filter(ShopeeReport.outlet_code == outlet_code)
@@ -871,6 +978,13 @@ def get_reports_totals():
             cash_query = cash_query.filter(CashReport.outlet_code == outlet_code)
             manual_entries_query = manual_entries_query.filter(ManualEntry.outlet_code == outlet_code)
 
+        if outlet_code.upper() == "ALL" and brand_name != "ALL":
+            gojek_query = gojek_query.filter(GojekReport.brand_name == brand_name)
+            grab_query = grab_query.filter(GrabFoodReport.brand_name == brand_name)
+            shopee_query = shopee_query.filter(ShopeeReport.brand_name == brand_name)
+            cash_query = cash_query.filter(CashReport.brand_name == brand_name)
+            shopeepay_query = shopeepay_query.filter(ShopeepayReport.brand_name == brand_name)
+            manual_entries_query = manual_entries_query.filter(ManualEntry.brand_name == brand_name)
 
         # Apply date filters if provided
         if start_date_param and end_date_param:
@@ -940,6 +1054,7 @@ def get_reports_totals():
         # Prepare response
         response = {
             'outlet_code': outlet_code,
+            'brand_name': brand_name,
             'period': {
                 'start_date': start_date_param,
                 'end_date': end_date_param

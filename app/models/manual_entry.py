@@ -8,6 +8,7 @@ class ManualEntry(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     outlet_code = db.Column(db.String(100), nullable = False)
+    brand_name = db.Column(db.String, nullable = False)
     entry_type = db.Column(db.Enum('income', 'expense', name='entry_types'), nullable=False)
     amount = db.Column(db.Numeric(10, 2), nullable=False)
     description = db.Column(db.String(255))
