@@ -8,6 +8,17 @@ from app.models.manual_entry import ManualEntry
 from app.models.shopeepay_reports import ShopeepayReport
 from app.models.bank_mutations import BankMutation
 from app.extensions import db
+
+from datetime import datetime
+
+def parse_date(date_str):
+    date_str = date_str.strip()
+    for fmt in ('%d-%b-%y', '%m/%d/%Y', '%d/%m/%Y', '%Y-%m-%d'):
+        try:
+            return datetime.strptime(date_str, fmt)
+        except ValueError:
+            continue
+    raise ValueError(f"Unknown date format: {date_str}")
 # import pdfkit
 import csv
 from io import StringIO
@@ -181,94 +192,77 @@ def upload_report_shopee_adjustment():
 def upload_report_mutation():
     files = request.files.getlist('file')
     rekening_number = request.form.get('rekening_number')
+
     if not files:
         files = [request.files.get('file')]
-
     if not files or not files[0]:
         return jsonify({'msg': 'No files uploaded'}), 400
     if not rekening_number:
         return jsonify({'msg': 'Rekening number is required'}), 400
+
     try:
         total_mutations = 0
         skipped_mutations = 0
-        
+
         for file in files:
             file_contents = file.read().decode('utf-8')
             csv_file = StringIO(file_contents)
-                # Skip the first 4 rows
-            for _ in range(4):
-                next(csv_file)
-            
-            # Get headers from the 5th row
-            headers = [h.strip() for h in next(csv.reader(csv_file))]
-            csv_file.seek(0)
-            
-            # Skip first 5 rows again (4 + header)
-            for _ in range(5):
-                next(csv_file)
-            
-            reader = csv.DictReader(csv_file, fieldnames=headers)
+            reader = csv.reader(csv_file)
+
+            # Skip first 3 garbage rows
+            for _ in range(3):
+                next(reader, None)
 
             mutations = []
             for row in reader:
                 try:
-                 # Parse the date (format: D-MMM-YY)
-                    date_str = row.get('TANGGAL', '').strip()
+                    if len(row) < 2:
+                        continue  # Not enough columns
+
+                    date_str = row[0].strip()
                     if not date_str:
-                        continue
-                        
-                    # Add leading zero for single-digit days
+                        break  # END when no date is provided
+
+                    # Normalize date
                     parts = date_str.split('-')
                     if len(parts) == 3:
-                        day = parts[0].zfill(2)  # Add leading zero if needed
+                        day = parts[0].zfill(2)
                         date_str = f"{day}-{parts[1]}-{parts[2]}"
-                    
-                    tanggal = datetime.strptime(date_str, '%d-%b-%y')
-                    
-                    # Clean numeric values
-                    def clean_numeric(value):
-                        if not value:
-                            return None
-                        return float(str(value).replace(',', '').strip() or 0)
+                    tanggal = parse_date(date_str)
+
+                    transaksi_text = row[1].strip()
+                    if not transaksi_text:
+                        continue
 
                     mutation = BankMutation(
                         rekening_number=rekening_number,
                         tanggal=tanggal,
-                        keterangan=row.get('KETERANGAN', '').strip(),
-                        masuk=clean_numeric(row.get('MASUK')),
-                        keluar=clean_numeric(row.get('KELUAR')),
-                        cr_cb=row.get('CR / CB', '').strip(),
-                        saldo=clean_numeric(row.get('SALDO')),
-                        transaksi=row.get('TRANSAKSI', '').strip(),
-                        outlet=row.get('OUTLET', '').strip(),
-                        closing=row.get('CLOSING', '').strip(),
-                        harga_per_outlet=row.get('HARGA / OUTLET').strip(),
-                        ket=row.get('KET', '').strip()
+                        transaksi=transaksi_text,
                     )
+                    mutation.parse_transaction()
                     mutations.append(mutation)
                     total_mutations += 1
-                    
-                except (ValueError, TypeError) as e:
-                    print(f"Error processing row: {e}")
+
+                except Exception as e:
+                    print(f"Error parsing row: {e}")
+                    skipped_mutations += 1
                     continue
 
+            # Save to DB
             if mutations:
                 try:
                     db.session.bulk_save_objects(mutations)
                     db.session.commit()
                 except IntegrityError:
                     db.session.rollback()
-                    # Handle mutations one by one if bulk insert fails
                     for mutation in mutations:
                         try:
                             db.session.add(mutation)
                             db.session.commit()
-                        except IntegrityError:
-                            db.session.rollback()
-                            skipped_mutations += 1
                         except Exception as e:
                             db.session.rollback()
                             print(f"Error saving mutation: {str(e)}")
+                            skipped_mutations += 1
 
         return jsonify({
             'msg': 'Bank mutations uploaded successfully',
