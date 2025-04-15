@@ -896,6 +896,7 @@ def upload_cash_report():
         reader = csv.DictReader(csv_file)
 
         reports = []
+        skipped_duplicates = 0
         for row in reader:
             # Skip empty rows or rows with insufficient data
             if not row['Tanggal'] or not row['Keterangan 1'] or not row[' Total']:
@@ -911,6 +912,17 @@ def upload_cash_report():
                     total_str = row[' Total'].strip().replace('.', '').replace(',', '.')
                     total = float(total_str)
 
+                    # Check for existing record with same date, amount, and outlet
+                    existing_record = CashReport.query.filter(
+                        CashReport.tanggal == date,
+                        CashReport.total == total,
+                        CashReport.outlet_code == outlet_code
+                    ).first()
+
+                    if existing_record:
+                        skipped_duplicates += 1
+                        continue
+
                     # Map 'Penerimaan'/'Pengeluaran' to 'income'/'expense'
                     type_mapping = {
                         'penerimaan': 'income',
@@ -921,7 +933,7 @@ def upload_cash_report():
                     report = CashReport(
                         tanggal=date,
                         outlet_code=outlet_code,
-                        brand_name = brand_name,
+                        brand_name=brand_name,
                         type=type_mapping[row['Keterangan 1'].lower()],
                         details=row.get('Keterangan 2', ''),
                         total=total
@@ -932,11 +944,15 @@ def upload_cash_report():
                     continue
 
         # Bulk save all reports
-        db.session.bulk_save_objects(reports)
-        db.session.commit()
+        if reports:
+            db.session.bulk_save_objects(reports)
+            db.session.commit()
 
-        return jsonify({'msg': 'Reports uploaded successfully', 'count': len(reports)}), 201
-
+        return jsonify({
+            'msg': 'Reports uploaded successfully', 
+            'count': len(reports),
+            'skipped_duplicates': skipped_duplicates
+        }), 201
     except IntegrityError:
         db.session.rollback()
         return jsonify({'msg': 'Duplicate entry error'}), 500
