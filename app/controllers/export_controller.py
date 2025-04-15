@@ -116,12 +116,23 @@ def export_reports():
             daily_totals[date]['Gojek_Net'] += float(report.nett_amount or 0)
             daily_totals[date]['Gojek_Gross'] += float(report.amount or 0)
 
+        # Initialize variables for GrabFood and GrabOVO
+        grabfood_gross_total = 0
+        grabovo_gross_total = 0
+
         for report in grab_reports:
             date = report.tanggal_dibuat.date()
             if date not in daily_totals:
                 daily_totals[date] = init_daily_total()
             daily_totals[date]['Grab_Net'] += float(report.total or 0)
             daily_totals[date]['Grab_Gross'] += float(report.amount or 0)
+            
+            # Track separate totals for GrabOVO and GrabFood
+            if hasattr(report, 'jenis'):
+                if report.jenis == 'OVO':
+                    grabovo_gross_total += float(report.amount or 0)
+                elif report.jenis == 'GrabFood':
+                    grabfood_gross_total += float(report.amount or 0)
 
         for report in shopee_reports:
             if report.order_status != "Cancelled":
@@ -245,20 +256,13 @@ def export_reports():
                   'Shopee Gross', 'Shopee Net', 'ShopeePay Gross', 'ShopeePay Net',
                   'Cash Income', 'Cash Expense']
 
-        # Update daily data row
-        row_data = [
-            date,
-            totals['Gojek_Gross'],
-            totals['Gojek_Net'],
-            totals['Grab_Gross'],
-            totals['Grab_Net'],
-            totals['Shopee_Gross'],
-            totals['Shopee_Net'],
-            totals['ShopeePay_Gross'],
-            totals['ShopeePay_Net'],
-            totals['Cash_Income'],
-            totals['Cash_Expense']
-        ]
+        # Remove incorrect row_data reference that uses undefined 'date' variable
+        # Update daily data row (remove this block as it's redundant)
+        # row_data = [
+        #     date,  <- This was causing the error
+        #     totals['Gojek_Gross'],
+        #     ...
+        # ]
 
         # Update grand total data
         grand_total_data = [
@@ -351,18 +355,31 @@ def export_reports():
         # Add platform data
         platforms = [
             ('Gojek', 'Gojek_Gross', 'Gojek_Net'),
-            ('Grab', 'Grab_Gross', 'Grab_Net'),
+            ('Grab (Total)', 'Grab_Gross', 'Grab_Net'),
+            ('   GrabFood', grabfood_gross_total, 0),  # Indented to show as sub-item
+            ('   OVO', grabovo_gross_total, 0),    # Indented to show as sub-item
             ('Shopee', 'Shopee_Gross', 'Shopee_Net'),
             ('ShopeePay', 'ShopeePay_Gross', 'ShopeePay_Net')
         ]
         
-        for platform, gross_key, net_key in platforms:
-            row_data = [
-                platform,
-                grand_totals[gross_key],
-                grand_totals[net_key],
-                grand_totals[gross_key] - grand_totals[net_key]
-            ]
+        for platform_data in platforms:
+            if isinstance(platform_data[1], (int, float)):  # For GrabFood and GrabOVO
+                platform, gross, net = platform_data
+                row_data = [
+                    platform,
+                    gross,
+                    net,
+                    gross - net
+                ]
+            else:
+                platform, gross_key, net_key = platform_data
+                row_data = [
+                    platform,
+                    grand_totals[gross_key],
+                    grand_totals[net_key],
+                    grand_totals[gross_key] - grand_totals[net_key]
+                ]
+            
             for col, value in enumerate(row_data, 1):
                 cell = summary_sheet.cell(row=current_row, column=col)
                 cell.value = value
@@ -370,6 +387,8 @@ def export_reports():
                 if col > 1:
                     cell.number_format = '#,##0.00'
             current_row += 1
+            
+       
 
         current_row += 1  # Add spacing
 
@@ -521,12 +540,12 @@ def export_reports():
         current_row += 1
 
         # Calculate commissions (1% each)
-        management_commission = grand_totals['Grab_Gross'] * 0.01
-        partner_commission = grand_totals['Grab_Gross'] * 0.01
+        management_commission = grabfood_gross_total * 0.01  # Using grabfood_gross_total instead of grand_totals['Grabfood']
+        partner_commission = grabfood_gross_total * 0.01    # Using grabfood_gross_total instead of grand_totals['Grab_Gross']
 
         commission_data = [
-            ('Management Commission (Grab)', '1%', management_commission),
-            ('Partner Commission (Grab)', '1%', partner_commission),
+            ('Management Commission (GrabFood)', '1%', management_commission),
+            ('Partner Commission (GrabFood)', '1%', partner_commission),
         ]
 
         for category, rate, commission in commission_data:
