@@ -305,7 +305,7 @@ def export_reports():
                 cell = daily_sheet.cell(row=current_row, column=col)
                 cell.value = value
                 if col > 1:  # Format numbers
-                    cell.number_format = '#,##0.00'
+                    cell.number_format = '#,##0'
             current_row += 1
 
         # Add grand totals
@@ -318,6 +318,8 @@ def export_reports():
             grand_totals['Grab_Net'],
             grand_totals['Shopee_Gross'],
             grand_totals['Shopee_Net'],
+            grand_totals['ShopeePay_Gross'],  # Added ShopeePay Gross
+            grand_totals['ShopeePay_Net'],    # Added ShopeePay Net
             grand_totals['Cash_Income'],
             grand_totals['Cash_Expense']
         ]
@@ -327,7 +329,7 @@ def export_reports():
             cell.font = header_font
             cell.fill = yellow_fill
             cell.alignment = Alignment(horizontal='center', vertical='center') 
-            cell.number_format = '#,##0.00'
+            cell.number_format = '#,##0'
 
         # Summary Sheet Formatting
         # Add titles
@@ -385,7 +387,7 @@ def export_reports():
                 cell.value = value
                 cell.fill = grab_fill
                 if col > 1:
-                    cell.number_format = '#,##0.00'
+                    cell.number_format = '#,##0'
             current_row += 1
             
        
@@ -425,7 +427,7 @@ def export_reports():
             cell.value = value
             cell.fill = cash_fill
             if 1 < col <= 4:  # Format numbers for Income, Expense, and Net Total columns
-                cell.number_format = '#,##0.00'
+                cell.number_format = '#,##0'
         current_row += 1
 
         # Add manual entries with their details
@@ -448,7 +450,7 @@ def export_reports():
                 cell.value = value
                 cell.fill = cash_fill
                 if 1 < col <= 4:  # Format numbers for Income, Expense, and Net Total columns
-                    cell.number_format = '#,##0.00'
+                    cell.number_format = '#,##0'
             current_row += 1
 
         # Add total row
@@ -467,7 +469,7 @@ def export_reports():
             cell.font = header_font
             cell.fill = cash_fill
             if 1 < col <= 4:  # Format numbers for Income, Expense, and Net Total columns
-                cell.number_format = '#,##0.00'
+                cell.number_format = '#,##0'
         current_row += 1
 
         current_row += 1  # Add spacing
@@ -513,7 +515,7 @@ def export_reports():
             cell = summary_sheet.cell(row=current_row, column=1, value=label)
             amount_cell = summary_sheet.cell(row=current_row, column=2, value=amount)
             cell.fill = shopee_fill
-            amount_cell.number_format = '#,##0.00'
+            amount_cell.number_format = '#,##0'
             amount_cell.fill = shopee_fill
             if label == 'GRAND TOTAL NET INCOME':
                 cell.font = header_font
@@ -555,7 +557,7 @@ def export_reports():
                 cell.value = value
                 cell.fill = commision_fill
                 if col in [3]:  # Format numbers for Base Amount and Commission columns
-                    cell.number_format = '#,##0.00'
+                    cell.number_format = '#,##0'
             current_row += 1
 
         current_row += 1  # Add spacing
