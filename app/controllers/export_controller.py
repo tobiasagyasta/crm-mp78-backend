@@ -586,7 +586,9 @@ def export_reports():
         wb.save(excel_file)
         excel_file.seek(0)
 
-        filename = f"reports_{outlet_code}_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}.xlsx"
+        # Replace special characters in outlet name to make it filename-safe
+        safe_outlet_name = outlet.outlet_name_gojek.replace('/', '_').replace('\\', '_').replace(' ', '_')
+        filename = f"reports_{safe_outlet_name}_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}.xlsx"
         
         return send_file(
             excel_file,
