@@ -34,7 +34,7 @@ def register():
     # If role is 'admin', grant access to brand ID 48 and specified outlets
     elif data.get('role') == 'admin' or data.get('role') == 'superadmin':
         # Get brand with ID 48
-        brand = Product.query.filter_by(id=48).first()
+        brand = Product.query.filter_by(id=25).first()
         if brand:
             user.allowed_brands.append(brand)
             
