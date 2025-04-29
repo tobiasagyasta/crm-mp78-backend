@@ -482,12 +482,18 @@ def export_reports():
             grand_totals['ShopeePay_Net']
         )
         
+        # Calculate commission first (moved from below)
+        management_commission = grabfood_gross_total * 0.01
+        partner_commission = grabfood_gross_total * 0.01
+
         cash_manual_net_total = (
             (grand_totals['Cash_Income'] + manual_income) -
             (grand_totals['Cash_Expense'] + manual_expense)
         )
         
-        total_net_income = online_net_total + cash_manual_net_total
+        # Calculate final online net total after commission
+        online_net_after_commission = online_net_total - management_commission
+        total_net_income = online_net_after_commission + cash_manual_net_total
 
         current_row += 1  # Add spacing
 
@@ -502,14 +508,16 @@ def export_reports():
         summary_sheet.cell(row=current_row, column=2, value='Amount').fill = shopee_fill
         current_row += 1
 
+        # Calculate final online net total after commission
+        online_net_after_commission = online_net_total - management_commission
+
         summary_data = [
             ('Online Platforms Net', online_net_total),
+            ('Grab Management', -management_commission),  # Show as negative since it's deducted
+            ('Online Net After Commission', online_net_after_commission),
             ('Cash & Manual Net', cash_manual_net_total),
-            ('GRAND TOTAL NET INCOME', total_net_income)
+            ('GRAND TOTAL NET INCOME', online_net_after_commission + cash_manual_net_total)  # Updated total
         ]
-
-      
-        
 
         for label, amount in summary_data:
             cell = summary_sheet.cell(row=current_row, column=1, value=label)
@@ -522,6 +530,9 @@ def export_reports():
                 amount_cell.font = header_font
                 cell.fill = yellow_fill
                 amount_cell.fill = yellow_fill
+            elif label == 'Management Commission':
+                cell.font = Font(bold=True, color='FF0000')  # Red color for commission
+                amount_cell.font = Font(bold=True, color='FF0000')
             current_row += 1
 
         current_row += 2  # Add spacing
@@ -545,6 +556,7 @@ def export_reports():
         management_commission = grabfood_gross_total * 0.01  # Using grabfood_gross_total instead of grand_totals['Grabfood']
         partner_commission = grabfood_gross_total * 0.01    # Using grabfood_gross_total instead of grand_totals['Grab_Gross']
 
+        # In the Commission Summary section, remove the duplicate calculation
         commission_data = [
             ('Management Commission (GrabFood)', '1%', management_commission),
             ('Partner Commission (GrabFood)', '1%', partner_commission),

@@ -71,7 +71,10 @@ def get_outlets():
         query = query.filter(
             (Outlet.outlet_code.ilike(f'%{search_term}%')) |
             (Outlet.outlet_name_gojek.ilike(f'%{search_term}%')) |
-            (Outlet.outlet_name_grab.ilike(f'%{search_term}%'))
+            (Outlet.outlet_name_grab.ilike(f'%{search_term}%')) |
+            (Outlet.store_id_gojek.ilike(f'%{search_term}%')) |
+            (Outlet.store_id_grab.ilike(f'%{search_term}%')) |
+            (Outlet.store_id_shopee.ilike(f'%{search_term}%'))
         )
     
     if brand:

@@ -7,7 +7,9 @@ from app.models.cash_reports import CashReport
 from app.models.manual_entry import ManualEntry
 from app.models.shopeepay_reports import ShopeepayReport
 from app.models.bank_mutations import BankMutation
+from app.models.pukis_reports import PukisReport
 from app.extensions import db
+import sys
 
 from datetime import datetime
 
@@ -876,7 +878,116 @@ def convert_shopee_report_to_dict(report):
         "net_income": report.net_income,
     }
 
+@reports_bp.route('/upload/pukis', methods=['POST'])
+def upload_pukis_report():
+    file = request.files.get('file')
+    outlet_code = request.form.get('outlet_code')
+    brand_name = request.form.get('brand_name')
+    
+    if not file:
+        return jsonify({'msg': 'No file uploaded'}), 400
+    if not outlet_code:
+        return jsonify({'msg': 'Outlet code is required'}), 400
 
+    try:
+        file_contents = file.read().decode('utf-8')
+        csv_file = StringIO(file_contents)
+        reader = csv.DictReader(csv_file)
+        
+
+        pukis_reports = {}
+        skipped_duplicates = 0
+        debug_rows = []  # For debugging
+
+        for row in reader:
+            try:
+                # Skip rows without date
+                if not row.get('Tanggal'):
+                    continue
+
+                date = datetime.strptime(row['Tanggal'].strip(), '%d %b %Y')
+                keterangan = row.get('Keterangan 1', '').strip().lower()
+
+                # Debug info
+                debug_rows.append({
+                    'date': str(date),
+                    'keterangan': keterangan,
+                    'total': row.get('Total', ''),
+                    'raw_row': dict(row)
+                })
+
+                # Process pukis-related rows
+                if 'pukis' in keterangan:
+                    if date not in pukis_reports:
+                        existing_report = PukisReport.query.filter(
+                            PukisReport.tanggal == date,
+                            PukisReport.outlet_code == outlet_code
+                        ).first()
+                        
+                        if existing_report:
+                            pukis_reports[date] = existing_report
+                        else:
+                            pukis_reports[date] = PukisReport(
+                                tanggal=date,
+                                outlet_code=outlet_code,
+                                brand_name=brand_name
+                            )
+
+                    value = row.get('Total', '').strip()
+                    if value:
+                        try:
+                            # Handle empty or dash values
+                            if value in ['-', '  -   ', '']:
+                                value = 0
+                            else:
+                                value = int(value.strip())
+
+                            if 'pukis terjual total jumbo' in keterangan:
+                                pukis_reports[date].pukis_terjual_total_jumbo = value
+                            elif 'pukis terjual total klasik' in keterangan:
+                                pukis_reports[date].pukis_terjual_total_klasik = value
+                            elif 'pukis sisa klasik free' in keterangan:
+                                pukis_reports[date].pukis_sisa_klasik_free = value
+                            elif 'pukis sisa klasik' in keterangan:
+                                pukis_reports[date].pukis_sisa_klasik = value
+                            elif 'pukis sisa' in keterangan and 'klasik' not in keterangan:
+                                pukis_reports[date].pukis_sisa = value
+                            elif 'pukis free' in keterangan:
+                                pukis_reports[date].pukis_free = value
+                        except ValueError as ve:
+                            print(f"Value error for {keterangan}: {value}")
+                            continue
+
+            except (ValueError, KeyError) as e:
+                print(f"Error processing row: {e}")
+                continue
+
+        # Save all reports
+        if pukis_reports:
+            db.session.bulk_save_objects(pukis_reports.values())
+            db.session.commit()
+
+        return jsonify({
+            'msg': 'Pukis reports uploaded successfully',
+            'reports_count': len(pukis_reports),
+            'skipped_duplicates': skipped_duplicates,
+            'debug_info': {
+                str(date): {
+                    'pukis_terjual_total_jumbo': report.pukis_terjual_total_jumbo,
+                    'pukis_terjual_total_klasik': report.pukis_terjual_total_klasik,
+                    'pukis_sisa': report.pukis_sisa,
+                    'pukis_sisa_klasik': report.pukis_sisa_klasik,
+                    'pukis_free': report.pukis_free,
+                    'pukis_sisa_klasik_free': report.pukis_sisa_klasik_free,
+                    'raw_data': [row for row in debug_rows if str(datetime.strptime(row['date'], '%Y-%m-%d %H:%M:%S').date()) == str(date.date())]
+                } for date, report in pukis_reports.items()
+            }
+        }), 201
+
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error: {str(e)}")
+        return jsonify({'msg': str(e)}), 500
 
 @reports_bp.route('/upload/cash', methods=['POST'])
 def upload_cash_report():
@@ -893,13 +1004,17 @@ def upload_cash_report():
         # Read the file contents and parse as CSV
         file_contents = file.read().decode('utf-8')
         csv_file = StringIO(file_contents)
-        reader = csv.DictReader(csv_file)
-
+        reader = csv.DictReader(csv_file, skipinitialspace=True)
+ # Debug: Print column names
+        print(f"Raw fieldnames: {reader.fieldnames}", file=sys.stderr, flush=True)
+        cash_reports = {}
+ # Clean column names by stripping spaces
+        reader.fieldnames = [field.strip() for field in reader.fieldnames]
         reports = []
         skipped_duplicates = 0
         for row in reader:
             # Skip empty rows or rows with insufficient data
-            if not row['Tanggal'] or not row['Keterangan 1'] or not row[' Total']:
+            if not row['Tanggal'] or not row['Keterangan 1'] or not row['Total']:
                 continue
 
             # Process only if Keterangan 1 is either 'Penerimaan' or 'Pengeluaran'
@@ -909,7 +1024,7 @@ def upload_cash_report():
                     date = datetime.strptime(row['Tanggal'].strip(), '%d %b %Y')
                     
                     # Clean and parse the total amount
-                    total_str = row[' Total'].strip().replace('.', '').replace(',', '.')
+                    total_str = row['Total'].strip().replace('.', '').replace(',', '.')
                     total = float(total_str)
 
                     # Check for existing record with same date, amount, and outlet
@@ -976,6 +1091,19 @@ def get_reports_totals():
         shopeepay_query = ShopeepayReport.query
         cash_query = CashReport.query
         manual_entries_query = ManualEntry.query
+
+         # Calculate MP78 commission from GrabFood
+        mp78_grab_query = GrabFoodReport.query.filter(GrabFoodReport.brand_name == 'MP78', GrabFoodReport.jenis == 'GrabFood')
+        if start_date_param and end_date_param:
+            start_date = datetime.strptime(start_date_param, '%Y-%m-%d')
+            end_date = datetime.strptime(end_date_param, '%Y-%m-%d')
+            end_date_inclusive = datetime(end_date.year, end_date.month, end_date.day, 23, 59, 59)
+            mp78_grab_query = mp78_grab_query.filter(
+                GrabFoodReport.tanggal_dibuat >= start_date,
+                GrabFoodReport.tanggal_dibuat <= end_date_inclusive
+            )
+        mp78_grab_total = sum(float(report.total or 0) for report in mp78_grab_query.all())
+        mp78_commission = round(mp78_grab_total * 0.1, 2)  # 10% commission
 # Return error if outlet_code is not provided
         if not outlet_code:
             return jsonify({'error': 'outlet_code is required'}), 400
@@ -1061,7 +1189,6 @@ def get_reports_totals():
         # Calculate running total
         running_total = gojek_total + grab_total + shopee_total + cash_net + shopeepay_total - manual_entries_total
 
-        # Prepare response
         response = {
             'outlet_code': outlet_code,
             'brand_name': brand_name,
@@ -1080,10 +1207,11 @@ def get_reports_totals():
                     'net': round(cash_net, 2)
                 },
                 'manual_entries': round(manual_entries_total, 2),
-                'running_total': round(running_total, 2)
+                'running_total': round(running_total, 2),
+                'mp78_commission': mp78_commission,  # Added MP78 commission
+                'mp78_grab_total': round(mp78_grab_total, 2)  # Added for reference
             }
         }
-
         return jsonify(response), 200
 
     except ValueError as e:
