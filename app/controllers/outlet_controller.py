@@ -10,42 +10,86 @@ outlet_bp = Blueprint("outlet_bp", __name__, url_prefix="/outlets")
 def create_outlet():
     data = request.get_json()
 
+    # Check required fields
+    required_fields = ['outlet_name_gojek', 'area', 'address']
+    missing_fields = [field for field in required_fields if not data.get(field)]
+    if missing_fields:
+        return jsonify({
+            "error": "Missing required fields",
+            "missing_fields": missing_fields
+        }), 400
+
+    # Generate outlet code from outlet_name_gojek
+    outlet_name = data['outlet_name_gojek'].strip()
+    if not outlet_name:
+        return jsonify({"error": "outlet_name_gojek cannot be empty"}), 400
+
+    # Create outlet code: Take first 3 letters + random 3 digits
+    import random
+    import string
+    
+    # Get first 3 letters, convert to uppercase, remove spaces
+    name_part = ''.join(c for c in outlet_name if c.isalpha())[:3].upper()
+    if len(name_part) < 3:
+        return jsonify({"error": "outlet_name_gojek must contain at least 3 letters"}), 400
+
+    # Generate random 3 digits
+    num_part = ''.join(random.choices(string.digits, k=3))
+    outlet_code = f"{name_part}{num_part}"
+
+    # Check if generated outlet code exists, try up to 5 times
+    attempts = 0
+    while attempts < 5:
+        if not Outlet.query.filter_by(outlet_code=outlet_code).first():
+            break
+        num_part = ''.join(random.choices(string.digits, k=3))
+        outlet_code = f"{name_part}{num_part}"
+        attempts += 1
+    else:
+        return jsonify({"error": "Could not generate unique outlet code. Please try again"}), 500
+
+    try:
+        outlet = Outlet(
+            outlet_code=outlet_code,
+            outlet_name_gojek=data['outlet_name_gojek'],
+            outlet_name_grab=data.get('outlet_name_grab'),
+            outlet_phone=data.get('outlet_phone'),
+            outlet_email=data.get('outlet_email'),
+            area=data['area'],
+            service_area=data.get('service_area'),
+            city_grouping=data.get('city_grouping'),
+            store_id_gojek=data.get('store_id_gojek'),
+            store_id_grab=data.get('store_id_grab'),
+            store_id_shopee=data.get('store_id_shopee'),
+            address=data['address'],
+            partner_name=data.get('partner_name'),
+            partner_phone=data.get('partner_phone'),
+            pic_partner_name=data.get('pic_partner_name'),
+            pic_phone=data.get('pic_phone'),
+            status=data.get('status', 'Active'),
+            closing_date=data.get('closing_date'),
+            operating_hours=data.get('operating_hours'),
+            coordinator_avenger=data.get('coordinator_avenger'),
+            brand=data.get('brand'),
+            gojek_admin_email=data.get('gojek_admin_email'),
+            gojek_admin_password=data.get('gojek_admin_password'),
+            grab_admin_email=data.get('grab_admin_email'),
+            grab_admin_password=data.get('grab_admin_password'),
+            shopee_admin_email=data.get('shopee_admin_email'),
+            shopee_admin_password=data.get('shopee_admin_password')
+        )
+
+        db.session.add(outlet)
+        db.session.commit()
+        return jsonify(outlet.to_dict()), 201
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"Failed to create outlet: {str(e)}"}), 500
 
     # Check if outlet code already exists
     if Outlet.query.filter_by(outlet_code=data["outlet_code"]).first():
         return jsonify({"error": "Outlet code already exists"}), 400
-
-
-    outlet = Outlet(
-        outlet_code=data["outlet_code"],
-        outlet_name_gojek=data.get("outlet_name_gojek"),
-        outlet_name_grab=data.get("outlet_name_grab"),
-        outlet_phone=data.get("outlet_phone"),
-        outlet_email=data.get("outlet_email"),
-        area=data["area"],
-        service_area=data.get("service_area"),
-        city_grouping=data.get("city_grouping"),
-        store_id_gojek=data.get("store_id_gojek"),
-        store_id_grab=data.get("store_id_grab"),
-        store_id_shopee=data.get("store_id_shopee"),
-        address=data["address"],
-        partner_name=data.get("partner_name"),
-        partner_phone=data.get("partner_phone"),
-        pic_partner_name=data.get("pic_partner_name"),
-        pic_phone=data.get("pic_phone"),
-        status=data.get("status", "Active"),
-        closing_date=data.get("closing_date"),
-        operating_hours=data.get("operating_hours"),
-        coordinator_avenger=data.get("coordinator_avenger"),
-        brand=data.get("brand"),
-        # Add admin credentials
-        gojek_admin_email=data.get("gojek_admin_email"),
-        gojek_admin_password=data.get("gojek_admin_password"),
-        grab_admin_email=data.get("grab_admin_email"),
-        grab_admin_password=data.get("grab_admin_password"),
-        shopee_admin_email=data.get("shopee_admin_email"),
-        shopee_admin_password=data.get("shopee_admin_password")
-    )
 
     db.session.add(outlet)
     db.session.commit()

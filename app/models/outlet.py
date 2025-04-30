@@ -59,6 +59,13 @@ class Outlet(db.Model):
             "store_id_gojek": self.store_id_gojek,
             "store_id_grab": self.store_id_grab,
             "store_id_shopee": self.store_id_shopee,
+            # Add admin credentials
+            "gojek_admin_email": self.gojek_admin_email,
+            "gojek_admin_password": self.gojek_admin_password,
+            "grab_admin_email": self.grab_admin_email,
+            "grab_admin_password": self.grab_admin_password,
+            "shopee_admin_email": self.shopee_admin_email,
+            "shopee_admin_password": self.shopee_admin_password,
             "partner_name": self.partner_name,
             "partner_phone": self.partner_phone,
             "pic_partner_name": self.pic_partner_name,
