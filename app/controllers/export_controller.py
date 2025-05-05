@@ -119,6 +119,8 @@ def export_reports():
         # Initialize variables for GrabFood and GrabOVO
         grabfood_gross_total = 0
         grabovo_gross_total = 0
+        grabfood_net_total = 0
+        grabovo_net_total = 0
 
         for report in grab_reports:
             date = report.tanggal_dibuat.date()
@@ -131,8 +133,10 @@ def export_reports():
             if hasattr(report, 'jenis'):
                 if report.jenis == 'OVO':
                     grabovo_gross_total += float(report.amount or 0)
+                    grabovo_net_total += float(report.total or 0)
                 elif report.jenis == 'GrabFood':
                     grabfood_gross_total += float(report.amount or 0)
+                    grabfood_net_total += float(report.total or 0)
 
         for report in shopee_reports:
             if report.order_status != "Cancelled":
@@ -358,8 +362,8 @@ def export_reports():
         platforms = [
             ('Gojek', 'Gojek_Gross', 'Gojek_Net'),
             ('Grab (Total)', 'Grab_Gross', 'Grab_Net'),
-            ('   GrabFood', grabfood_gross_total, 0),  # Indented to show as sub-item
-            ('   OVO', grabovo_gross_total, 0),    # Indented to show as sub-item
+            ('   GrabFood', grabfood_gross_total, grabfood_net_total),  # Added net total
+            ('   OVO', grabovo_gross_total, grabovo_net_total),    # Added net total
             ('Shopee', 'Shopee_Gross', 'Shopee_Net'),
             ('ShopeePay', 'ShopeePay_Gross', 'ShopeePay_Net')
         ]
@@ -483,8 +487,8 @@ def export_reports():
         )
         
         # Calculate commission first (moved from below)
-        management_commission = grabfood_gross_total * 0.01
-        partner_commission = grabfood_gross_total * 0.01
+        management_commission = grabfood_net_total * 0.01
+        partner_commission = grabfood_net_total * 0.01
 
         cash_manual_net_total = (
             (grand_totals['Cash_Income'] + manual_income) -
@@ -553,8 +557,8 @@ def export_reports():
         current_row += 1
 
         # Calculate commissions (1% each)
-        management_commission = grabfood_gross_total * 0.01  # Using grabfood_gross_total instead of grand_totals['Grabfood']
-        partner_commission = grabfood_gross_total * 0.01    # Using grabfood_gross_total instead of grand_totals['Grab_Gross']
+        management_commission = grabfood_net_total * 0.01  # Using grabfood_gross_total instead of grand_totals['Grabfood']
+        partner_commission = grabfood_net_total * 0.01    # Using grabfood_gross_total instead of grand_totals['Grab_Gross']
 
         # In the Commission Summary section, remove the duplicate calculation
         commission_data = [
