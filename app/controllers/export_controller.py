@@ -487,8 +487,8 @@ def export_reports():
         )
         
         # Calculate commission first (moved from below)
-        management_commission = grabfood_net_total * 0.01
-        partner_commission = grabfood_net_total * 0.01
+        management_commission = grabfood_gross_total * 0.01
+        partner_commission = grabfood_gross_total * 0.01
 
         cash_manual_net_total = (
             (grand_totals['Cash_Income'] + manual_income) -
@@ -557,8 +557,8 @@ def export_reports():
         current_row += 1
 
         # Calculate commissions (1% each)
-        management_commission = grabfood_net_total * 0.01  # Using grabfood_gross_total instead of grand_totals['Grabfood']
-        partner_commission = grabfood_net_total * 0.01    # Using grabfood_gross_total instead of grand_totals['Grab_Gross']
+        management_commission = grabfood_gross_total * 0.01  # Using grabfood_gross_total instead of grand_totals['Grabfood']
+        partner_commission = grabfood_gross_total * 0.01    # Using grabfood_gross_total instead of grand_totals['Grab_Gross']
 
         # In the Commission Summary section, remove the duplicate calculation
         commission_data = [
