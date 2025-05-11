@@ -48,11 +48,16 @@ def create_standardized_unmatched(platform_data, platform_name):
 
 @mutations_bp.route('/match/gojek', methods=['GET'])
 def match_gojek_transactions():
+
     try:
+        used_mutation_ids = set()
         start_date = datetime.strptime(request.args.get('start_date'), '%Y-%m-%d').date()
         end_date = datetime.strptime(request.args.get('end_date'), '%Y-%m-%d').date()
         page = request.args.get('page', 1, type=int)
         per_page = request.args.get('per_page', 10, type=int)
+        # Add new filter parameters
+        merchant_name = request.args.get('merchant_name')
+        merchant_id = request.args.get('merchant_id')
 
         # Get aggregated Gojek reports with merchant_name
         gojek_aggregated = db.session.query(
@@ -63,7 +68,15 @@ def match_gojek_transactions():
         ).filter(
             GojekReport.transaction_date >= start_date,
             GojekReport.transaction_date <= end_date
-        ).group_by(
+        )
+
+        # Add merchant filters if provided
+        if merchant_name:
+            gojek_aggregated = gojek_aggregated.filter(GojekReport.merchant_name.ilike(f'%{merchant_name}%'))
+        if merchant_id:
+            gojek_aggregated = gojek_aggregated.filter(GojekReport.merchant_id == merchant_id)
+
+        gojek_aggregated = gojek_aggregated.group_by(
             GojekReport.merchant_id,
             GojekReport.merchant_name,
             cast(GojekReport.transaction_date, Date)
@@ -103,19 +116,22 @@ def match_gojek_transactions():
             
             match = create_standardized_match(platform_data, 'Gojek')
 
-            mutation = next(
-                (m for m in mutations 
-                 if m.transaction_id and m.platform_code == agg.merchant_id 
-                 and m.tanggal == agg.order_date + timedelta(days=1)
-                 and abs(round(float(m.transaction_amount or 0), -1) - round(float(agg.total_amount), -1)) < 10),
-                None
-            )
+        potential_matches = [
+        m for m in mutations
+        if m.transaction_id not in used_mutation_ids
+        and m.platform_code == agg.merchant_id
+        and abs((m.tanggal - agg.order_date).days) <= 1
+        and abs(float(m.transaction_amount) - float(agg.total_amount)) <= 10
+    ]
 
-            if mutation:
-                match['mutation_match'] = create_standardized_mutation(mutation)
-                matches.append(match)
-            else:
-                unmatched_merchants.append(create_standardized_unmatched(platform_data, 'Gojek'))
+        if potential_matches:
+            # Take best match or first one
+            mutation = potential_matches[0]
+            used_mutation_ids.add(mutation.transaction_id)
+            match['mutation_match'] = create_standardized_mutation(mutation)
+            matches.append(match)
+        else:
+            unmatched_merchants.append(create_standardized_unmatched(platform_data, 'Gojek'))
 
         return jsonify({
             'matches': matches,
@@ -140,13 +156,32 @@ def match_gojek_transactions():
 @mutations_bp.route('/match/grab', methods=['GET'])
 def match_grab_transactions():
     try:
-        start_date = datetime.strptime(request.args.get('start_date'), '%Y-%m-%d').date()
-        end_date = datetime.strptime(request.args.get('end_date'), '%Y-%m-%d').date()
-        page = request.args.get('page', 1, type=int)
-        per_page = request.args.get('per_page', 10, type=int)
+            start_date = datetime.strptime(request.args.get('start_date'), '%Y-%m-%d').date()
+            end_date = datetime.strptime(request.args.get('end_date'), '%Y-%m-%d').date()
+            page = request.args.get('page', 1, type=int)
+            per_page = request.args.get('per_page', 10, type=int)
+            # Add merchant filters
+            merchant_name = request.args.get('merchant_name')
+            merchant_id = request.args.get('merchant_id')
+        
+            grab_aggregated = db.session.query(
+                GrabFoodReport.id_toko,
+                GrabFoodReport.nama_toko,
+                cast(GrabFoodReport.tanggal_dibuat, Date).label('order_date'),
+                func.sum(GrabFoodReport.total).label('total_amount')
+            ).filter(
+                GrabFoodReport.tanggal_dibuat >= start_date,
+                GrabFoodReport.tanggal_dibuat <= end_date
+            )
+        
+            # Add merchant filters if provided
+            if merchant_name:
+                grab_aggregated = grab_aggregated.filter(GrabFoodReport.nama_toko.ilike(f'%{merchant_name}%'))
+            if merchant_id:
+                grab_aggregated = grab_aggregated.filter(GrabFoodReport.id_toko == merchant_id)
 
         # Get aggregated Grab reports
-        grab_aggregated = db.session.query(
+            grab_aggregated = db.session.query(
             GrabFoodReport.id_toko,
             GrabFoodReport.nama_toko,
             cast(GrabFoodReport.tanggal_dibuat, Date).label('order_date'),
@@ -163,66 +198,66 @@ def match_grab_transactions():
             cast(GrabFoodReport.tanggal_dibuat, Date)
         )
 
-        # Calculate total pages
-        total_records = grab_aggregated.count()
-        total_pages = (total_records + per_page - 1) // per_page
-        
-        # Apply pagination
-        grab_aggregated = grab_aggregated.offset((page - 1) * per_page).limit(per_page).all()
-
-        # Get mutations with specific fields
-        mutations = db.session.query(
-            BankMutation.transaction_id,
-            BankMutation.transaction_amount,
-            BankMutation.rekening_number,
-            BankMutation.tanggal
-        ).filter(
-            BankMutation.platform_name == 'Grab',
-            BankMutation.tanggal >= start_date + timedelta(days=1),
-            BankMutation.tanggal <= end_date + timedelta(days=1)
-        ).all()
-
-        matches = []
-        unmatched_merchants = []
-        for agg in grab_aggregated:
-            platform_data = {
-                'store_id': agg.id_toko,
-                'store_name': agg.nama_toko,
-                'transaction_date': agg.order_date,
-                'total_amount': float(agg.total_amount)
-            }
+            # Calculate total pages
+            total_records = grab_aggregated.count()
+            total_pages = (total_records + per_page - 1) // per_page
             
-            match = create_standardized_match(platform_data, 'Grab')
+            # Apply pagination
+            grab_aggregated = grab_aggregated.offset((page - 1) * per_page).limit(per_page).all()
 
-            mutation = next(
-                (m for m in mutations 
-                 if m.transaction_id
-                 and m.tanggal == agg.order_date + timedelta(days=1)
-                 and abs(round(float(m.transaction_amount or 0), -1) - round(float(agg.total_amount), -1)) < 10),
-                None
-            )
+            # Get mutations with specific fields
+            mutations = db.session.query(
+                BankMutation.transaction_id,
+                BankMutation.transaction_amount,
+                BankMutation.rekening_number,
+                BankMutation.tanggal
+            ).filter(
+                BankMutation.platform_name == 'Grab',
+                BankMutation.tanggal >= start_date + timedelta(days=1),
+                BankMutation.tanggal <= end_date + timedelta(days=1)
+            ).all()
 
-            if mutation:
-                match['mutation_match'] = create_standardized_mutation(mutation)
-                matches.append(match)
-            else:
-                unmatched_merchants.append(create_standardized_unmatched(platform_data, 'Grab'))
+            matches = []
+            unmatched_merchants = []
+            for agg in grab_aggregated:
+                platform_data = {
+                    'store_id': agg.id_toko,
+                    'store_name': agg.nama_toko,
+                    'transaction_date': agg.order_date,
+                    'total_amount': float(agg.total_amount)
+                }
+                
+                match = create_standardized_match(platform_data, 'Grab')
 
-        return jsonify({
-            'matches': matches,
-            'statistics': {
-                'page_total': len(grab_aggregated),
-                'page_matched': len(matches),
-                'page_unmatched': len(unmatched_merchants),
-                'unmatched_merchants': unmatched_merchants
-            },
-            'pagination': {
-                'current_page': page,
-                'per_page': per_page,
-                'total_pages': total_pages,
-                'total_records': total_records
-            }
-        }), 200
+                mutation = next(
+                    (m for m in mutations 
+                    if m.transaction_id
+                    and m.tanggal == agg.order_date + timedelta(days=1)
+                    and abs(round(float(m.transaction_amount or 0), -1) - round(float(agg.total_amount), -1)) < 10),
+                    None
+                )
+
+                if mutation:
+                    match['mutation_match'] = create_standardized_mutation(mutation)
+                    matches.append(match)
+                else:
+                    unmatched_merchants.append(create_standardized_unmatched(platform_data, 'Grab'))
+
+            return jsonify({
+                'matches': matches,
+                'statistics': {
+                    'page_total': len(grab_aggregated),
+                    'page_matched': len(matches),
+                    'page_unmatched': len(unmatched_merchants),
+                    'unmatched_merchants': unmatched_merchants
+                },
+                'pagination': {
+                    'current_page': page,
+                    'per_page': per_page,
+                    'total_pages': total_pages,
+                    'total_records': total_records
+                }
+            }), 200
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
