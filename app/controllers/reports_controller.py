@@ -540,9 +540,9 @@ def upload_report_shopeepay():
                         except IntegrityError:
                             db.session.rollback()
                             skipped_reports += 1
-                        except Exception as e:
+                except Exception as e:
                             db.session.rollback()
-                            print(f"Error saving report: {str(e)}")
+                            print(f"Error saving report - Store: {report.store_name}, Order ID: {report.order_id}, Error: {str(e)}")
 
         # Update store IDs in batches
         updated_count = update_store_ids_batch(store_id_map, 'shopeepay')

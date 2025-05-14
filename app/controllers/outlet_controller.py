@@ -181,18 +181,38 @@ def get_outlet_by_code(outlet_code):
 # Update an outlet
 @outlet_bp.route("/<int:outlet_id>", methods=["PUT"])
 def update_outlet(outlet_id):
-    outlet = Outlet.query.get(outlet_id)
-    if not outlet:
-        return jsonify({"error": "Outlet not found"}), 404
+    try:
+        outlet = Outlet.query.get(outlet_id)
+        if not outlet:
+            return jsonify({"error": "Outlet not found"}), 404
 
-    data = request.get_json()
-    
-    # Check if outlet code is being updated and already exists
-    if "outlet_code" in data and data["outlet_code"] != outlet.outlet_code:
-        if Outlet.query.filter_by(outlet_code=data["outlet_code"]).first():
-            return jsonify({"error": "Outlet code already exists"}), 400
+        data = request.get_json()
+        
+        # Check if outlet code is being updated and already exists
+        if "outlet_code" in data and data["outlet_code"] != outlet.outlet_code:
+            if Outlet.query.filter_by(outlet_code=data["outlet_code"]).first():
+                return jsonify({"error": "Outlet code already exists"}), 400
 
-    # Update fields
+        # Update fields
+        for field in data:
+            if hasattr(outlet, field):
+                # Special handling for closing_date
+                if field == 'closing_date' and data[field]:
+                    try:
+                        outlet.closing_date = data[field]
+                    except ValueError as e:
+                        return jsonify({"error": f"Invalid date format for closing_date: {str(e)}"}), 400
+                else:
+                    setattr(outlet, field, data[field])
+        
+        db.session.commit()
+        return jsonify(outlet.to_dict())
+
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error updating outlet {outlet_id}: {str(e)}")
+        return jsonify({"error": "Failed to update outlet"}), 500
+
     outlet.outlet_code = data.get("outlet_code", outlet.outlet_code)
     outlet.outlet_name_gojek = data.get("outlet_name_gojek", outlet.outlet_name_gojek)
     outlet.outlet_name_grab = data.get("outlet_name_grab", outlet.outlet_name_grab)
