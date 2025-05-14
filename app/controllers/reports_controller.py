@@ -8,6 +8,8 @@ from app.models.manual_entry import ManualEntry
 from app.models.shopeepay_reports import ShopeepayReport
 from app.models.bank_mutations import BankMutation
 from app.models.pukis_reports import PukisReport
+from app.models.expense_category import ExpenseCategory
+from app.models.income_category import IncomeCategory
 from app.extensions import db
 import sys
 
@@ -555,6 +557,107 @@ def upload_report_shopeepay():
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
+
+@reports_bp.route('/upload/manual', methods=['POST'])
+def upload_manual_entry():
+    files = request.files.getlist('file')
+    if not files:
+        files = [request.files.get('file')]
+    
+    if not files or not files[0]:
+        return jsonify({'msg': 'No files uploaded'}), 400
+
+    try:
+        total_entries = 0
+        skipped_entries = 0
+        
+        for file in files:
+            file_contents = file.read().decode('utf-8')
+            csv_file = StringIO(file_contents)
+            reader = csv.reader(csv_file)
+            
+            # Skip the first three rows (header and title)
+            for _ in range(3):
+                next(reader)
+            
+            entries = []
+            for row in reader:
+                try:
+                    if len(row) < 7:  # Ensure we have all required columns
+                        continue
+
+                    # Parse date and convert to DD/MM/YYYY format
+                    date_str = row[0].strip()
+                    entry_date = datetime.strptime(date_str, '%d-%b-%y').date()
+                    formatted_date = entry_date.strftime('%d/%m/%Y')
+                    entry_date = datetime.strptime(formatted_date, '%d/%m/%Y').date()
+                    
+                    # Parse amount (remove commas and convert to float)
+                    amount_str = row[2].replace(',', '')
+                    amount = float(amount_str)
+                    
+                    # Determine entry type
+                    entry_type_str = row[3].strip().lower()
+                    if entry_type_str == 'pengeluaran':
+                        entry_type = 'expense'
+                        category = ExpenseCategory.query.filter_by(name=row[4].strip()).first()
+                    elif entry_type_str == 'penerimaan':
+                        entry_type = 'income'
+                        category = IncomeCategory.query.filter_by(name=row[4].strip()).first()
+                    else:
+                        continue
+
+                    if not category:
+                        continue
+
+                    # Create manual entry
+                    entry = ManualEntry(
+                        outlet_code=row[6].strip(),
+                        brand_name='MP78',  # Assuming brand is always '78'
+                        entry_type=entry_type,
+                        amount=amount,
+                        description=row[5].strip(),
+                        start_date=entry_date,
+                        end_date=entry_date,  # Using same date for both start and end
+                        category_id=category.id
+                    )
+                    entries.append(entry)
+                    total_entries += 1
+
+                except (ValueError, IndexError) as e:
+                    print(f"Error processing row: {e}")
+                    skipped_entries += 1
+                    continue
+
+            # Bulk save entries
+            if entries:
+                try:
+                    db.session.bulk_save_objects(entries)
+                    db.session.commit()
+                except IntegrityError:
+                    db.session.rollback()
+                    # Handle entries one by one if bulk insert fails
+                    for entry in entries:
+                        try:
+                            db.session.add(entry)
+                            db.session.commit()
+                        except IntegrityError:
+                            db.session.rollback()
+                            skipped_entries += 1
+                        except Exception as e:
+                            db.session.rollback()
+                            print(f"Error saving entry: {str(e)}")
+
+        return jsonify({
+            'msg': 'Manual entries uploaded successfully',
+            'total_records': total_entries,
+            'skipped_records': skipped_entries
+        }), 201
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+    
 
 @reports_bp.route('/upload/grab', methods=['POST'])
 def upload_report_grab():

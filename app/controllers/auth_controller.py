@@ -33,24 +33,37 @@ def register():
         user.allowed_outlets.extend(all_outlets)
     # If role is 'admin', grant access to brand ID 48 and specified outlets
     elif data.get('role') == 'admin' or data.get('role') == 'superadmin':
-        # Get brand with ID 48
-        brand = Product.query.filter_by(id=25).first()
-        if brand:
-            user.allowed_brands.append(brand)
+        # Get brands with ID 25 and 33
+        brands = Product.query.filter(Product.id.in_([25, 33])).all()
+        if brands:
+            for brand in brands:
+                user.allowed_brands.append(brand)
             
             # If specific outlet IDs are provided for admin, use those
             if 'admin_outlet_ids' in data and data['admin_outlet_ids']:
                 admin_outlets = Outlet.query.filter(Outlet.id.in_(data['admin_outlet_ids'])).all()
                 user.allowed_outlets.extend(admin_outlets)
             else:
-                # Otherwise, get all outlets associated with this brand
-                brand_outlets = Outlet.query.filter_by(brand=brand.name).all()
+                brand_names = [brand.name for brand in brands]
+                brand_outlets = Outlet.query.filter(Outlet.brand.in_(brand_names)).all()
                 user.allowed_outlets.extend(brand_outlets)
     else:
         # Add brand access if provided
         if 'brand_ids' in data and data['brand_ids']:
-            brands = Product.query.filter(Product.id.in_(data['brand_ids'])).all()
-            user.allowed_brands.extend(brands)
+            # Get brands with ID 25 and 33
+            brands = Product.query.filter(Product.id.in_([25, 33])).all()
+            if brands:
+                for brand in brands:
+                    user.allowed_brands.append(brand)
+                
+                # If specific outlet IDs are provided for admin, use those
+                if 'admin_outlet_ids' in data and data['admin_outlet_ids']:
+                    admin_outlets = Outlet.query.filter(Outlet.id.in_(data['admin_outlet_ids'])).all()
+                    user.allowed_outlets.extend(admin_outlets)
+                else:
+                    brand_names = [brand.name for brand in brands]
+                    brand_outlets = Outlet.query.filter(Outlet.brand.in_(brand_names)).all()
+                    user.allowed_outlets.extend(brand_outlets)
         
         # Add outlet access if provided
         if 'outlet_ids' in data and data['outlet_ids']:
