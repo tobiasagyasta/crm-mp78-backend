@@ -113,8 +113,7 @@ def match_gojek_transactions():
             mutation = next(
                 (m for m in mutations 
                  if m.transaction_id and m.platform_code == agg.merchant_id 
-                 and m.tanggal == agg.order_date + timedelta(days=1)
-                 and abs(round(float(m.transaction_amount or 0), -1) - round(float(agg.total_amount), -1)) < 10),
+                 and m.tanggal == agg.order_date + timedelta(days=1)),
                 None
             )
 
@@ -185,8 +184,7 @@ def summarize_gojek_matching():
             match = next(
                 (m for m in mutations 
                  if m.transaction_id and m.platform_code == report.merchant_id 
-                 and m.tanggal == report.order_date + timedelta(days=1)
-                 and abs(round(float(m.transaction_amount or 0), -1) - round(float(report.total_amount), -1)) < 10),
+                 and m.tanggal == report.order_date + timedelta(days=1)),
                 None
             )
 
