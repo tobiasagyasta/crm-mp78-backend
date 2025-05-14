@@ -211,9 +211,8 @@ def upload_report_mutation():
             csv_file = StringIO(file_contents)
             reader = csv.reader(csv_file)
 
-            # Skip first 3 garbage rows
-            for _ in range(3):
-                next(reader, None)
+            # Skip the first row (header)
+            next(reader)
 
             mutations = []
             for row in reader:
@@ -221,27 +220,54 @@ def upload_report_mutation():
                     if len(row) < 2:
                         continue  # Not enough columns
 
+                    # Normalize date (Column A in your CSV)
                     date_str = row[0].strip()
-                    if not date_str:
-                        break  # END when no date is provided
-
-                    # Normalize date
-                    parts = date_str.split('-')
-                    if len(parts) == 3:
-                        day = parts[0].zfill(2)
-                        date_str = f"{day}-{parts[1]}-{parts[2]}"
-                    tanggal = parse_date(date_str)
+                    if not date_str or date_str.upper() == 'PEND':
+                        tanggal = None  # Set to None if date is empty or 'PEND'
+                    else:
+                        try:
+                            parts = date_str.split('/')
+                            if len(parts) == 3:
+                                day = parts[0].zfill(2)
+                                date_str = f"{day}-{parts[1]}-{parts[2]}"
+                            tanggal = datetime.strptime(date_str, "%d-%m-%Y").date()
+                        except ValueError:
+                            tanggal = None  # Set to None if date parsing fails
 
                     transaksi_text = row[1].strip()
+                    transaction_type = row[2].strip()
+                    transaction_id = row[4].strip()
                     if not transaksi_text:
-                        continue
+                        continue  # Skip rows without a transaction
 
+                    # Detect the platform and parse the row accordingly
+                    platform_name = None
+                    platform_code = None
+                    if "VISIONET INTERNASI" in row[9]:  # Grab
+                        platform_name = "Grab"  # Set platform name to Grab
+                        platform_code = None  # No platform code for Grab
+                    elif "AIRPAY INTERNATION" in row[9]:  # Shopee
+                        if row[5].strip() == "SF":
+                            platform_name = "Shopee"
+                        elif row[5].strip() == "MC":
+                            platform_name = "ShopeePay"
+                        platform_code = row[6].strip()  # Take platform code as is from column G
+                    elif "DOMPET ANAK BANGSA" in row[9]:  # Gojek
+                        platform_name = "Gojek"
+                        platform_code = row[6].strip()  # Take platform code as is from column G
+                    transaction_amount = float(row[11].replace(',', ''))
+                    # Create mutation object
                     mutation = BankMutation(
                         rekening_number=rekening_number,
                         tanggal=tanggal,
                         transaksi=transaksi_text,
+                        transaction_type=transaction_type,
+                        platform_name=platform_name,
+                        platform_code=platform_code,
+                        transaction_amount=transaction_amount,
+                        transaction_id=transaction_id,
                     )
-                    mutation.parse_transaction()
+                    # mutation.parse_transaction()  # Call your method to parse transaction if needed
                     mutations.append(mutation)
                     total_mutations += 1
 

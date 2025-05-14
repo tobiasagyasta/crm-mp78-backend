@@ -7,7 +7,7 @@ class BankMutation(db.Model):
 
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     rekening_number = db.Column(db.String, nullable=False)
-    tanggal = db.Column(db.Date, nullable=False)
+    tanggal = db.Column(db.Date, nullable=True)
     transaksi = db.Column(db.String, nullable=True)
 
     # Parsed fields
