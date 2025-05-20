@@ -487,8 +487,8 @@ def export_reports():
         )
         
         # Calculate commission first (moved from below)
-        management_commission = grabfood_gross_total * 0.01
-        partner_commission = grabfood_gross_total * 0.01
+        management_commission = grabfood_gross_total * 0.01 if outlet.brand in ["MP78", "MP78 Express", "Martabak 777 Sinar Bulan","Martabak 999 Asli Bandung", "Martabak Surya Kencana","Martabak Akim"] else 0
+        partner_commission = grabfood_gross_total * 0.01 if outlet.brand in ["MP78", "MP78 Express", "Martabak 777 Sinar Bulan","Martabak 999 Asli Bandung", "Martabak Surya Kencana","Martabak Akim"] else 0
 
         cash_manual_net_total = (
             (grand_totals['Cash_Income'] + manual_income) -
@@ -497,31 +497,20 @@ def export_reports():
         
         # Calculate final online net total after commission
         online_net_after_commission = online_net_total - management_commission
-        total_net_income = online_net_after_commission + cash_manual_net_total
 
-        current_row += 1  # Add spacing
-
-        # Overall Net Income Summary
-        summary_sheet.cell(row=current_row, column=1, value='Overall Net Income Summary').font = header_font
-        summary_sheet.cell(row=current_row, column=1, value='Overall Net Income Summary').fill = shopee_fill
-        current_row += 1
+        summary_data = [('Online Platforms Net', online_net_total)]
         
-        summary_sheet.cell(row=current_row, column=1, value='Source').font = header_font
-        summary_sheet.cell(row=current_row, column=2, value='Amount').font = header_font
-        summary_sheet.cell(row=current_row, column=1, value='Source').fill = shopee_fill
-        summary_sheet.cell(row=current_row, column=2, value='Amount').fill = shopee_fill
-        current_row += 1
-
-        # Calculate final online net total after commission
-        online_net_after_commission = online_net_total - management_commission
-
-        summary_data = [
-            ('Online Platforms Net', online_net_total),
-            ('Grab Management', -management_commission),  # Show as negative since it's deducted
-            ('Online Net After Commission', online_net_after_commission),
+        # Add commission-related entries only for specific brands
+        if outlet.brand in ["MP78", "MP78 Express", "Martabak 777 Sinar Bulan","Martabak 999 Asli Bandung", "Martabak Surya Kencana","Martabak Akim"]:
+            summary_data.extend([
+                ('Grab Management', -management_commission),
+                ('Online Net After Commission', online_net_after_commission)
+            ])
+        
+        summary_data.extend([
             ('Cash & Manual Net', cash_manual_net_total),
-            ('GRAND TOTAL NET INCOME', online_net_after_commission + cash_manual_net_total)  # Updated total
-        ]
+            ('GRAND TOTAL NET INCOME', online_net_after_commission + cash_manual_net_total)
+        ])
 
         for label, amount in summary_data:
             cell = summary_sheet.cell(row=current_row, column=1, value=label)
@@ -542,41 +531,37 @@ def export_reports():
         current_row += 2  # Add spacing
 
 
-        # Commission Summary
-        summary_title_cell = summary_sheet.cell(row=current_row, column=1, value='Commission Summary')
-        summary_title_cell.font = header_font
-        summary_title_cell.fill = commision_fill
-        current_row += 1
-        
-        commission_headers = ['Category','Rate', 'Commission']
-        for col, header in enumerate(commission_headers, 1):
-            cell = summary_sheet.cell(row=current_row, column=col)
-            cell.value = header
-            cell.font = header_font
-            cell.fill = commision_fill
-        current_row += 1
-
-        # Calculate commissions (1% each)
-        management_commission = grabfood_gross_total * 0.01  # Using grabfood_gross_total instead of grand_totals['Grabfood']
-        partner_commission = grabfood_gross_total * 0.01    # Using grabfood_gross_total instead of grand_totals['Grab_Gross']
-
-        # In the Commission Summary section, remove the duplicate calculation
-        commission_data = [
-            ('Management Commission (GrabFood)', '1%', management_commission),
-            ('Partner Commission (GrabFood)', '1%', partner_commission),
-        ]
-
-        for category, rate, commission in commission_data:
-            row_data = [category, rate, commission]
-            for col, value in enumerate(row_data, 1):
+        # Commission Summary - Only show for specific brands
+        if outlet.brand in ["MP78", "MP78 Express", "Martabak 777 Sinar Bulan","Martabak 999 Asli Bandung", "Martabak Surya Kencana","Martabak Akim"]:
+            summary_title_cell = summary_sheet.cell(row=current_row, column=1, value='Commission Summary')
+            summary_title_cell.font = header_font
+            summary_title_cell.fill = commision_fill
+            current_row += 1
+            
+            commission_headers = ['Category','Rate', 'Commission']
+            for col, header in enumerate(commission_headers, 1):
                 cell = summary_sheet.cell(row=current_row, column=col)
-                cell.value = value
+                cell.value = header
+                cell.font = header_font
                 cell.fill = commision_fill
-                if col in [3]:  # Format numbers for Base Amount and Commission columns
-                    cell.number_format = '#,##0'
             current_row += 1
 
-        current_row += 1  # Add spacing
+            commission_data = [
+                ('Management Commission (GrabFood)', '1%', management_commission),
+                ('Partner Commission (GrabFood)', '1%', partner_commission),
+            ]
+
+            for category, rate, commission in commission_data:
+                row_data = [category, rate, commission]
+                for col, value in enumerate(row_data, 1):
+                    cell = summary_sheet.cell(row=current_row, column=col)
+                    cell.value = value
+                    cell.fill = commision_fill
+                    if col in [3]:  # Format numbers for Base Amount and Commission columns
+                        cell.number_format = '#,##0'
+                current_row += 1
+
+            current_row += 1  # Add spacing
        
 
         # Auto-adjust column widths
