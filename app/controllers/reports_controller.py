@@ -1204,6 +1204,71 @@ def upload_cash_report():
         db.session.rollback()
         return jsonify({'msg': str(e)}), 500
 
+@reports_bp.route('/commission-totals', methods=['GET'])
+def get_commission_totals():
+    start_date_param = request.args.get('start_date')
+    end_date_param = request.args.get('end_date')
+    outlet_code = request.args.get('outlet_code')
+    brand_name = request.args.get('brand_name')
+
+    try:
+        # Initialize query for GrabFood reports
+        grab_query = GrabFoodReport.query
+
+        
+
+        # Apply filters based on outlet_code and brand_name
+        if outlet_code and outlet_code.upper() != "ALL":
+            grab_query = grab_query.filter(GrabFoodReport.outlet_code == outlet_code)
+        
+        if brand_name and brand_name != "ALL":
+             grab_query = grab_query.filter(GrabFoodReport.brand_name.in_(["MP78", "MP78 Express"]))
+        if brand_name and brand_name not in ["MP78", "MP78 Express"]:
+            return jsonify({'error': 'Commission calculation is only available for MP78 brands'}), 400
+        else:
+            # Only calculate commission for MP78 brands if no specific brand is selected
+            grab_query = grab_query.filter(GrabFoodReport.brand_name.in_(["MP78", "MP78 Express"]))
+
+        # Apply date filters
+        if start_date_param and end_date_param:
+            start_date = datetime.strptime(start_date_param, '%Y-%m-%d')
+            end_date = datetime.strptime(end_date_param, '%Y-%m-%d')
+            end_date_inclusive = datetime(end_date.year, end_date.month, end_date.day, 23, 59, 59)
+            
+            grab_query = grab_query.filter(
+                GrabFoodReport.tanggal_dibuat >= start_date,
+                GrabFoodReport.tanggal_dibuat <= end_date_inclusive,
+                GrabFoodReport.jenis == "GrabFood"
+            )
+
+        # Calculate totals and commission
+        grab_total = sum(float(report.amount or 0) for report in grab_query.all())
+        management_commission = round(grab_total * 0.01, 2)  # 1% commission
+        partner_commission = round(grab_total * 0.01, 2)    # 1% commission
+
+        response = {
+            'period': {
+                'start_date': start_date_param,
+                'end_date': end_date_param
+            },
+            'outlet_code': outlet_code,
+            'brand_name': brand_name,
+            'totals': {
+                'grab_food_total': round(grab_total, 2),
+                'management_commission': management_commission,
+                'partner_commission': partner_commission,
+                'total_commission': management_commission + partner_commission
+            }
+        }
+        
+        return jsonify(response), 200
+
+    except ValueError as e:
+        return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
+    except Exception as e:
+        print(f"Error calculating commission totals: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
 
 @reports_bp.route('/totals', methods=['GET'])
 def get_reports_totals():
@@ -1221,18 +1286,18 @@ def get_reports_totals():
         cash_query = CashReport.query
         manual_entries_query = ManualEntry.query
 
-         # Calculate MP78 commission from GrabFood
-        mp78_grab_query = GrabFoodReport.query.filter(GrabFoodReport.brand_name == 'MP78', GrabFoodReport.jenis == 'GrabFood')
-        if start_date_param and end_date_param:
-            start_date = datetime.strptime(start_date_param, '%Y-%m-%d')
-            end_date = datetime.strptime(end_date_param, '%Y-%m-%d')
-            end_date_inclusive = datetime(end_date.year, end_date.month, end_date.day, 23, 59, 59)
-            mp78_grab_query = mp78_grab_query.filter(
-                GrabFoodReport.tanggal_dibuat >= start_date,
-                GrabFoodReport.tanggal_dibuat <= end_date_inclusive
-            )
-        mp78_grab_total = sum(float(report.total or 0) for report in mp78_grab_query.all())
-        mp78_commission = round(mp78_grab_total * 0.1, 2)  # 10% commission
+        #  # Calculate MP78 commission from GrabFood
+        # mp78_grab_query = GrabFoodReport.query.filter(GrabFoodReport.brand_name == 'MP78', GrabFoodReport.jenis == 'GrabFood')
+        # if start_date_param and end_date_param:
+        #     start_date = datetime.strptime(start_date_param, '%Y-%m-%d')
+        #     end_date = datetime.strptime(end_date_param, '%Y-%m-%d')
+        #     end_date_inclusive = datetime(end_date.year, end_date.month, end_date.day, 23, 59, 59)
+        #     mp78_grab_query = mp78_grab_query.filter(
+        #         GrabFoodReport.tanggal_dibuat >= start_date,
+        #         GrabFoodReport.tanggal_dibuat <= end_date_inclusive
+        #     )
+        # mp78_grab_total = sum(float(report.total or 0) for report in mp78_grab_query.all())
+        # mp78_commission = round(mp78_grab_total * 0.1, 2)  # 10% commission
 # Return error if outlet_code is not provided
         if not outlet_code:
             return jsonify({'error': 'outlet_code is required'}), 400
@@ -1337,8 +1402,8 @@ def get_reports_totals():
                 },
                 'manual_entries': round(manual_entries_total, 2),
                 'running_total': round(running_total, 2),
-                'mp78_commission': mp78_commission,  # Added MP78 commission
-                'mp78_grab_total': round(mp78_grab_total, 2)  # Added for reference
+                # 'mp78_commission': mp78_commission,  # Added MP78 commission
+                # 'mp78_grab_total': round(mp78_grab_total, 2)  # Added for reference
             }
         }
         return jsonify(response), 200
