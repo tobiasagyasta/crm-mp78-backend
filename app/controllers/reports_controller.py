@@ -254,7 +254,7 @@ def upload_report_mutation():
                         elif row[5].strip() == "MC":
                             platform_name = "ShopeePay"
                         platform_code = row[6].strip()  # Take platform code as is from column G
-                    elif "DOMPET ANAK BANGSA" in row[9]:  # Gojek
+                    elif "DOMPET ANAK BANGSA" in row[8]:  # Gojek
                         platform_name = "Gojek"
                         platform_code = row[6].strip()  # Take platform code as is from column G
                     transaction_amount = float(row[11].replace(',', ''))
@@ -584,45 +584,82 @@ def upload_manual_entry():
             for row in reader:
                 try:
                     if len(row) < 7:  # Ensure we have all required columns
+                        skipped_entries += 1
                         continue
 
-                    # Parse date and convert to DD/MM/YYYY format
+                    # Skip empty or malformed date fields
                     date_str = row[0].strip()
-                    entry_date = datetime.strptime(date_str, '%d-%b-%y').date()
-                    formatted_date = entry_date.strftime('%d/%m/%Y')
-                    entry_date = datetime.strptime(formatted_date, '%d/%m/%Y').date()
-                    
+                    if not date_str:
+                        skipped_entries += 1
+                        continue
+
+                    try:
+                        entry_date = datetime.strptime(date_str, '%d-%b-%y').date()
+                    except ValueError:
+                        skipped_entries += 1
+                        continue
+
                     # Parse amount (remove commas and convert to float)
-                    amount_str = row[2].replace(',', '')
-                    amount = float(amount_str)
-                    
-                    # Determine entry type
+                    amount_str = row[2].replace(',', '').strip()
+                    if not amount_str:
+                        skipped_entries += 1
+                        continue
+
+                    try:
+                        amount = float(amount_str)
+                    except ValueError:
+                        skipped_entries += 1
+                        continue
+
+                    # Determine entry type and category
                     entry_type_str = row[3].strip().lower()
+                    category_name = row[4].strip()
                     if entry_type_str == 'pengeluaran':
                         entry_type = 'expense'
-                        category = ExpenseCategory.query.filter_by(name=row[4].strip()).first()
-                    if entry_type_str == 'penerimaan':
+                        category = ExpenseCategory.query.filter_by(name=category_name).first()
+                    elif entry_type_str == 'penerimaan':
                         entry_type = 'income'
-                        category = IncomeCategory.query.filter_by(name=row[4].strip()).first()
+                        category = IncomeCategory.query.filter_by(name=category_name).first()
                     else:
+                        skipped_entries += 1
                         continue
 
                     if not category:
+                        skipped_entries += 1
+                        continue
+
+                      # Create manual entry
+                    entry_date = datetime.strptime(date_str, '%d-%b-%y').date()
+                    outlet_code = row[6].strip()
+                    category_id = category.id if category else None
+
+                    # Check for existing entry
+                    existing_entry = ManualEntry.query.filter(
+                        ManualEntry.start_date == entry_date,
+                        ManualEntry.outlet_code == outlet_code,
+                        ManualEntry.category_id == category_id,
+                        ManualEntry.amount == amount,
+                        ManualEntry.description == row[5].strip()
+                    ).first()
+
+                    if existing_entry:
+                        skipped_entries += 1
                         continue
 
                     # Create manual entry
                     entry = ManualEntry(
-                        outlet_code=row[6].strip(),
+                        outlet_code=outlet_code,
                         brand_name='MP78',  # Assuming brand is always '78'
                         entry_type=entry_type,
                         amount=amount,
                         description=row[5].strip(),
                         start_date=entry_date,
-                        end_date=entry_date,  # Using same date for both start and end
-                        category_id=category.id
+                        end_date=entry_date,
+                        category_id=category_id
                     )
                     entries.append(entry)
                     total_entries += 1
+
 
                 except (ValueError, IndexError) as e:
                     print(f"Error processing row: {e}")

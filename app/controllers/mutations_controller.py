@@ -227,9 +227,9 @@ def summarize_gojek_matching():
                 matched += 1
                 matched_amount += float(report.total_amount)
                 matched_mutations.add((match.platform_code, match.tanggal))
-            else:
-                unmatched += 1
-                unmatched_amount += float(report.total_amount)
+            # else:
+            #     unmatched += 1
+            #     unmatched_amount += float(report.total_amount)
 
         # Second pass: Count unmatched mutations (now using same criteria as main function)
         unmatched_mutations_count = 0
@@ -357,9 +357,10 @@ def match_shopee_transactions():
         end_date = datetime.strptime(request.args.get('end_date'), '%Y-%m-%d').date()
         page = request.args.get('page', 1, type=int)
         per_page = request.args.get('per_page', 10, type=int)
+        platform_code = request.args.get('platform_code')  # Add platform_code parameter
 
         # Get aggregated Shopee reports
-        shopee_aggregated = db.session.query(
+        shopee_query = db.session.query(
             ShopeeReport.store_id,
             ShopeeReport.store_name,
             cast(ShopeeReport.order_create_time, Date).label('order_date'),
@@ -368,7 +369,13 @@ def match_shopee_transactions():
             ShopeeReport.order_create_time >= start_date,
             ShopeeReport.order_create_time <= end_date,
             ShopeeReport.order_status == 'Settled'
-        ).group_by(
+        )
+
+        # Add platform_code filter if provided
+        if platform_code:
+            shopee_query = shopee_query.filter(ShopeeReport.store_id.ilike(f'%{platform_code}%'))
+
+        shopee_aggregated = shopee_query.group_by(
             ShopeeReport.store_id,
             ShopeeReport.store_name,
             cast(ShopeeReport.order_create_time, Date)
@@ -399,8 +406,10 @@ def match_shopee_transactions():
 
         matches = []
         unmatched_merchants = []
+        unmatched_mutations = []
+        matched_mutations = set()  # Track which mutations have been matched
+
         for agg in shopee_aggregated:
-            # Extract last 5 digits of store_id for platform_code matching
             store_code = agg.store_id[-5:] if agg.store_id else None
             
             platform_data = {
@@ -423,16 +432,37 @@ def match_shopee_transactions():
             if mutation:
                 match['mutation_match'] = create_standardized_mutation(mutation)
                 matches.append(match)
+                matched_mutations.add((mutation.platform_code, mutation.tanggal))
             else:
                 unmatched_merchants.append(create_standardized_unmatched(platform_data, 'Shopee'))
+
+        # Find mutations that don't have matching Shopee reports
+        for mutation in mutations:
+            mutation_key = (mutation.platform_code, mutation.tanggal)
+            if mutation_key not in matched_mutations:
+                unmatched_mutations.append({
+                    'transaction_id': mutation.transaction_id,
+                    'platform_code': mutation.platform_code,
+                    'transaction_date': mutation.tanggal,
+                    'transaction_amount': float(mutation.transaction_amount) if mutation.transaction_amount else 0.0
+                })
+
+        # Apply pagination to unmatched_merchants and unmatched_mutations
+        start_idx = (page - 1) * per_page
+        end_idx = start_idx + per_page
+        paginated_unmatched_merchants = unmatched_merchants[start_idx:end_idx]
+        paginated_unmatched_mutations = unmatched_mutations[start_idx:end_idx]
 
         return jsonify({
             'matches': matches,
             'statistics': {
                 'page_total': len(shopee_aggregated),
                 'page_matched': len(matches),
-                'page_unmatched': len(unmatched_merchants),
-                'unmatched_merchants': unmatched_merchants
+                'page_unmatched': len(paginated_unmatched_merchants),
+                'total_unmatched': len(unmatched_merchants),
+                'total_unmatched_mutations': len(unmatched_mutations),
+                'unmatched_merchants': paginated_unmatched_merchants,
+                'unmatched_mutations': paginated_unmatched_mutations
             },
             'pagination': {
                 'current_page': page,
