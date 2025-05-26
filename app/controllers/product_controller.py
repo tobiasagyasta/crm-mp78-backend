@@ -24,7 +24,7 @@ def create_product():
 # Get all products
 @product_bp.route("", methods=["GET"])
 def get_products():
-    products = Product.query.all()
+    products = Product.query.order_by(Outlet.name.asc()).all()
     return jsonify([product.to_dict() for product in products])
 
 # Get a single product by ID

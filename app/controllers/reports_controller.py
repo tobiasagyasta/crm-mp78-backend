@@ -601,7 +601,7 @@ def upload_manual_entry():
                     if entry_type_str == 'pengeluaran':
                         entry_type = 'expense'
                         category = ExpenseCategory.query.filter_by(name=row[4].strip()).first()
-                    elif entry_type_str == 'penerimaan':
+                    if entry_type_str == 'penerimaan':
                         entry_type = 'income'
                         category = IncomeCategory.query.filter_by(name=row[4].strip()).first()
                     else:

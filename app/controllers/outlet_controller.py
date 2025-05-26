@@ -108,7 +108,7 @@ def get_outlets():
     per_page = request.args.get('per_page', None, type=int)
     
     # Start with base query
-    query = Outlet.query
+    query = Outlet.query.order_by(Outlet.outlet_name_gojek)
     
     # Apply filters if provided
     if search_term:
