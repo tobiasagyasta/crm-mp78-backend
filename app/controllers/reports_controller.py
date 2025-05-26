@@ -800,6 +800,12 @@ def upload_report_shopee():
             csv_file = StringIO(file_contents)
             reader = csv.DictReader(csv_file)
             
+            # Debug: Print column names
+            print(f"Raw fieldnames: {reader.fieldnames}", file=sys.stderr, flush=True)
+            
+            # Clean column names by stripping spaces
+            reader.fieldnames = [field.strip() for field in reader.fieldnames]
+            
             reports = []
             for row in reader:
                 store_name = row.get('Store Name', '').strip()

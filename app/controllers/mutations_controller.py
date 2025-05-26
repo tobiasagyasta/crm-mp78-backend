@@ -100,6 +100,9 @@ def match_gojek_transactions():
 
         matches = []
         unmatched_merchants = []
+        unmatched_mutations = []
+        matched_mutations = set()  # Track which mutations have been matched
+
         for agg in gojek_aggregated:
             platform_data = {
                 'merchant_id': agg.merchant_id,
@@ -120,16 +123,37 @@ def match_gojek_transactions():
             if mutation:
                 match['mutation_match'] = create_standardized_mutation(mutation)
                 matches.append(match)
+                matched_mutations.add((mutation.platform_code, mutation.tanggal))
             else:
                 unmatched_merchants.append(create_standardized_unmatched(platform_data, 'Gojek'))
+
+        # Find mutations that don't have matching Gojek reports
+        for mutation in mutations:
+            mutation_key = (mutation.platform_code, mutation.tanggal)
+            if mutation_key not in matched_mutations:
+                unmatched_mutations.append({
+                    'transaction_id': mutation.transaction_id,
+                    'platform_code': mutation.platform_code,
+                    'transaction_date': mutation.tanggal,
+                    'transaction_amount': float(mutation.transaction_amount) if mutation.transaction_amount else 0.0
+                })
+
+        # Apply pagination to unmatched_merchants and unmatched_mutations
+        start_idx = (page - 1) * per_page
+        end_idx = start_idx + per_page
+        paginated_unmatched_merchants = unmatched_merchants[start_idx:end_idx]
+        paginated_unmatched_mutations = unmatched_mutations[start_idx:end_idx]
 
         return jsonify({
             'matches': matches,
             'statistics': {
                 'page_total': len(gojek_aggregated),
                 'page_matched': len(matches),
-                'page_unmatched': len(unmatched_merchants),
-                'unmatched_merchants': unmatched_merchants
+                'page_unmatched': len(paginated_unmatched_merchants),
+                'total_unmatched': len(unmatched_merchants),
+                'total_unmatched_mutations': len(unmatched_mutations),
+                'unmatched_merchants': paginated_unmatched_merchants,
+                'unmatched_mutations': paginated_unmatched_mutations
             },
             'pagination': {
                 'current_page': page,
@@ -148,16 +172,23 @@ def summarize_gojek_matching():
     try:
         start_date = datetime.strptime(request.args.get('start_date'), '%Y-%m-%d').date()
         end_date = datetime.strptime(request.args.get('end_date'), '%Y-%m-%d').date()
+        platform_code = request.args.get('platform_code')  # Added platform_code parameter
 
         # Aggregated report data
-        gojek_reports = db.session.query(
+        gojek_query = db.session.query(
             GojekReport.merchant_id,
             cast(GojekReport.transaction_date, Date).label('order_date'),
             func.sum(GojekReport.nett_amount).label('total_amount')
         ).filter(
             GojekReport.transaction_date >= start_date,
             GojekReport.transaction_date <= end_date
-        ).group_by(
+        )
+
+        # Add platform_code filter if provided
+        if platform_code:
+            gojek_query = gojek_query.filter(GojekReport.merchant_id == platform_code)
+
+        gojek_reports = gojek_query.group_by(
             GojekReport.merchant_id,
             cast(GojekReport.transaction_date, Date)
         ).all()
@@ -179,7 +210,11 @@ def summarize_gojek_matching():
         unmatched = 0
         matched_amount = 0
         unmatched_amount = 0
+        matched_mutations = set()  # Track matched mutations
+        unmatched_mutations_count = 0
+        unmatched_mutations_amount = 0
 
+        # First pass: Match reports to mutations
         for report in gojek_reports:
             match = next(
                 (m for m in mutations 
@@ -191,9 +226,20 @@ def summarize_gojek_matching():
             if match:
                 matched += 1
                 matched_amount += float(report.total_amount)
+                matched_mutations.add((match.platform_code, match.tanggal))
             else:
                 unmatched += 1
                 unmatched_amount += float(report.total_amount)
+
+        # Second pass: Count unmatched mutations (now using same criteria as main function)
+        unmatched_mutations_count = 0
+        unmatched_mutations_amount = 0
+        for mutation in mutations:
+            if mutation.platform_code:  # Only count mutations with platform_code
+                mutation_key = (mutation.platform_code, mutation.tanggal)
+                if mutation_key not in matched_mutations:
+                    unmatched_mutations_count += 1
+                    unmatched_mutations_amount += float(mutation.transaction_amount or 0)
 
         return jsonify({
             'summary': {
@@ -202,7 +248,11 @@ def summarize_gojek_matching():
                 'unmatched_merchants': unmatched,
                 'matched_amount': round(matched_amount, 2),
                 'unmatched_amount': round(unmatched_amount, 2),
-                'match_rate_percent': round((matched / total * 100), 2) if total > 0 else 0.0
+                'match_rate_percent': round((matched / total * 100), 2) if total > 0 else 0.0,
+                'unmatched_mutations': {
+                    'count': unmatched_mutations_count,
+                    'amount': round(unmatched_mutations_amount, 2)
+                }
             }
         }), 200
 
@@ -270,8 +320,7 @@ def match_grab_transactions():
             mutation = next(
                 (m for m in mutations 
                  if m.transaction_id
-                 and m.tanggal == agg.order_date + timedelta(days=1)
-                 and abs(round(float(m.transaction_amount or 0), -1) - round(float(agg.total_amount), -1)) < 10),
+                 and m.tanggal == agg.order_date + timedelta(days=1)),
                 None
             )
 
@@ -366,9 +415,8 @@ def match_shopee_transactions():
             mutation = next(
                 (m for m in mutations 
                  if m.transaction_id
-                 and m.platform_code == store_code
-                 and m.tanggal == agg.order_date + timedelta(days=1)
-                 and abs(round(float(m.transaction_amount or 0), -1) - round(float(agg.total_amount), -1)) < 10),
+                 and (m.platform_code and store_code and store_code in m.platform_code)
+                 and m.tanggal == agg.order_date + timedelta(days=1)),
                 None
             )
 
@@ -601,84 +649,84 @@ def get_matching_summary():
         return jsonify({'error': str(e)}), 500
 
 
-@mutations_bp.route('/merchants/gojek', methods=['GET'])
-def get_gojek_merchants():
-    try:
-        start_date = datetime.strptime(request.args.get('start_date'), '%Y-%m-%d').date()
-        end_date = datetime.strptime(request.args.get('end_date'), '%Y-%m-%d').date()
+# @mutations_bp.route('/merchants/gojek', methods=['GET'])
+# def get_gojek_merchants():
+#     try:
+#         start_date = datetime.strptime(request.args.get('start_date'), '%Y-%m-%d').date()
+#         end_date = datetime.strptime(request.args.get('end_date'), '%Y-%m-%d').date()
 
-        # Get distinct merchants with their total amounts and brand
-        merchants = db.session.query(
-            GojekReport.merchant_id,
-            GojekReport.merchant_name,
-            Outlet.brand,
-            func.sum(GojekReport.nett_amount).label('total_amount').label('total_amount'),
-            func.array_agg(distinct(cast(GojekReport.transaction_date, Date))).label('dates')
-        ).outerjoin(
-            Outlet, Outlet.store_id_gojek == GojekReport.merchant_id
-        ).filter(
-            GojekReport.transaction_date >= start_date,
-            GojekReport.transaction_date <= end_date
-        ).group_by(
-            GojekReport.merchant_id,
-            GojekReport.merchant_name,
-            Outlet.brand
-        ).all()
+#         # Get distinct merchants with their total amounts and brand
+#         merchants = db.session.query(
+#             GojekReport.merchant_id,
+#             GojekReport.merchant_name,
+#             Outlet.brand,
+#             func.sum(GojekReport.nett_amount).label('total_amount').label('total_amount'),
+#             func.array_agg(distinct(cast(GojekReport.transaction_date, Date))).label('dates')
+#         ).outerjoin(
+#             Outlet, Outlet.store_id_gojek == GojekReport.merchant_id
+#         ).filter(
+#             GojekReport.transaction_date >= start_date,
+#             GojekReport.transaction_date <= end_date
+#         ).group_by(
+#             GojekReport.merchant_id,
+#             GojekReport.merchant_name,
+#             Outlet.brand
+#         ).all()
 
-        # Get all mutations for the date range
-        mutations = db.session.query(
-            BankMutation.platform_code,
-            BankMutation.tanggal,
-            BankMutation.transaction_amount
-        ).filter(
-            BankMutation.platform_name == 'Gojek',
-            BankMutation.tanggal >= start_date + timedelta(days=1),
-            BankMutation.tanggal <= end_date + timedelta(days=1)
-        ).all()
+#         # Get all mutations for the date range
+#         mutations = db.session.query(
+#             BankMutation.platform_code,
+#             BankMutation.tanggal,
+#             BankMutation.transaction_amount
+#         ).filter(
+#             BankMutation.platform_name == 'Gojek',
+#             BankMutation.tanggal >= start_date + timedelta(days=1),
+#             BankMutation.tanggal <= end_date + timedelta(days=1)
+#         ).all()
 
-        result = []
-        for merchant in merchants:
-            matched_dates = []
-            unmatched_dates = []
+#         result = []
+#         for merchant in merchants:
+#             matched_dates = []
+#             unmatched_dates = []
             
-            for date in merchant.dates:
-                has_match = any(
-                    m.platform_code == merchant.merchant_id and 
-                    m.tanggal == date + timedelta(days=1) and
-                    abs(round(float(m.transaction_amount or 0), -1) - round(float(merchant.total_amount), -1)) < 10
-                    for m in mutations
-                )
-                if has_match:
-                    matched_dates.append(date.strftime('%Y-%m-%d'))
-                else:
-                    unmatched_dates.append(date.strftime('%Y-%m-%d'))
+#             for date in merchant.dates:
+#                 has_match = any(
+#                     m.platform_code == merchant.merchant_id and 
+#                     m.tanggal == date + timedelta(days=1) and
+#                     abs(round(float(m.transaction_amount or 0), -1) - round(float(merchant.total_amount), -1)) < 10
+#                     for m in mutations
+#                 )
+#                 if has_match:
+#                     matched_dates.append(date.strftime('%Y-%m-%d'))
+#                 else:
+#                     unmatched_dates.append(date.strftime('%Y-%m-%d'))
 
-            result.append({
-                'merchant_id': merchant.merchant_id,
-                'merchant_name': merchant.merchant_name,
-                'brand': merchant.brand,  # Added brand information
-                'total_amount': float(merchant.total_amount),
-                'total_dates': len(merchant.dates),
-                'matched_dates': matched_dates,
-                'unmatched_dates': unmatched_dates,
-                'match_rate': len(matched_dates) / len(merchant.dates) if merchant.dates else 0
-            })
+#             result.append({
+#                 'merchant_id': merchant.merchant_id,
+#                 'merchant_name': merchant.merchant_name,
+#                 'brand': merchant.brand,  # Added brand information
+#                 'total_amount': float(merchant.total_amount),
+#                 'total_dates': len(merchant.dates),
+#                 'matched_dates': matched_dates,
+#                 'unmatched_dates': unmatched_dates,
+#                 'match_rate': len(matched_dates) / len(merchant.dates) if merchant.dates else 0
+#             })
 
-        # Group results by brand
-        grouped_results = {}
-        for merchant in result:
-            brand = merchant['brand'] or 'Unknown'  # Handle None brand
-            if brand not in grouped_results:
-                grouped_results[brand] = []
-            grouped_results[brand].append(merchant)
+#         # Group results by brand
+#         grouped_results = {}
+#         for merchant in result:
+#             brand = merchant['brand'] or 'Unknown'  # Handle None brand
+#             if brand not in grouped_results:
+#                 grouped_results[brand] = []
+#             grouped_results[brand].append(merchant)
 
-        return jsonify({
-            'merchants_by_brand': grouped_results,
-            'total_merchants': len(result)
-        }), 200
+#         return jsonify({
+#             'merchants_by_brand': grouped_results,
+#             'total_merchants': len(result)
+#         }), 200
 
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+#     except Exception as e:
+#         return jsonify({'error': str(e)}), 500
 
 
 
