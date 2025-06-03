@@ -24,7 +24,7 @@ class TransactionMatcher:
                 'match_function': self._match_grab
             },
             'shopee': {
-                'platform_name': 'Shopee',
+                'platform_name': 'ShopeeFood',
                 'store_id_field': 'store_id_shopee',
                 'outlet_name_field': 'outlet_name_gojek',  # Assuming using gojek name for now
                 'days_offset': 1,

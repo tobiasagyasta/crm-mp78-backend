@@ -182,7 +182,8 @@ def export_reports():
                 # Initialize matcher for current platform
                 matcher = TransactionMatcher(platform)
                 
-                # Get mutations for the date range
+                # For Grab, mutations are not mapped to outlet_code, so we match only by date and amount.
+                # This is handled by the TransactionMatcher.match_transactions logic for Grab.
                 mutations = matcher.get_mutations_query(start_date.date(), end_date.date()).all()
                 
                 # Process each date in daily_totals
@@ -370,6 +371,20 @@ def export_reports():
                 cell.value = value
                 if col > 1:  # Format numbers
                     cell.number_format = '#,##0'
+
+                # Apply color for Difference columns (Gojek, Grab, Shopee)
+                # Columns: 4 (Gojek Difference), 7 (Grab Difference), 10 (Shopee Difference)
+                if col in [4, 7, 10]:
+                    if value is not None:
+                        if value > 0:
+                            cell.fill = PatternFill(start_color='C6EFCE', end_color='C6EFCE', fill_type='solid')  # Light green
+                        elif value < 0:
+                            cell.fill = PatternFill(start_color='FFC7CE', end_color='FFC7CE', fill_type='solid')  # Light red
+                        else:
+                            cell.fill = difference_fill  # Neutral color
+                    else:
+                        cell.fill = difference_fill  # Neutral color
+
             current_row += 1
 
         # Update grand total row to match new headers
