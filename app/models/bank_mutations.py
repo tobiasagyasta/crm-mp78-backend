@@ -66,6 +66,38 @@ class BankMutation(db.Model):
         else:
             self.platform_name = "Unknown"
             self.platform_code = None
+    def parse_pkb_transaction(self):
+        """
+        Parse transaction text specifically for PKB platform.
+        Format must contain a valid platform code like 'PDG-085'.
+        Ignores entries that do not match the required format.
+        """
+        if not self.transaksi:
+            return
+
+        text = self.transaksi.strip()
+
+        # Must contain valid PKB platform code like PDG-085
+        code_match = re.search(r'\b[A-Z]{3}-\d{3}\b', text)
+        if not code_match:
+            return  # Skip parsing if no valid PKB platform code
+
+        # Safe to proceed
+        self.platform_name = "PKB"
+        self.platform_code = code_match.group()
+
+        # Extract amount (first float-looking number with at least 4 digits before the decimal)
+        amount_match = re.search(r'\b\d{4,}\.\d{2}\b', text)
+        if amount_match:
+            self.transaction_amount = float(amount_match.group())
+
+        # Set generic transaction_type if needed
+        self.transaction_type = "TRSF E-BANKING DB"
+        self.transaction_id = None
+
+        # Extract transaction description (everything after platform code)
+        after_code = text.split(self.platform_code, 1)[-1].strip()
+        self.transaksi = after_code  # override with cleaned-up description
 
     def __repr__(self):
         return f"<BankMutation {self.tanggal} {self.platform_name} {self.transaction_amount}>"

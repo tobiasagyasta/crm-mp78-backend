@@ -1247,6 +1247,103 @@ def upload_cash_report():
         db.session.rollback()
         return jsonify({'msg': str(e)}), 500
 
+@reports_bp.route('/upload/pkb', methods=['POST'])
+def upload_report_pkb():
+    files = request.files.getlist('file')
+    rekening_number = request.form.get('rekening_number')
+
+    if not files:
+        files = [request.files.get('file')]
+    if not files or not files[0]:
+        return jsonify({'msg': 'No files uploaded'}), 400
+    if not rekening_number:
+        return jsonify({'msg': 'Rekening number is required'}), 400
+
+    try:
+        total_mutations = 0
+        skipped_mutations = 0
+
+        for file in files:
+            file_contents = file.read().decode('utf-8')
+            csv_file = StringIO(file_contents)
+            reader = csv.reader(csv_file)
+
+            # Skip header
+            next(reader, None)
+
+            mutations = []
+
+            for row in reader:
+                try:
+                    if len(row) < 2:
+                        continue  # Not enough columns
+
+                    # Parse date from column 0
+                    try:
+                        tanggal = datetime.strptime(row[0].strip(), '%d/%m/%Y').date()
+                    except ValueError:
+                        skipped_mutations += 1
+                        continue
+
+                    transaksi_text = row[1].strip()
+                    if not transaksi_text:
+                        skipped_mutations += 1
+                        continue
+
+                    mutation = BankMutation(
+                        rekening_number=rekening_number,
+                        tanggal=tanggal,
+                        transaksi=transaksi_text,
+                    )
+                    mutation.parse_pkb_transaction()
+
+                    # Only save valid PKB mutations
+                    if mutation.platform_name == "PKB" and mutation.platform_code:
+                        # Deduplication logic (optional, based on tanggal + amount + platform_code)
+                        exists = BankMutation.query.filter_by(
+                            tanggal=mutation.tanggal,
+                            transaction_amount=mutation.transaction_amount,
+                            platform_code=mutation.platform_code,
+                        ).first()
+                        if exists:
+                            skipped_mutations += 1
+                            continue
+
+                        mutations.append(mutation)
+                        total_mutations += 1
+
+                except Exception as e:
+                    print(f"Error parsing row: {e}")
+                    skipped_mutations += 1
+                    continue
+
+            # Save to DB
+            if mutations:
+                try:
+                    db.session.bulk_save_objects(mutations)
+                    db.session.commit()
+                except IntegrityError:
+                    db.session.rollback()
+                    for mutation in mutations:
+                        try:
+                            db.session.add(mutation)
+                            db.session.commit()
+                        except Exception as e:
+                            db.session.rollback()
+                            print(f"Error saving mutation: {e}")
+                            skipped_mutations += 1
+
+        return jsonify({
+            'msg': 'PKB mutations uploaded successfully',
+            'total_records': total_mutations,
+            'skipped_records': skipped_mutations
+        }), 201
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
 @reports_bp.route('/commission-totals', methods=['GET'])
 def get_commission_totals():
     start_date_param = request.args.get('start_date')
