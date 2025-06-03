@@ -315,47 +315,24 @@ def export_reports():
             'Cash Income': cash_fill, 'Cash Expense': cash_fill
         }
 
-        headers = ['Date', 'Gojek Gross', 'Gojek Net', 'Grab Gross', 'Grab Net', 
-                  'Shopee Gross', 'Shopee Net', 'ShopeePay Gross', 'ShopeePay Net',
-                  'Cash Income', 'Cash Expense']
-        
-        dataset.append(headers)
-
-        # Later in the code, update the Excel sheet formatting (around line 190):
-        # Headers
-        headers = ['Date', 'Gojek Gross', 'Gojek Net', 'Grab Gross', 'Grab Net', 
-                  'Shopee Gross', 'Shopee Net', 'ShopeePay Gross', 'ShopeePay Net',
-                  'Cash Income', 'Cash Expense']
-
-        # Remove incorrect row_data reference that uses undefined 'date' variable
-        # Update daily data row (remove this block as it's redundant)
-        # row_data = [
-        #     date,  <- This was causing the error
-        #     totals['Gojek_Gross'],
-        #     ...
-        # ]
-
-        # Update grand total data
-        grand_total_data = [
-            grand_totals['Gojek_Gross'],
-            grand_totals['Gojek_Net'],
-            grand_totals['Grab_Gross'],
-            grand_totals['Grab_Net'],
-            grand_totals['Shopee_Gross'],
-            grand_totals['Shopee_Net'],
-            grand_totals['ShopeePay_Gross'],
-            grand_totals['ShopeePay_Net'],
-            grand_totals['Cash_Income'],
-            grand_totals['Cash_Expense']
+        headers = [
+            'Date',
+            'Gojek Gross', 'Gojek Net', 'Gojek Mutation', 'Gojek Difference',
+            'Grab Gross', 'Grab Net', 'Grab Mutation', 'Grab Difference',
+            'Shopee Gross', 'Shopee Net', 'Shopee Mutation', 'Shopee Difference',
+            'ShopeePay Gross', 'ShopeePay Net',
+            'Cash Income', 'Cash Expense'
         ]
+
+        # Write headers to Excel
         for col, header in enumerate(headers, 1):
             cell = daily_sheet.cell(row=5, column=col)
             cell.value = header
             cell.font = header_font
-            cell.fill = header_colors[header] if header_colors[header] else header_fill
+            cell.fill = header_colors.get(header, header_fill)
             cell.alignment = center_align
 
-        # Add daily data
+        # Write daily data rows to Excel
         current_row = 6
         for date in sorted(daily_totals.keys()):
             totals = daily_totals[date]
@@ -363,12 +340,18 @@ def export_reports():
                 date,
                 totals['Gojek_Gross'],
                 totals['Gojek_Net'],
+                totals['Gojek_Mutation'],
+                totals['Gojek_Difference'],
                 totals['Grab_Gross'],
                 totals['Grab_Net'],
+                totals['Grab_Mutation'],
+                totals['Grab_Difference'],
                 totals['Shopee_Gross'],
                 totals['Shopee_Net'],
-                totals['ShopeePay_Gross'],    # Added ShopeePay Gross
-                totals['ShopeePay_Net'],      # Added ShopeePay Net
+                totals['Shopee_Mutation'],
+                totals['Shopee_Difference'],
+                totals['ShopeePay_Gross'],
+                totals['ShopeePay_Net'],
                 totals['Cash_Income'],
                 totals['Cash_Expense']
             ]
@@ -379,18 +362,24 @@ def export_reports():
                     cell.number_format = '#,##0'
             current_row += 1
 
-        # Add grand totals
+        # Update grand total row to match new headers
         grand_total_row = current_row
         daily_sheet.cell(row=grand_total_row, column=1, value='Grand Total').font = header_font
         grand_total_data = [
             grand_totals['Gojek_Gross'],
             grand_totals['Gojek_Net'],
+            grand_totals['Gojek_Mutation'],
+            grand_totals['Gojek_Difference'],
             grand_totals['Grab_Gross'],
             grand_totals['Grab_Net'],
+            grand_totals['Grab_Mutation'],
+            grand_totals['Grab_Difference'],
             grand_totals['Shopee_Gross'],
             grand_totals['Shopee_Net'],
-            grand_totals['ShopeePay_Gross'],  # Added ShopeePay Gross
-            grand_totals['ShopeePay_Net'],    # Added ShopeePay Net
+            grand_totals['Shopee_Mutation'],
+            grand_totals['Shopee_Difference'],
+            grand_totals['ShopeePay_Gross'],
+            grand_totals['ShopeePay_Net'],
             grand_totals['Cash_Income'],
             grand_totals['Cash_Expense']
         ]
