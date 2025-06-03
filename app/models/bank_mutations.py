@@ -19,53 +19,92 @@ class BankMutation(db.Model):
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+
+
     def parse_transaction(self):
-        """Parse transaction text into components based on known patterns."""
+        """Parse a full CSV transaction row string into structured fields, per column."""
+
         if not self.transaksi:
             return
 
-        text = self.transaksi.strip()
-        tokens = text.split()
+        try:
+            # Split the transaction string into columns
+            fields = [f.strip() for f in self.transaksi.split(',')]
 
-        # General extraction
-        self.transaction_type = ' '.join(tokens[:3]) if len(tokens) >= 3 else None
-        self.transaction_id = tokens[3] if len(tokens) >= 4 else None
-
-        # Extract amount (first float-looking number with at least 4 digits before the decimal)
-        amount_match = re.search(r'\b\d{4,}\.\d{2}\b', text)
-        self.transaction_amount = float(amount_match.group()) if amount_match else None
-
-        # Gojek
-        if "DOMPET ANAK BANGSA" in text.upper():
-            self.platform_name = "Gojek"
-            outlet_match = re.search(r'\bG\d{9}\b', text)
-            self.platform_code = outlet_match.group() if outlet_match else None
-
-        # Grab
-        elif "VISIONET" in text.upper():
-            self.platform_name = "Grab"
-            self.platform_code = None  # Grab has no outlet code
-
-        # Shopee
-        elif "AIRPAY" in text.upper():
+            # Parse 'tanggal' from Column 0 (index 0) — remove apostrophe and any time portion
+            raw_date = fields[0].lstrip("'").split()[0]  # e.g. '27/02/2025 10:00' -> '27/02/2025'
             try:
-                if "MC" in tokens:
-                    mc_index = tokens.index("MC")
-                    self.platform_name = "Shopee"
-                    self.platform_code = tokens[mc_index + 2]
-                elif "SF" in tokens:
-                    sf_index = tokens.index("SF")
+                self.tanggal = datetime.strptime(raw_date, "%d/%m/%Y").date()
+            except ValueError:
+                self.tanggal = None
+
+            # Transaction type is combined from columns 1, 2, 3 (index 1-3)
+            if len(fields) >= 4:
+                self.transaction_type = ' '.join(fields[1:4])
+
+            # Transaction ID from column 4 (index 4)
+            self.transaction_id = fields[4] if len(fields) > 4 else None
+
+            # Detect platform & platform_code and amount accordingly
+            joined_text_upper = ' '.join(fields).upper()
+
+            if "DOMPET ANAK BANGSA" in joined_text_upper:
+                self.platform_name = "Gojek"
+                # Platform code inside column 6 (index 5)
+                platform_code_field = fields[5] if len(fields) > 5 else ''
+                match = re.search(r'G\d{9}', platform_code_field)
+                self.platform_code = match.group() if match else None
+
+                # Amount is in column 12 (index 11)
+                try:
+                    amount_str = fields[11].replace(',', '')
+                    self.transaction_amount = float(amount_str)
+                except (IndexError, ValueError):
+                    self.transaction_amount = None
+
+            elif "VISIONET INTERNASI" in joined_text_upper:
+                self.platform_name = "Grab"
+                self.platform_code = None
+                # Amount in column 12 (index 11)
+                try:
+                    amount_str = fields[11].replace(',', '')
+                    self.transaction_amount = float(amount_str)
+                except (IndexError, ValueError):
+                    self.transaction_amount = None
+
+            elif "AIRPAY INTERNATION" in joined_text_upper:
+                # Shopee/ShopeeFood
+                if len(fields) > 5 and fields[5] == 'SF':
                     self.platform_name = "ShopeeFood"
-                    self.platform_code = tokens[sf_index + 2]
+                elif len(fields) > 5 and fields[5] == 'MC':
+                    self.platform_name = "ShopeePay"
                 else:
                     self.platform_name = "Shopee"
-                    self.platform_code = None
-            except (ValueError, IndexError):
-                self.platform_code = None
+                self.platform_code = fields[6] if len(fields) > 6 else None
 
-        else:
-            self.platform_name = "Unknown"
-            self.platform_code = None
+                # Amount is in column 6 (index 5) but may have trailing letters (SF or MC)
+                amount_str = re.sub(r'[A-Z]+$', '', fields[5]) if len(fields) > 5 else None
+                try:
+                    self.transaction_amount = float(amount_str) if amount_str else None
+                except ValueError:
+                    self.transaction_amount = None
+
+            else:
+                self.platform_name = "Unknown"
+                self.platform_code = None
+                # Try fallback amount from column 12 (index 11)
+                try:
+                    amount_str = fields[11].replace(',', '')
+                    self.transaction_amount = float(amount_str)
+                except (IndexError, ValueError):
+                    self.transaction_amount = None
+
+        except Exception as e:
+            print(f"[Parse Error] {str(e)}")
+
+
+    
+
     def parse_pkb_transaction(self):
         """
         Parse transaction text specifically for PKB platform.

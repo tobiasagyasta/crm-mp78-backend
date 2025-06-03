@@ -9,6 +9,8 @@ from app.models.grabfood_reports import GrabFoodReport
 from app.models.cash_reports import CashReport
 from app.models.manual_entry import ManualEntry
 from app.models.shopeepay_reports import ShopeepayReport
+from app.models.bank_mutations import BankMutation
+from app.utils.transaction_matcher import TransactionMatcher
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill
 from openpyxl.utils import get_column_letter
@@ -52,7 +54,10 @@ def export_reports():
                 'Grab_Gross': 0, 'Grab_Net': 0,
                 'ShopeePay_Gross': 0, 'ShopeePay_Net': 0,
                 'Shopee_Gross': 0, 'Shopee_Net': 0,
-                'Cash_Income': 0, 'Cash_Expense': 0
+                'Cash_Income': 0, 'Cash_Expense': 0,
+                'Gojek_Mutation': None, 'Gojek_Difference': 0,
+                'Grab_Mutation': None, 'Grab_Difference': 0,
+                'Shopee_Mutation': None, 'Shopee_Difference': 0
             }
         
         # Add title rows
@@ -61,10 +66,11 @@ def export_reports():
         dataset.append(['Period:', f'{start_date.strftime("%Y-%m-%d")} to {end_date.strftime("%Y-%m-%d")}', '', '', '', '', '', '', ''])
         dataset.append(['Outlet:', outlet.outlet_name_gojek, '', '', '', '', '', '', ''])
         dataset.append([]) # Empty row for spacing
-        # Update the initial headers to include ShopeePay
-        dataset.append(['Date', 'Gojek Gross', 'Gojek Net', 'Grab Gross', 'Grab Net', 
-                       'Shopee Gross', 'Shopee Net', 'ShopeePay Gross', 'ShopeePay Net',
-                       'Cash Income', 'Cash Expense'])
+        # Update the initial headers to include ShopeePay and mutation data
+        dataset.append(['Date', 'Gojek Gross', 'Gojek Net', 'Gojek Mutation', 'Gojek Difference',
+                       'Grab Gross', 'Grab Net', 'Grab Mutation', 'Grab Difference',
+                       'Shopee Gross', 'Shopee Net', 'Shopee Mutation', 'Shopee Difference',
+                       'ShopeePay Gross', 'ShopeePay Net', 'Cash Income', 'Cash Expense'])
 
         # Query reports with inclusive end date
         end_date_inclusive = datetime(end_date.year, end_date.month, end_date.day, 23, 59, 59)
@@ -165,46 +171,107 @@ def export_reports():
                 daily_totals[date] = init_daily_total()
             daily_totals[date]['Cash_Expense'] += float(report.total or 0)
 
+        # Add mutation matching logic for each platform
+        platforms = ['gojek', 'grab', 'shopee']
+        
+        for platform in platforms:
+            try:
+                # Initialize matcher for current platform
+                matcher = TransactionMatcher(platform)
+                
+                # Get mutations for the date range
+                mutations = matcher.get_mutations_query(start_date.date(), end_date.date()).all()
+                
+                # Process each date in daily_totals
+                for date, totals in daily_totals.items():
+                    # Skip if no data for this platform on this date
+                    platform_net_key = f'{platform.capitalize()}_Net'
+                    if platform_net_key not in totals or totals[platform_net_key] == 0:
+                        continue
+                    
+                    # Create a mock daily total object for matching
+                    class MockDailyTotal:
+                        def __init__(self, outlet_id, date, total_net):
+                            self.outlet_id = outlet_id
+                            self.date = date
+                            self.total_net = total_net
+                    
+                    mock_total = MockDailyTotal(outlet_code, date, totals[platform_net_key])
+                    
+                    # Try to match with mutations
+                    platform_data, mutation_data = matcher.match_transactions(mock_total, mutations)
+                    
+                    if mutation_data:
+                        mutation_amount = mutation_data.get('transaction_amount', 0)
+                        totals[f'{platform.capitalize()}_Mutation'] = mutation_amount
+                        totals[f'{platform.capitalize()}_Difference'] = totals[platform_net_key] - mutation_amount
+                    else:
+                        totals[f'{platform.capitalize()}_Mutation'] = None
+                        totals[f'{platform.capitalize()}_Difference'] = totals[platform_net_key]
+                        
+            except Exception as e:
+                # If matching fails for any platform, continue with others
+                print(f"Warning: Mutation matching failed for {platform}: {str(e)}")
+                continue
+
         # Add aggregated data to dataset, sorted by date
-        # Update the data output to include ShopeePay
+        # Update the data output to include ShopeePay and mutation data
         for date in sorted(daily_totals.keys()):
             totals = daily_totals[date]
             dataset.append([
                 date,
                 totals['Gojek_Gross'],
                 totals['Gojek_Net'],
+                totals['Gojek_Mutation'],
+                totals['Gojek_Difference'],
                 totals['Grab_Gross'],
                 totals['Grab_Net'],
+                totals['Grab_Mutation'],
+                totals['Grab_Difference'],
                 totals['Shopee_Gross'],
                 totals['Shopee_Net'],
+                totals['Shopee_Mutation'],
+                totals['Shopee_Difference'],
                 totals['ShopeePay_Gross'],
                 totals['ShopeePay_Net'],
                 totals['Cash_Income'],
                 totals['Cash_Expense']
             ])
 
-        # Update grand totals to include ShopeePay
+        # Update grand totals to include ShopeePay and mutation data
         grand_totals = {
             'Gojek_Gross': sum(day['Gojek_Gross'] for day in daily_totals.values()),
             'Gojek_Net': sum(day['Gojek_Net'] for day in daily_totals.values()),
+            'Gojek_Mutation': sum(day['Gojek_Mutation'] for day in daily_totals.values() if day['Gojek_Mutation'] is not None),
+            'Gojek_Difference': sum(day['Gojek_Difference'] for day in daily_totals.values() if day['Gojek_Difference'] is not None),
             'Grab_Gross': sum(day['Grab_Gross'] for day in daily_totals.values()),
             'Grab_Net': sum(day['Grab_Net'] for day in daily_totals.values()),
+            'Grab_Mutation': sum(day['Grab_Mutation'] for day in daily_totals.values() if day['Grab_Mutation'] is not None),
+            'Grab_Difference': sum(day['Grab_Difference'] for day in daily_totals.values() if day['Grab_Difference'] is not None),
             'Shopee_Gross': sum(day['Shopee_Gross'] for day in daily_totals.values()),
             'Shopee_Net': sum(day['Shopee_Net'] for day in daily_totals.values()),
+            'Shopee_Mutation': sum(day['Shopee_Mutation'] for day in daily_totals.values() if day['Shopee_Mutation'] is not None),
+            'Shopee_Difference': sum(day['Shopee_Difference'] for day in daily_totals.values() if day['Shopee_Difference'] is not None),
             'ShopeePay_Gross': sum(day['ShopeePay_Gross'] for day in daily_totals.values()),
             'ShopeePay_Net': sum(day['ShopeePay_Net'] for day in daily_totals.values()),
             'Cash_Income': sum(day['Cash_Income'] for day in daily_totals.values()),
             'Cash_Expense': sum(day['Cash_Expense'] for day in daily_totals.values())
         }
 
-        # Update grand total row to include ShopeePay
+        # Update grand total row to include ShopeePay and mutation data
         dataset.append(['Grand Total', 
                        grand_totals['Gojek_Gross'],
                        grand_totals['Gojek_Net'],
+                       grand_totals['Gojek_Mutation'],
+                       grand_totals['Gojek_Difference'],
                        grand_totals['Grab_Gross'],
                        grand_totals['Grab_Net'],
+                       grand_totals['Grab_Mutation'],
+                       grand_totals['Grab_Difference'],
                        grand_totals['Shopee_Gross'],
                        grand_totals['Shopee_Net'],
+                       grand_totals['Shopee_Mutation'],
+                       grand_totals['Shopee_Difference'],
                        grand_totals['ShopeePay_Gross'],
                        grand_totals['ShopeePay_Net'],
                        grand_totals['Cash_Income'],

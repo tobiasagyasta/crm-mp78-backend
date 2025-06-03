@@ -213,86 +213,51 @@ def upload_report_mutation():
             csv_file = StringIO(file_contents)
             reader = csv.reader(csv_file)
 
-            # Skip the first row (header)
+            # Skip header
             next(reader)
 
-            mutations = []
             for row in reader:
                 try:
                     if len(row) < 2:
-                        continue  # Not enough columns
+                        continue  # Incomplete row
 
-                    # Normalize date (Column A in your CSV)
-                    date_str = row[0].strip()
-                    if not date_str or date_str.upper() == 'PEND':
-                        tanggal = None  # Set to None if date is empty or 'PEND'
-                    else:
-                        try:
-                            parts = date_str.split('/')
-                            if len(parts) == 3:
-                                day = parts[0].zfill(2)
-                                date_str = f"{day}-{parts[1]}-{parts[2]}"
-                            tanggal = datetime.strptime(date_str, "%d-%m-%Y").date()
-                        except ValueError:
-                            tanggal = None  # Set to None if date parsing fails
-
-                    transaksi_text = row[1].strip()
-                    transaction_type = row[2].strip()
-                    transaction_id = row[4].strip()
+                    transaksi_text = ','.join(row).strip()
                     if not transaksi_text:
-                        continue  # Skip rows without a transaction
+                        continue
 
-                    # Detect the platform and parse the row accordingly
-                    platform_name = None
-                    platform_code = None
-                    if "VISIONET INTERNASI" in row[9]:  # Grab
-                        platform_name = "Grab"  # Set platform name to Grab
-                        platform_code = None  # No platform code for Grab
-                    elif "AIRPAY INTERNATION" in row[9]:  # Shopee
-                        if row[5].strip() == "SF":
-                            platform_name = "Shopee"
-                        elif row[5].strip() == "MC":
-                            platform_name = "ShopeePay"
-                        platform_code = row[6].strip()  # Take platform code as is from column G
-                    elif "DOMPET ANAK BANGSA" in row[8]:  # Gojek
-                        platform_name = "Gojek"
-                        platform_code = row[6].strip()  # Take platform code as is from column G
-                    transaction_amount = float(row[11].replace(',', ''))
-                    # Create mutation object
+                    # Create and parse mutation
                     mutation = BankMutation(
                         rekening_number=rekening_number,
-                        tanggal=tanggal,
-                        transaksi=transaksi_text,
-                        transaction_type=transaction_type,
-                        platform_name=platform_name,
-                        platform_code=platform_code,
-                        transaction_amount=transaction_amount,
-                        transaction_id=transaction_id,
+                        transaksi=transaksi_text
                     )
-                    # mutation.parse_transaction()  # Call your method to parse transaction if needed
-                    mutations.append(mutation)
+                    mutation.parse_transaction()
+
+                    # Ensure required fields exist
+                    if not mutation.transaction_amount or not mutation.tanggal or not mutation.transaction_id:
+                        skipped_mutations += 1
+                        continue
+
+                    # Check for duplicates in DB
+                    duplicate = BankMutation.query.filter_by(
+                        rekening_number=mutation.rekening_number,
+                        transaction_id=mutation.transaction_id,
+                        transaction_amount=mutation.transaction_amount,
+                        tanggal=mutation.tanggal
+                    ).first()
+
+                    if duplicate:
+                        skipped_mutations += 1
+                        continue  # Skip duplicates
+
+                    db.session.add(mutation)
+                    db.session.commit()
                     total_mutations += 1
 
                 except Exception as e:
-                    print(f"Error parsing row: {e}")
+                    db.session.rollback()
+                    print(f"Error parsing or saving row: {e}")
                     skipped_mutations += 1
                     continue
-
-            # Save to DB
-            if mutations:
-                try:
-                    db.session.bulk_save_objects(mutations)
-                    db.session.commit()
-                except IntegrityError:
-                    db.session.rollback()
-                    for mutation in mutations:
-                        try:
-                            db.session.add(mutation)
-                            db.session.commit()
-                        except Exception as e:
-                            db.session.rollback()
-                            print(f"Error saving mutation: {str(e)}")
-                            skipped_mutations += 1
 
         return jsonify({
             'msg': 'Bank mutations uploaded successfully',
@@ -303,6 +268,7 @@ def upload_report_mutation():
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
+
 
 @reports_bp.route('/upload/gojek', methods=['POST'])
 def upload_report_gojek():
