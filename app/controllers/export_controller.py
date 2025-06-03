@@ -67,10 +67,13 @@ def export_reports():
         dataset.append(['Outlet:', outlet.outlet_name_gojek, '', '', '', '', '', '', ''])
         dataset.append([]) # Empty row for spacing
         # Update the initial headers to include ShopeePay and mutation data
-        dataset.append(['Date', 'Gojek Gross', 'Gojek Net', 'Gojek Mutation', 'Gojek Difference',
-                       'Grab Gross', 'Grab Net', 'Grab Mutation', 'Grab Difference',
-                       'Shopee Gross', 'Shopee Net', 'Shopee Mutation', 'Shopee Difference',
-                       'ShopeePay Gross', 'ShopeePay Net', 'Cash Income', 'Cash Expense'])
+        dataset.append([
+            'Date',
+            'Gojek Net', 'Gojek Mutation', 'Gojek Difference',
+            'Grab Net', 'Grab Mutation', 'Grab Difference',
+            'Shopee Net', 'Shopee Mutation', 'Shopee Difference',
+            'ShopeePay Net', 'Cash Income', 'Cash Expense'
+        ])
 
         # Query reports with inclusive end date
         end_date_inclusive = datetime(end_date.year, end_date.month, end_date.day, 23, 59, 59)
@@ -188,26 +191,37 @@ def export_reports():
                     platform_net_key = f'{platform.capitalize()}_Net'
                     if platform_net_key not in totals or totals[platform_net_key] == 0:
                         continue
+                    print(f"Matching {platform} for date {date} with net {totals[platform_net_key]}")
                     
-                    # Create a mock daily total object for matching
                     class MockDailyTotal:
                         def __init__(self, outlet_id, date, total_net):
                             self.outlet_id = outlet_id
                             self.date = date
                             self.total_net = total_net
-                    
+
                     mock_total = MockDailyTotal(outlet_code, date, totals[platform_net_key])
                     
+                    # Add debug for Shopee
+                    if platform == "shopee":
+                        outlet = Outlet.query.filter_by(outlet_code=mock_total.outlet_id).first()
+                        store_id_shopee = getattr(outlet, "store_id_shopee", None) if outlet else None
+                        print(f"[DEBUG] Shopee matching: outlet_code={mock_total.outlet_id}, store_id_shopee={store_id_shopee}")
+                        for m in mutations:
+                            print(f"[DEBUG] Mutation: platform_code={getattr(m, 'platform_code', None)}, tanggal={getattr(m, 'tanggal', None)}")
+                            if store_id_shopee and m.platform_code:
+                                match_result = matcher._match_shopee(store_id_shopee, m.platform_code)
+                                print(f"[DEBUG] _match_shopee({store_id_shopee}, {m.platform_code}) = {match_result}")
+
                     # Try to match with mutations
                     platform_data, mutation_data = matcher.match_transactions(mock_total, mutations)
                     
                     if mutation_data:
                         mutation_amount = mutation_data.get('transaction_amount', 0)
                         totals[f'{platform.capitalize()}_Mutation'] = mutation_amount
-                        totals[f'{platform.capitalize()}_Difference'] = totals[platform_net_key] - mutation_amount
+                        totals[f'{platform.capitalize()}_Difference'] = mutation_amount - totals[platform_net_key]
                     else:
                         totals[f'{platform.capitalize()}_Mutation'] = None
-                        totals[f'{platform.capitalize()}_Difference'] = totals[platform_net_key]
+                        totals[f'{platform.capitalize()}_Difference'] = None
                         
             except Exception as e:
                 # If matching fails for any platform, continue with others
@@ -220,19 +234,15 @@ def export_reports():
             totals = daily_totals[date]
             dataset.append([
                 date,
-                totals['Gojek_Gross'],
                 totals['Gojek_Net'],
                 totals['Gojek_Mutation'],
                 totals['Gojek_Difference'],
-                totals['Grab_Gross'],
                 totals['Grab_Net'],
                 totals['Grab_Mutation'],
                 totals['Grab_Difference'],
-                totals['Shopee_Gross'],
                 totals['Shopee_Net'],
                 totals['Shopee_Mutation'],
                 totals['Shopee_Difference'],
-                totals['ShopeePay_Gross'],
                 totals['ShopeePay_Net'],
                 totals['Cash_Income'],
                 totals['Cash_Expense']
@@ -259,23 +269,21 @@ def export_reports():
         }
 
         # Update grand total row to include ShopeePay and mutation data
-        dataset.append(['Grand Total', 
-                       grand_totals['Gojek_Gross'],
-                       grand_totals['Gojek_Net'],
-                       grand_totals['Gojek_Mutation'],
-                       grand_totals['Gojek_Difference'],
-                       grand_totals['Grab_Gross'],
-                       grand_totals['Grab_Net'],
-                       grand_totals['Grab_Mutation'],
-                       grand_totals['Grab_Difference'],
-                       grand_totals['Shopee_Gross'],
-                       grand_totals['Shopee_Net'],
-                       grand_totals['Shopee_Mutation'],
-                       grand_totals['Shopee_Difference'],
-                       grand_totals['ShopeePay_Gross'],
-                       grand_totals['ShopeePay_Net'],
-                       grand_totals['Cash_Income'],
-                       grand_totals['Cash_Expense']])
+        dataset.append([
+            'Grand Total',
+            grand_totals['Gojek_Net'],
+            grand_totals['Gojek_Mutation'],
+            grand_totals['Gojek_Difference'],
+            grand_totals['Grab_Net'],
+            grand_totals['Grab_Mutation'],
+            grand_totals['Grab_Difference'],
+            grand_totals['Shopee_Net'],
+            grand_totals['Shopee_Mutation'],
+            grand_totals['Shopee_Difference'],
+            grand_totals['ShopeePay_Net'],
+            grand_totals['Cash_Income'],
+            grand_totals['Cash_Expense']
+        ])
 
         # Create a new workbook and select the active sheet
         wb = Workbook()
@@ -305,23 +313,29 @@ def export_reports():
         commision_fill = PatternFill(start_color='C6CCB2', end_color='C6CCB2', fill_type='solid') # Light pink
         shopeepay_fill = PatternFill(start_color='E31F26', end_color='E31F26', fill_type='solid')  # Shopee red
 
+        # New: Colors for mutation and difference columns
+        mutation_fill = PatternFill(start_color='FFF2CC', end_color='FFF2CC', fill_type='solid')   # Light yellow
+        difference_fill = PatternFill(start_color='F4CCCC', end_color='F4CCCC', fill_type='solid') # Light red
+
         # Headers with their corresponding colors
         header_colors = {
             'Date': date_fill,
-            'Gojek Gross': gojek_fill, 'Gojek Net': gojek_fill,
-            'Grab Gross': grab_fill, 'Grab Net': grab_fill,
-            'Shopee Gross': shopee_fill, 'Shopee Net': shopee_fill,
-            'ShopeePay Gross': shopeepay_fill, 'ShopeePay Net': shopeepay_fill,
+            'Gojek Net': gojek_fill,
+            'Gojek Mutation': gojek_fill, 'Gojek Difference': difference_fill,
+            'Grab Net': grab_fill,
+            'Grab Mutation': grab_fill, 'Grab Difference': difference_fill,
+            'Shopee Net': shopee_fill,
+            'Shopee Mutation': shopee_fill, 'Shopee Difference': difference_fill,
+            'ShopeePay Net': shopeepay_fill,
             'Cash Income': cash_fill, 'Cash Expense': cash_fill
         }
 
         headers = [
             'Date',
-            'Gojek Gross', 'Gojek Net', 'Gojek Mutation', 'Gojek Difference',
-            'Grab Gross', 'Grab Net', 'Grab Mutation', 'Grab Difference',
-            'Shopee Gross', 'Shopee Net', 'Shopee Mutation', 'Shopee Difference',
-            'ShopeePay Gross', 'ShopeePay Net',
-            'Cash Income', 'Cash Expense'
+            'Gojek Net', 'Gojek Mutation', 'Gojek Difference',
+            'Grab Net', 'Grab Mutation', 'Grab Difference',
+            'Shopee Net', 'Shopee Mutation', 'Shopee Difference',
+            'ShopeePay Net', 'Cash Income', 'Cash Expense'
         ]
 
         # Write headers to Excel
@@ -338,19 +352,15 @@ def export_reports():
             totals = daily_totals[date]
             row_data = [
                 date,
-                totals['Gojek_Gross'],
                 totals['Gojek_Net'],
                 totals['Gojek_Mutation'],
                 totals['Gojek_Difference'],
-                totals['Grab_Gross'],
                 totals['Grab_Net'],
                 totals['Grab_Mutation'],
                 totals['Grab_Difference'],
-                totals['Shopee_Gross'],
                 totals['Shopee_Net'],
                 totals['Shopee_Mutation'],
                 totals['Shopee_Difference'],
-                totals['ShopeePay_Gross'],
                 totals['ShopeePay_Net'],
                 totals['Cash_Income'],
                 totals['Cash_Expense']
@@ -366,19 +376,15 @@ def export_reports():
         grand_total_row = current_row
         daily_sheet.cell(row=grand_total_row, column=1, value='Grand Total').font = header_font
         grand_total_data = [
-            grand_totals['Gojek_Gross'],
             grand_totals['Gojek_Net'],
             grand_totals['Gojek_Mutation'],
             grand_totals['Gojek_Difference'],
-            grand_totals['Grab_Gross'],
             grand_totals['Grab_Net'],
             grand_totals['Grab_Mutation'],
             grand_totals['Grab_Difference'],
-            grand_totals['Shopee_Gross'],
             grand_totals['Shopee_Net'],
             grand_totals['Shopee_Mutation'],
             grand_totals['Shopee_Difference'],
-            grand_totals['ShopeePay_Gross'],
             grand_totals['ShopeePay_Net'],
             grand_totals['Cash_Income'],
             grand_totals['Cash_Expense']
