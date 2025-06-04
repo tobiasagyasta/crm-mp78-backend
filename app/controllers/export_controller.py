@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify, send_file
 from flask_cors import cross_origin
-from datetime import datetime
+from datetime import datetime, timedelta
 from io import BytesIO
 from app.models.outlet import Outlet
 from app.models.gojek_reports import GojekReport
@@ -57,7 +57,8 @@ def export_reports():
                 'Cash_Income': 0, 'Cash_Expense': 0,
                 'Gojek_Mutation': None, 'Gojek_Difference': 0,
                 'Grab_Mutation': None, 'Grab_Difference': 0,
-                'Shopee_Mutation': None, 'Shopee_Difference': 0
+                'Shopee_Mutation': None, 'Shopee_Difference': 0,
+                'ShopeePay_Mutation': None, 'ShopeePay_Difference': 0
             }
         
         # Add title rows
@@ -72,7 +73,7 @@ def export_reports():
             'Gojek Net', 'Gojek Mutation', 'Gojek Difference',
             'Grab Net', 'Grab Mutation', 'Grab Difference',
             'Shopee Net', 'Shopee Mutation', 'Shopee Difference',
-            'ShopeePay Net', 'Cash Income', 'Cash Expense'
+            'ShopeePay Net','ShopeePay Mutation', 'ShopeePay Difference','Cash Income', 'Cash Expense'
         ])
 
         # Query reports with inclusive end date
@@ -175,47 +176,61 @@ def export_reports():
             daily_totals[date]['Cash_Expense'] += float(report.total or 0)
 
         # Add mutation matching logic for each platform
-        platforms = ['gojek', 'grab', 'shopee']
+        platforms = ['gojek', 'grab', 'shopee','shopeepay']
         
         for platform in platforms:
             try:
-                # Initialize matcher for current platform
                 matcher = TransactionMatcher(platform)
-                
-                # For Grab, mutations are not mapped to outlet_code, so we match only by date and amount.
-                # This is handled by the TransactionMatcher.match_transactions logic for Grab.
                 mutations = matcher.get_mutations_query(start_date.date(), end_date.date()).all()
-                
-                # Process each date in daily_totals
+            
+                if platform == "shopee":
+                    for m in mutations[:5]:
+                        print(f"  {m.tanggal} | {m.platform_code} | {m.transaction_amount} | {m.platform_name}")
+                if platform == "shopeepay":
+                    for m in mutations[:5]:
+                        print(f"  {m.tanggal} | {m.platform_code} | {m.transaction_amount} | {m.platform_name}")
                 for date, totals in daily_totals.items():
-                    # Skip if no data for this platform on this date
                     platform_net_key = f'{platform.capitalize()}_Net'
                     if platform_net_key not in totals or totals[platform_net_key] == 0:
                         continue
-                    print(f"Matching {platform} for date {date} with net {totals[platform_net_key]}")
-                    
+
                     class MockDailyTotal:
                         def __init__(self, outlet_id, date, total_net):
                             self.outlet_id = outlet_id
                             self.date = date
                             self.total_net = total_net
 
-                    mock_total = MockDailyTotal(outlet_code, date, totals[platform_net_key])
-                    
-                    # Add debug for Shopee
-                    if platform == "shopee":
+                    # Use date offset for matching (crucial for ShopeePay/Shopee)
+                    date_offset = timedelta(days=matcher.config['days_offset'])
+                    match_date = date + date_offset
+                    mock_total = MockDailyTotal(outlet_code, match_date, totals[platform_net_key])
+
+                    # Shopee and ShopeePay: match by store_id_shopee and platform_code
+                    if platform in ["shopee", "shopeepay"]:
                         outlet = Outlet.query.filter_by(outlet_code=mock_total.outlet_id).first()
                         store_id_shopee = getattr(outlet, "store_id_shopee", None) if outlet else None
-                        print(f"[DEBUG] Shopee matching: outlet_code={mock_total.outlet_id}, store_id_shopee={store_id_shopee}")
+                        matched_mutation = None
                         for m in mutations:
-                            print(f"[DEBUG] Mutation: platform_code={getattr(m, 'platform_code', None)}, tanggal={getattr(m, 'tanggal', None)}")
                             if store_id_shopee and m.platform_code:
-                                match_result = matcher._match_shopee(store_id_shopee, m.platform_code)
-                                print(f"[DEBUG] _match_shopee({store_id_shopee}, {m.platform_code}) = {match_result}")
+                                if platform == "shopee":
+                                    match_result = matcher._match_shopee(store_id_shopee, m.platform_code)
+                                else:
+                                    match_result = matcher._match_shopeepay(store_id_shopee, m.platform_code)
+                                # Only assign if both match_result and date match!
+                                if match_result and m.tanggal == match_date:
+                                    matched_mutation = m
+                                    break
+                        if matched_mutation:
+                            mutation_amount = float(matched_mutation.transaction_amount or 0)
+                            totals[f'{platform.capitalize()}_Mutation'] = mutation_amount
+                            totals[f'{platform.capitalize()}_Difference'] = mutation_amount - totals[platform_net_key]
+                        else:
+                            totals[f'{platform.capitalize()}_Mutation'] = None
+                            totals[f'{platform.capitalize()}_Difference'] = None
+                        continue  # Skip default matching for these platforms
 
-                    # Try to match with mutations
+                    # Default matching for gojek/grab
                     platform_data, mutation_data = matcher.match_transactions(mock_total, mutations)
-                    
                     if mutation_data:
                         mutation_amount = mutation_data.get('transaction_amount', 0)
                         totals[f'{platform.capitalize()}_Mutation'] = mutation_amount
@@ -223,9 +238,8 @@ def export_reports():
                     else:
                         totals[f'{platform.capitalize()}_Mutation'] = None
                         totals[f'{platform.capitalize()}_Difference'] = None
-                        
+
             except Exception as e:
-                # If matching fails for any platform, continue with others
                 print(f"Warning: Mutation matching failed for {platform}: {str(e)}")
                 continue
 
@@ -245,6 +259,8 @@ def export_reports():
                 totals['Shopee_Mutation'],
                 totals['Shopee_Difference'],
                 totals['ShopeePay_Net'],
+                totals['ShopeePay_Mutation'],
+                totals['ShopeePay_Difference'],
                 totals['Cash_Income'],
                 totals['Cash_Expense']
             ])
@@ -265,6 +281,8 @@ def export_reports():
             'Shopee_Difference': sum(day['Shopee_Difference'] for day in daily_totals.values() if day['Shopee_Difference'] is not None),
             'ShopeePay_Gross': sum(day['ShopeePay_Gross'] for day in daily_totals.values()),
             'ShopeePay_Net': sum(day['ShopeePay_Net'] for day in daily_totals.values()),
+            'ShopeePay_Mutation': sum(day['ShopeePay_Mutation'] for day in daily_totals.values() if day['ShopeePay_Mutation'] is not None),
+            'ShopeePay_Difference': sum(day['ShopeePay_Difference'] for day in daily_totals.values() if day['ShopeePay_Difference'] is not None),
             'Cash_Income': sum(day['Cash_Income'] for day in daily_totals.values()),
             'Cash_Expense': sum(day['Cash_Expense'] for day in daily_totals.values())
         }
@@ -282,6 +300,8 @@ def export_reports():
             grand_totals['Shopee_Mutation'],
             grand_totals['Shopee_Difference'],
             grand_totals['ShopeePay_Net'],
+            grand_totals['ShopeePay_Mutation'],
+            grand_totals['ShopeePay_Difference'],
             grand_totals['Cash_Income'],
             grand_totals['Cash_Expense']
         ])
@@ -328,6 +348,7 @@ def export_reports():
             'Shopee Net': shopee_fill,
             'Shopee Mutation': shopee_fill, 'Shopee Difference': difference_fill,
             'ShopeePay Net': shopeepay_fill,
+            'ShopeePay Mutation': shopeepay_fill, 'ShopeePay Difference': difference_fill,
             'Cash Income': cash_fill, 'Cash Expense': cash_fill
         }
 
@@ -336,7 +357,7 @@ def export_reports():
             'Gojek Net', 'Gojek Mutation', 'Gojek Difference',
             'Grab Net', 'Grab Mutation', 'Grab Difference',
             'Shopee Net', 'Shopee Mutation', 'Shopee Difference',
-            'ShopeePay Net', 'Cash Income', 'Cash Expense'
+            'ShopeePay Net','ShopeePay Mutation', 'ShopeePay Difference', 'Cash Income', 'Cash Expense'
         ]
 
         # Write headers to Excel
@@ -363,6 +384,8 @@ def export_reports():
                 totals['Shopee_Mutation'],
                 totals['Shopee_Difference'],
                 totals['ShopeePay_Net'],
+                totals['ShopeePay_Mutation'],
+                totals['ShopeePay_Difference'],
                 totals['Cash_Income'],
                 totals['Cash_Expense']
             ]
@@ -401,6 +424,8 @@ def export_reports():
             grand_totals['Shopee_Mutation'],
             grand_totals['Shopee_Difference'],
             grand_totals['ShopeePay_Net'],
+            grand_totals['ShopeePay_Mutation'],
+            grand_totals['ShopeePay_Difference'],
             grand_totals['Cash_Income'],
             grand_totals['Cash_Expense']
         ]

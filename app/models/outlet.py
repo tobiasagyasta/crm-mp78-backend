@@ -20,6 +20,7 @@ class Outlet(db.Model):
     store_id_gojek = db.Column(db.String(50), nullable=True, unique=True)
     store_id_grab = db.Column(db.String(50), nullable=True, unique=True)
     store_id_shopee = db.Column(db.String(50), nullable=True, unique=True)
+    pkb_code = db.Column(db.String(10), nullable=True, unique=True)
     
     # Partner Information
     partner_name = db.Column(db.String(255), nullable=True)

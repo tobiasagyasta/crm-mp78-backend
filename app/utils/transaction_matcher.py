@@ -29,6 +29,13 @@ class TransactionMatcher:
                 'outlet_name_field': 'outlet_name_gojek',  # Assuming using gojek name for now
                 'days_offset': 1,
                 'match_function': self._match_shopee
+            },
+               'shopeepay': {
+                'platform_name': 'ShopeePay',  # Change from 'Shopee' to 'ShopeePay'
+                'store_id_field': 'store_id_shopee',
+                'outlet_name_field': 'outlet_name_gojek',
+                'days_offset': 1,
+                'match_function': self._match_shopeepay
             }
         }
         self.config = self.platform_configs.get(self.platform)
@@ -44,6 +51,12 @@ class TransactionMatcher:
         if not store_id or not platform_code or len(store_id) < 5:
             return False
         return platform_code[-5:] in store_id
+    def _match_shopeepay(self, store_id: str, platform_code: str) -> bool:
+        """ShopeePay matches last 5 digits of store_id_shopee with platform_code"""
+        if not store_id or not platform_code or len(store_id) < 5:
+            return False
+        return platform_code[-5:] in store_id
+    
     def _match_grab(self, transaction_amount: float, daily_total_amount: float, tolerance: float = 50000.0) -> bool:
         """Grab matches only by transaction amount within a tolerance"""
         return abs(transaction_amount - daily_total_amount) <= tolerance
@@ -64,7 +77,7 @@ class TransactionMatcher:
         if platform_code:
             # For platform code filtering, we need to handle each platform differently
             outlets = db.session.query(Outlet)
-            if self.platform == 'shopee':
+            if self.platform == 'shopee' or self.platform == 'shopeepay':
                 # For Shopee, match the last 5 digits
                 outlets = outlets.filter(
                     db.func.right(getattr(Outlet, self.config['store_id_field']), 5) == 
@@ -83,15 +96,8 @@ class TransactionMatcher:
         return query
 
     def get_mutations_query(self, start_date: str, end_date: str) -> db.Query:
-        """Get mutations query with platform-specific date offset"""
         date_offset = timedelta(days=self.config['days_offset'])
-        return db.session.query(
-            BankMutation.transaction_id,
-            BankMutation.transaction_amount,
-            BankMutation.rekening_number,
-            BankMutation.tanggal,
-            BankMutation.platform_code
-        ).filter(
+        return db.session.query(BankMutation).filter(
             BankMutation.platform_name == self.config['platform_name'],
             BankMutation.tanggal >= start_date + date_offset,
             BankMutation.tanggal <= end_date + date_offset

@@ -6,6 +6,7 @@ from app.models.grabfood_reports import GrabFoodReport
 from app.models.shopeepay_reports import ShopeepayReport
 from app.models.gojek_reports import GojekReport
 from app.models.daily_merchant_totals import DailyMerchantTotal
+from app.models.manual_entry import ManualEntry
 from app.models.outlet import Outlet
 from datetime import datetime, timedelta
 from sqlalchemy import func, cast, Date, distinct
@@ -378,77 +379,68 @@ def match_shopeepay_transactions():
         end_date = datetime.strptime(request.args.get('end_date'), '%Y-%m-%d').date()
         page = request.args.get('page', 1, type=int)
         per_page = request.args.get('per_page', 10, type=int)
+        platform_code_filter = request.args.get('platform_code')
 
-        # Get aggregated ShopeePay reports
-        shopeepay_aggregated = db.session.query(
-            ShopeepayReport.entity_id,
-            ShopeepayReport.merchant_store_name,
-            cast(ShopeepayReport.created_at, Date).label('order_date'),
-            func.sum(ShopeepayReport.settlement_amount).label('total_amount')
-        ).filter(
-            ShopeepayReport.created_at >= start_date,
-            ShopeepayReport.created_at <= end_date
-        ).group_by(
-            ShopeepayReport.entity_id,
-            ShopeepayReport.merchant_store_name,
-            cast(ShopeepayReport.created_at, Date)
-        ).order_by(
-            cast(ShopeepayReport.created_at, Date),
-            ShopeepayReport.entity_id
-        )
-
-        # Calculate total pages
-        total_records = shopeepay_aggregated.count()
-        total_pages = (total_records + per_page - 1) // per_page
+        matcher = TransactionMatcher('shopeepay')
         
-        # Apply pagination
-        shopeepay_aggregated = shopeepay_aggregated.offset((page - 1) * per_page).limit(per_page).all()
+        # Get daily totals with pagination
+        daily_totals_query = matcher.get_daily_totals_query(start_date, end_date, platform_code_filter)
+        total_records = daily_totals_query.count()
+        total_pages = (total_records + per_page - 1) // per_page
 
-        # Get mutations with specific fields
-        mutations = db.session.query(
-            BankMutation.transaction_id,
-            BankMutation.transaction_amount,
-            BankMutation.rekening_number,
-            BankMutation.tanggal
-        ).filter(
-            BankMutation.platform_name == 'Shopee',
-            BankMutation.tanggal >= start_date + timedelta(days=1),
-            BankMutation.tanggal <= end_date + timedelta(days=1)
-        ).all()
+        daily_totals = daily_totals_query.order_by(DailyMerchantTotal.date)\
+                                       .offset((page - 1) * per_page)\
+                                       .limit(per_page)\
+                                       .all()
+
+        # Get mutations
+        mutations = matcher.get_mutations_query(start_date, end_date).all()
 
         matches = []
         unmatched_merchants = []
-        for agg in shopeepay_aggregated:
-            platform_data = {
-                'entity_id': agg.entity_id,
-                'store_name': agg.merchant_store_name,
-                'transaction_date': agg.order_date,
-                'total_amount': float(agg.total_amount)
-            }
+        matched_mutations = set()
+
+        # Process each daily total
+        for total in daily_totals:
+            platform_data, mutation_data = matcher.match_transactions(total, mutations)
             
-            match = create_standardized_match(platform_data, 'ShopeePay')
+            if platform_data:
+                if mutation_data:
+                    match = create_standardized_match(platform_data, 'ShopeePay')
+                    match['mutation_match'] = mutation_data
+                    matches.append(match)
+                    matched_mutations.add((mutation_data['platform_code'], mutation_data['transaction_date']))
+                else:
+                    unmatched_merchants.append(create_standardized_unmatched(platform_data, 'ShopeePay'))
 
-            mutation = next(
-                (m for m in mutations 
-                 if m.transaction_id
-                 and m.tanggal == agg.order_date + timedelta(days=1)
-                 and abs(round(float(m.transaction_amount or 0), -1) - round(float(agg.total_amount), -1)) < 10),
-                None
-            )
+        # Find unmatched mutations
+        unmatched_mutations = [
+            {
+                'transaction_id': m.transaction_id,
+                'platform_code': m.platform_code,
+                'transaction_date': m.tanggal,
+                'transaction_amount': float(m.transaction_amount or 0.0)
+            }
+            for m in mutations
+            if (m.platform_code, m.tanggal) not in matched_mutations
+        ]
 
-            if mutation:
-                match['mutation_match'] = create_standardized_mutation(mutation)
-                matches.append(match)
-            else:
-                unmatched_merchants.append(create_standardized_unmatched(platform_data, 'ShopeePay'))
+        # Paginate unmatched lists
+        start_idx = (page - 1) * per_page
+        end_idx = start_idx + per_page
+        paginated_unmatched_merchants = unmatched_merchants[start_idx:end_idx]
+        paginated_unmatched_mutations = unmatched_mutations[start_idx:end_idx]
 
         return jsonify({
             'matches': matches,
             'statistics': {
-                'page_total': len(shopeepay_aggregated),
+                'page_total': len(daily_totals),
                 'page_matched': len(matches),
-                'page_unmatched': len(unmatched_merchants),
-                'unmatched_merchants': unmatched_merchants
+                'page_unmatched': len(paginated_unmatched_merchants),
+                'total_unmatched': len(unmatched_merchants),
+                'total_unmatched_mutations': len(unmatched_mutations),
+                'unmatched_merchants': paginated_unmatched_merchants,
+                'unmatched_mutations': paginated_unmatched_mutations
             },
             'pagination': {
                 'current_page': page,
@@ -460,5 +452,70 @@ def match_shopeepay_transactions():
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+    
+@mutations_bp.route('/convert-pkb', methods=['GET'])
+def convert_mutation_to_manual_entry():
+    number_of_skips = 0
+    try:
+        # Fetch all mutations within the date range and platform code
+        mutations = BankMutation.query.filter(
+          BankMutation.platform_name == 'PKB'
+        ).all()
+
+        if not mutations:
+            return jsonify({'message': 'No mutations found for the specified criteria.'}), 404
+
+        manual_entries = []
+        unmapped_pkb_codes = set()
+        for mutation in mutations:
+            # Skip if mutation.tanggal is None or not a date/datetime
+            if not mutation.tanggal or not hasattr(mutation.tanggal, 'strftime'):
+                number_of_skips += 1
+                continue
+
+            # Find the outlet with matching pkb_code
+            outlet = Outlet.query.filter_by(pkb_code=mutation.platform_code).first()
+            if not outlet:
+                unmapped_pkb_codes.add(mutation.platform_code)
+                continue  # or handle as needed (e.g., log, skip, etc.)
+
+            # Check for existing manual entry to avoid duplicates
+            exists = ManualEntry.query.filter_by(
+                outlet_code=outlet.outlet_code,
+                amount=abs(mutation.transaction_amount) if mutation.transaction_amount is not None else 0,
+                start_date=mutation.tanggal,
+                end_date=mutation.tanggal,
+                description=mutation.transaksi or '',
+                category_id=9,
+                entry_type='expense',
+                brand_name='Pukis & Martabak Kota Baru'
+            ).first()
+            if exists:
+                number_of_skips += 1
+                continue  # Skip if already exists
+
+            manual_entry = ManualEntry(
+                outlet_code=outlet.outlet_code,  # Use the mapped outlet_code
+                brand_name='Pukis & Martabak Kota Baru',
+                entry_type='expense',
+                amount=abs(mutation.transaction_amount) if mutation.transaction_amount is not None else 0,
+                description=mutation.transaksi or '',
+                start_date=mutation.tanggal,
+                end_date=mutation.tanggal,
+                category_id=9
+            )
+            db.session.add(manual_entry)
+          
+        db.session.commit()
+        return jsonify({
+            'count': len(manual_entries),
+            'unmapped_pkb_codes': sorted(unmapped_pkb_codes),
+            'skipped_entries': number_of_skips,
+        }), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 
 
