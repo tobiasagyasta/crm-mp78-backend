@@ -31,7 +31,7 @@ class TransactionMatcher:
                 'match_function': self._match_shopee
             },
                'shopeepay': {
-                'platform_name': 'ShopeePay',  # Change from 'Shopee' to 'ShopeePay'
+                'platform_name': 'Shopee', 
                 'store_id_field': 'store_id_shopee',
                 'outlet_name_field': 'outlet_name_gojek',
                 'days_offset': 1,

@@ -1,6 +1,8 @@
 from flask import Blueprint, jsonify, request
 from app.extensions import db
 from app.models.manual_entry import ManualEntry
+from app.models.income_category import IncomeCategory
+from app.models.expense_category import ExpenseCategory
 from datetime import datetime
 from sqlalchemy.exc import IntegrityError
 

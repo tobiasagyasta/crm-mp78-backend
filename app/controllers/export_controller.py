@@ -190,7 +190,16 @@ def export_reports():
                     for m in mutations[:5]:
                         print(f"  {m.tanggal} | {m.platform_code} | {m.transaction_amount} | {m.platform_name}")
                 for date, totals in daily_totals.items():
-                    platform_net_key = f'{platform.capitalize()}_Net'
+                    # Handle platform name capitalization properly
+                    if platform == 'shopeepay':
+                        platform_net_key = 'ShopeePay_Net'
+                        platform_mutation_key = 'ShopeePay_Mutation'
+                        platform_difference_key = 'ShopeePay_Difference'
+                    else:
+                        platform_net_key = f'{platform.capitalize()}_Net'
+                        platform_mutation_key = f'{platform.capitalize()}_Mutation'
+                        platform_difference_key = f'{platform.capitalize()}_Difference'
+                    
                     if platform_net_key not in totals or totals[platform_net_key] == 0:
                         continue
 
@@ -200,44 +209,18 @@ def export_reports():
                             self.date = date
                             self.total_net = total_net
 
-                    # Use date offset for matching (crucial for ShopeePay/Shopee)
-                    date_offset = timedelta(days=matcher.config['days_offset'])
-                    match_date = date + date_offset
-                    mock_total = MockDailyTotal(outlet_code, match_date, totals[platform_net_key])
-
-                    # Shopee and ShopeePay: match by store_id_shopee and platform_code
-                    if platform in ["shopee", "shopeepay"]:
-                        outlet = Outlet.query.filter_by(outlet_code=mock_total.outlet_id).first()
-                        store_id_shopee = getattr(outlet, "store_id_shopee", None) if outlet else None
-                        matched_mutation = None
-                        for m in mutations:
-                            if store_id_shopee and m.platform_code:
-                                if platform == "shopee":
-                                    match_result = matcher._match_shopee(store_id_shopee, m.platform_code)
-                                else:
-                                    match_result = matcher._match_shopeepay(store_id_shopee, m.platform_code)
-                                # Only assign if both match_result and date match!
-                                if match_result and m.tanggal == match_date:
-                                    matched_mutation = m
-                                    break
-                        if matched_mutation:
-                            mutation_amount = float(matched_mutation.transaction_amount or 0)
-                            totals[f'{platform.capitalize()}_Mutation'] = mutation_amount
-                            totals[f'{platform.capitalize()}_Difference'] = mutation_amount - totals[platform_net_key]
-                        else:
-                            totals[f'{platform.capitalize()}_Mutation'] = None
-                            totals[f'{platform.capitalize()}_Difference'] = None
-                        continue  # Skip default matching for these platforms
+                    mock_total = MockDailyTotal(outlet_code, date, totals[platform_net_key])
+                    print(mock_total.outlet_id, mock_total.date, mock_total.total_net)
 
                     # Default matching for gojek/grab
                     platform_data, mutation_data = matcher.match_transactions(mock_total, mutations)
                     if mutation_data:
                         mutation_amount = mutation_data.get('transaction_amount', 0)
-                        totals[f'{platform.capitalize()}_Mutation'] = mutation_amount
-                        totals[f'{platform.capitalize()}_Difference'] = mutation_amount - totals[platform_net_key]
+                        totals[platform_mutation_key] = mutation_amount
+                        totals[platform_difference_key] = mutation_amount - totals[platform_net_key]
                     else:
-                        totals[f'{platform.capitalize()}_Mutation'] = None
-                        totals[f'{platform.capitalize()}_Difference'] = None
+                        totals[platform_mutation_key] = None
+                        totals[platform_difference_key] = None
 
             except Exception as e:
                 print(f"Warning: Mutation matching failed for {platform}: {str(e)}")
