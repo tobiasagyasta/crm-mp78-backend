@@ -131,6 +131,17 @@ class TransactionMatcher:
                 self._match_grab(m.transaction_amount or 0.0, daily_total.total_net)),
                 None
             )
+            if mutation:
+                # NOTE: Platform code update is now handled by the calling function
+                # No longer doing individual commits here
+                
+                mutation_data = {
+                    'transaction_id': mutation.transaction_id,
+                    'platform_code': mutation.platform_code,
+                    'transaction_date': mutation.tanggal,
+                    'transaction_amount': float(mutation.transaction_amount or 0.0)
+                }
+                return platform_data, mutation_data
         else:
             # Platform-specific logic for Shopee/Gojek
             mutation = next(

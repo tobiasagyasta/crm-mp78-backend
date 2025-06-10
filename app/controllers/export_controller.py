@@ -10,11 +10,13 @@ from app.models.cash_reports import CashReport
 from app.models.manual_entry import ManualEntry
 from app.models.shopeepay_reports import ShopeepayReport
 from app.models.bank_mutations import BankMutation
+from app.models.pukis import Pukis
 from app.utils.transaction_matcher import TransactionMatcher
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill
 from openpyxl.utils import get_column_letter
-from openpyxl.workbook.protection import WorkbookProtection  # Add this import at the top
+from collections import defaultdict
+from openpyxl.workbook.protection import WorkbookProtection
 import os
 
 export_bp = Blueprint('export', __name__, url_prefix="/export")
@@ -117,6 +119,13 @@ def export_reports():
             CashReport.tanggal >= start_date,
             CashReport.tanggal <= end_date_inclusive
         ).all()
+
+        if outlet.brand == "Pukis & Martabak Kota Baru":
+            pukis_reports = Pukis.query.filter(
+                Pukis.outlet_code == outlet_code,
+                Pukis.tanggal >= start_date,
+                Pukis.tanggal <= end_date_inclusive
+            ).order_by(Pukis.tanggal.asc()).all()
 
         # Aggregate all data by date
         for report in gojek_reports:
@@ -380,7 +389,7 @@ def export_reports():
 
                 # Apply color for Difference columns (Gojek, Grab, Shopee)
                 # Columns: 4 (Gojek Difference), 7 (Grab Difference), 10 (Shopee Difference)
-                if col in [4, 7, 10]:
+                if col in [4, 7, 10,13]:
                     if value is not None:
                         if value > 0:
                             cell.fill = PatternFill(start_color='C6EFCE', end_color='C6EFCE', fill_type='solid')  # Light green
@@ -420,6 +429,98 @@ def export_reports():
             cell.alignment = Alignment(horizontal='center', vertical='center') 
             cell.number_format = '#,##0'
 
+                
+        #Pukis Sheet Formatting
+        #Exclusive for outlet.brand = "Pukis & Martabak Kota Baru"
+        if outlet.brand == "Pukis & Martabak Kota Baru":
+            pukis_reports = Pukis.query.filter(
+                Pukis.outlet_code == outlet_code,
+                Pukis.tanggal >= start_date,
+                Pukis.tanggal <= end_date_inclusive
+            ).order_by(Pukis.tanggal.asc()).all()
+
+            pukis_sheet = wb.create_sheet(title='Pukis Inventory')
+            pukis_sheet['A1'] = 'Pukis Daily Inventory'
+            pukis_sheet['A2'] = 'Period:'
+            pukis_sheet['B2'] = f'{start_date.strftime("%Y-%m-%d")} to {end_date.strftime("%Y-%m-%d")}'
+            pukis_sheet['A3'] = 'Outlet:'
+            pukis_sheet['B3'] = outlet.outlet_name_gojek
+            headers = [
+                'Date', 'Inventory Type', 'Product Type', 'Amount'
+            ]
+            header_font = Font(bold=True)
+            header_fill = PatternFill(start_color='FFF2CC', end_color='FFF2CC', fill_type='solid')  # Light yellow
+            data_fill = PatternFill(start_color='FFFFFF', end_color='FFFFFF', fill_type='solid')  # White
+            sisa_fill = PatternFill(start_color='C6EFCE', end_color='C6EFCE', fill_type='solid')  # Light green
+            # Write headers with style
+            for col, header in enumerate(headers, 1):
+                cell = pukis_sheet.cell(row=5, column=col, value=header)
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.alignment = Alignment(horizontal='center')
+
+            # Group pukis_reports by date and product_type
+            pukis_by_date_type = defaultdict(lambda: defaultdict(dict))
+            for report in pukis_reports:
+                date_str = report.tanggal.strftime('%Y-%m-%d')
+                product_type = report.pukis_product_type
+                pukis_by_date_type[date_str][product_type][report.pukis_inventory_type] = float(report.amount or 0)
+
+            current_row = 6
+            for date_str in sorted(pukis_by_date_type.keys()):
+                for product_type in ['jumbo', 'klasik']:
+                    daily = pukis_by_date_type[date_str][product_type]
+                    # Write the four inventory rows (produksi, terjual, retur, free)
+                    for inv_type in ['produksi', 'terjual', 'retur', 'free']:
+                        amount = daily.get(inv_type, 0)
+                        cell_date = pukis_sheet.cell(row=current_row, column=1, value=date_str)
+                        cell_date.number_format = 'yyyy-mm-dd'
+                        cell_date.alignment = Alignment(horizontal='center')
+                        cell_type = pukis_sheet.cell(row=current_row, column=2, value=inv_type.capitalize())
+                        cell_type.alignment = Alignment(horizontal='center')
+                        cell_prod = pukis_sheet.cell(row=current_row, column=3, value=product_type.capitalize())
+                        cell_prod.alignment = Alignment(horizontal='center')
+                        cell_amt = pukis_sheet.cell(row=current_row, column=4, value=amount)
+                        cell_amt.number_format = '#,##0'
+                        cell_amt.alignment = Alignment(horizontal='right')
+                        # Fill
+                        for col in range(1, 5):
+                            pukis_sheet.cell(row=current_row, column=col).fill = data_fill
+                        current_row += 1
+                    # Calculate and write the custom "sisa" row
+                    produksi = daily.get('produksi', 0)
+                    terjual = daily.get('terjual', 0)
+                    retur = daily.get('retur', 0)
+                    free = daily.get('free', 0)
+                    sisa = produksi - (terjual + retur + free)
+                    cell_date = pukis_sheet.cell(row=current_row, column=1, value=date_str)
+                    cell_date.number_format = 'yyyy-mm-dd'
+                    cell_date.alignment = Alignment(horizontal='center')
+                    cell_type = pukis_sheet.cell(row=current_row, column=2, value='Sisa')
+                    cell_type.alignment = Alignment(horizontal='center')
+                    cell_prod = pukis_sheet.cell(row=current_row, column=3, value=product_type.capitalize())
+                    cell_prod.alignment = Alignment(horizontal='center')
+                    cell_amt = pukis_sheet.cell(row=current_row, column=4, value=sisa)
+                    cell_amt.number_format = '#,##0'
+                    cell_amt.alignment = Alignment(horizontal='right')
+                    # Sisa row fill
+                    for col in range(1, 5):
+                        pukis_sheet.cell(row=current_row, column=col).fill = sisa_fill
+                    current_row += 1
+            # Auto-adjust column widths
+            for column_cells in pukis_sheet.columns:
+                max_length = 0
+                column_cells = list(column_cells)
+                for cell in column_cells:
+                    try:
+                        if cell.value is not None and len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+                adjusted_width = max_length + 2
+                pukis_sheet.column_dimensions[get_column_letter(column_cells[0].column)].width = adjusted_width
+       
+
         # Summary Sheet Formatting
         # Add titles
         summary_sheet['A1'] = 'Summary Report'
@@ -445,17 +546,17 @@ def export_reports():
 
         # Add platform data
         platforms = [
-            ('Gojek', 'Gojek_Gross', 'Gojek_Net'),
-            ('Grab (Total)', 'Grab_Gross', 'Grab_Net'),
-            ('   GrabFood', grabfood_gross_total, grabfood_net_total),  # Added net total
-            ('   OVO', grabovo_gross_total, grabovo_net_total),    # Added net total
-            ('Shopee', 'Shopee_Gross', 'Shopee_Net'),
-            ('ShopeePay', 'ShopeePay_Gross', 'ShopeePay_Net')
+            ('Gojek', 'Gojek_Gross', 'Gojek_Net',  'Gojek_Mutation'),
+            ('Grab (Total)', 'Grab_Gross', 'Grab_Net', 'Grab_Mutation'),
+            ('   GrabFood', grabfood_gross_total, grabfood_net_total, None),  # Fixed: use grabfood_net_total
+            ('   OVO', grabovo_gross_total, grabovo_net_total, None),         # Already correct
+            ('Shopee', 'Shopee_Gross', 'Shopee_Net', 'Shopee_Mutation'),
+            ('ShopeePay', 'ShopeePay_Gross', 'ShopeePay_Net', 'ShopeePay_Mutation'),
         ]
         
         for platform_data in platforms:
             if isinstance(platform_data[1], (int, float)):  # For GrabFood and GrabOVO
-                platform, gross, net = platform_data
+                platform, gross, net, _ = platform_data
                 row_data = [
                     platform,
                     gross,
@@ -463,12 +564,18 @@ def export_reports():
                     gross - net
                 ]
             else:
-                platform, gross_key, net_key = platform_data
+                platform, gross_key, net_key, mutation_key = platform_data
+                gross = grand_totals[gross_key]
+                # Use mutation total if available, else use net total
+                if mutation_key and grand_totals.get(mutation_key) is not None and grand_totals.get(mutation_key) != 0:
+                    net = grand_totals[mutation_key]
+                else:
+                    net = grand_totals[net_key]
                 row_data = [
                     platform,
-                    grand_totals[gross_key],
-                    grand_totals[net_key],
-                    grand_totals[gross_key] - grand_totals[net_key]
+                    gross,
+                    net,
+                    gross - net
                 ]
             
             for col, value in enumerate(row_data, 1):
