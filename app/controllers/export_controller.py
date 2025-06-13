@@ -779,9 +779,33 @@ def export_reports():
         wb.save(excel_file)
         excel_file.seek(0)
 
-        # Replace special characters in outlet name to make it filename-safe
-        safe_outlet_name = outlet.outlet_name_gojek.replace('/', '_').replace('\\', '_').replace(' ', '_')
-        filename = f"reports_{safe_outlet_name}_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}.xlsx"
+      
+
+        if outlet.brand == "Pukis & Martabak Kota Baru":
+        # Split name into brand and location parts
+            parts = outlet.outlet_name_gojek.split(',')
+            
+            # Create short brand code
+            brand_code = 'PKB'  # Abbreviation for "Pukis & Martabak Kota Baru"
+            
+            # Extract location and format it
+            location = parts[1].strip().replace(' ', '') if len(parts) > 1 else 'Unknown'
+
+            # Combine brand and location
+            safe_outlet_name = f"{brand_code}_{location}"
+
+            # Build filename
+            filename = f"Report_{safe_outlet_name}_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}.xlsx"
+        elif outlet.brand == "MP78":
+            if ',' in outlet.outlet_name_gojek:
+                _, location = outlet.outlet_name_gojek.split(',', 1)
+                location_clean = location.strip().replace(' ', '')
+
+            safe_outlet_name = f"MP78_{location_clean}"
+            filename = f"Report_{safe_outlet_name}_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}.xlsx"
+        else:
+            safe_outlet_name = outlet.outlet_name_gojek.replace('/', '_').replace('\\', '_').replace(' ', '_')
+            filename = f"Report_{safe_outlet_name}_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}.xlsx"
         
         return send_file(
             excel_file,
