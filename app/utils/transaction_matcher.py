@@ -57,7 +57,7 @@ class TransactionMatcher:
             return False
         return platform_code[-5:] in store_id
     
-    def _match_grab(self, transaction_amount: float, daily_total_amount: float, tolerance: float = 50000.0) -> bool:
+    def _match_grab(self, transaction_amount: float, daily_total_amount: float, tolerance: float = 10000.0) -> bool:
         """Grab matches only by transaction amount within a tolerance"""
         return abs(transaction_amount - daily_total_amount) <= tolerance
 

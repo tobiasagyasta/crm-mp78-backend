@@ -207,63 +207,74 @@ def upload_report_mutation():
     try:
         total_mutations = 0
         skipped_mutations = 0
+        debug_skipped = []
 
         for file in files:
             file_contents = file.read().decode('utf-8')
             csv_file = StringIO(file_contents)
             reader = csv.reader(csv_file)
+            next(reader, None)  # Skip header
 
-            # Skip header
-            next(reader)
-
-            for row in reader:
-                try:
-                    if len(row) < 2:
-                        continue  # Incomplete row
-
-                    transaksi_text = ','.join(row).strip()
-                    if not transaksi_text:
-                        continue
-
-                    # Create and parse mutation
-                    mutation = BankMutation(
-                        rekening_number=rekening_number,
-                        transaksi=transaksi_text
-                    )
-                    mutation.parse_transaction()
-
-                    # Ensure required fields exist
-                    if not mutation.transaction_amount or not mutation.tanggal or not mutation.transaction_id:
-                        skipped_mutations += 1
-                        continue
-
-                    # Check for duplicates in DB
-                    duplicate = BankMutation.query.filter_by(
-                        rekening_number=mutation.rekening_number,
-                        transaction_id=mutation.transaction_id,
-                        transaction_amount=mutation.transaction_amount,
-                        tanggal=mutation.tanggal
-                    ).first()
-
-                    if duplicate:
-                        skipped_mutations += 1
-                        continue  # Skip duplicates
-
-                    db.session.add(mutation)
-                    db.session.commit()
-                    total_mutations += 1
-
-                except Exception as e:
-                    db.session.rollback()
-                    print(f"Error parsing or saving row: {e}")
+            mutations = []
+            for idx, row in enumerate(reader):
+                # Skip if the date column is 'PEND'
+                if row and row[0].strip().upper() == 'PEND':
                     skipped_mutations += 1
+                    debug_skipped.append({
+                        'row_number': idx + 2,
+                        'reason': "Date column is 'PEND'",
+                        'row': row
+                    })
                     continue
+                parser = BankMutation.detect_platform(row)
+                if parser:
+                    parsed = parser(row)
+                    if parsed:
+                        mutation = BankMutation(
+                            rekening_number=rekening_number,
+                            **parsed
+                        )
+                        # Deduplication logic (optional)
+                        exists = BankMutation.query.filter_by(
+                            tanggal=mutation.tanggal,
+                            transaction_amount=mutation.transaction_amount,
+                            platform_code=mutation.platform_code,
+                        ).first()
+                        if exists:
+                            skipped_mutations += 1
+                            debug_skipped.append({
+                                'row_number': idx + 2,
+                                'reason': 'Duplicate mutation entry',
+                                'row': row
+                            })
+                            continue
+                        mutations.append(mutation)
+                        total_mutations += 1
+                    else:
+                        skipped_mutations += 1
+                        debug_skipped.append({
+                            'row_number': idx + 2,
+                            'reason': 'Parse failed',
+                            'row': row
+                        })
+                else:
+                    skipped_mutations += 1
+                    debug_skipped.append({
+                        'row_number': idx + 2,
+                        'reason': 'Unknown platform',
+                        'row': row
+                    })
+
+            if mutations:
+                db.session.bulk_save_objects(mutations)
+                db.session.commit()
 
         return jsonify({
             'msg': 'Bank mutations uploaded successfully',
             'total_records': total_mutations,
-            'skipped_records': skipped_mutations
-        }, 201)
+            'skipped_records': skipped_mutations,
+            'skipped_rows_debug': debug_skipped
+        }), 201
 
     except Exception as e:
         db.session.rollback()

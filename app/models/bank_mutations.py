@@ -17,93 +17,7 @@ class BankMutation(db.Model):
     platform_code = db.Column(db.String, nullable=True)
     platform_name = db.Column(db.String, nullable=True)
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-
-
-    def parse_transaction(self):
-        """Parse a full CSV transaction row string into structured fields, per column."""
-
-        if not self.transaksi:
-            return
-
-        try:
-            # Split the transaction string into columns
-            fields = [f.strip() for f in self.transaksi.split(',')]
-
-            # Parse 'tanggal' from Column 0 (index 0) — remove apostrophe and any time portion
-            raw_date = fields[0].lstrip("'").split()[0]  # e.g. '27/02/2025 10:00' -> '27/02/2025'
-            try:
-                self.tanggal = datetime.strptime(raw_date, "%d/%m/%Y").date()
-            except ValueError:
-                self.tanggal = None
-
-            # Transaction type is combined from columns 1, 2, 3 (index 1-3)
-            if len(fields) >= 4:
-                self.transaction_type = ' '.join(fields[1:4])
-
-            # Transaction ID from column 4 (index 4)
-            self.transaction_id = fields[4] if len(fields) > 4 else None
-
-            # Detect platform & platform_code and amount accordingly
-            joined_text_upper = ' '.join(fields).upper()
-
-            if "DOMPET ANAK BANGSA" in joined_text_upper:
-                self.platform_name = "Gojek"
-                # Platform code inside column 6 (index 5)
-                platform_code_field = fields[5] if len(fields) > 5 else ''
-                match = re.search(r'G\d{9}', platform_code_field)
-                self.platform_code = match.group() if match else None
-
-                # Amount is in column 12 (index 11)
-                try:
-                    amount_str = fields[11].replace(',', '')
-                    self.transaction_amount = float(amount_str)
-                except (IndexError, ValueError):
-                    self.transaction_amount = None
-
-            elif "VISIONET INTERNASI" in joined_text_upper:
-                self.platform_name = "Grab"
-                self.platform_code = None
-                # Amount in column 12 (index 11)
-                try:
-                    amount_str = fields[11].replace(',', '')
-                    self.transaction_amount = float(amount_str)
-                except (IndexError, ValueError):
-                    self.transaction_amount = None
-
-            elif "AIRPAY INTERNATION" in joined_text_upper:
-                # Shopee/ShopeeFood
-                if len(fields) > 5 and fields[5] == 'SF':
-                    self.platform_name = "ShopeeFood"
-                elif len(fields) > 5 and fields[5] == 'MC':
-                    self.platform_name = "ShopeePay"
-                else:
-                    self.platform_name = "Shopee"
-                self.platform_code = fields[6] if len(fields) > 6 else None
-
-                # Amount is in column 6 (index 5) but may have trailing letters (SF or MC)
-                amount_str = re.sub(r'[A-Z]+$', '', fields[5]) if len(fields) > 5 else None
-                try:
-                    self.transaction_amount = float(amount_str) if amount_str else None
-                except ValueError:
-                    self.transaction_amount = None
-
-            else:
-                self.platform_name = "Unknown"
-                self.platform_code = None
-                # Try fallback amount from column 12 (index 11)
-                try:
-                    amount_str = fields[11].replace(',', '')
-                    self.transaction_amount = float(amount_str)
-                except (IndexError, ValueError):
-                    self.transaction_amount = None
-
-        except Exception as e:
-            print(f"[Parse Error] {str(e)}")
-
-
-    
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)    
 
     def parse_pkb_transaction(self):
         """
@@ -137,6 +51,139 @@ class BankMutation(db.Model):
         # Extract transaction description (everything after platform code)
         after_code = text.split(self.platform_code, 1)[-1].strip()
         self.transaksi = after_code  # override with cleaned-up description
+
+    @staticmethod
+    def parse_gojek_row(row):
+        """
+        Parse a Gojek CSV row (list of strings) into a dict suitable for BankMutation.
+        Only parse if col 10 (index 9) is 'BANGSA'.
+        - platform_code: from column 6, from first 'G' to end
+        - transaction_amount: from column 12
+        - platform_name: 'Gojek'
+        - tanggal: from column 1
+        """
+        try:
+            # Check if col 10 is 'BANGSA'
+            if row[9].strip().upper() != "BANGSA":
+                return None
+
+            tanggal = datetime.strptime(row[0].strip().replace("'", ""), '%d/%m/%Y').date()
+            # Extract platform_code from column 6 (index 5), from first 'G' to end
+            col6 = row[5].strip()
+            col6 = row[5].strip()
+            # Find the first occurrence of 'G' or 'M'
+            g_idx = col6.find('G')
+            m_idx = col6.find('M')
+            if g_idx == -1: g_idx = float('inf')
+            if m_idx == -1: m_idx = float('inf')
+            start_idx = min(g_idx, m_idx)
+            platform_code = col6[start_idx:] if start_idx != float('inf') else col6
+
+            # Transaction amount from column 12 (index 11)
+            amount_str = row[11].replace(',', '').replace('"', '').strip()
+            transaction_amount = float(amount_str)
+
+            return {
+                'tanggal': tanggal,
+                'transaction_type': None,
+                'transaction_id': None,
+                'transaction_amount': transaction_amount,
+                'platform_code': platform_code,
+                'platform_name': 'Gojek',
+                'transaksi': ",".join(row)
+            }
+        except Exception as e:
+            print(f"[Gojek Parse Error] Row: {row} | Error: {str(e)}")
+            return None
+    @staticmethod
+    def parse_grab_row(row):
+        """
+        Parse a Grab CSV row (list of strings) into a dict suitable for BankMutation.
+        Only parse if col 8 (index 7) is 'VISIONET'.
+        - platform_code: no platform code for Grab (set to None)
+        - transaction_amount: from column 11 (index 10)
+        - platform_name: 'Grab'
+        - tanggal: from column 1 (index 0)
+        """
+        try:
+            # Only parse if col 8 is 'VISIONET'
+            if row[7].strip().upper() != 'VISIONET':
+                return None
+
+            tanggal = datetime.strptime(row[0].strip().replace("'", ""), '%d/%m/%Y').date()
+            amount_str = row[10].replace(',', '').replace('"', '').strip()
+            transaction_amount = float(amount_str)
+
+            return {
+                'tanggal': tanggal,
+                'transaction_type': None,
+                'transaction_id': None,
+                'transaction_amount': transaction_amount,
+                'platform_code': None,
+                'platform_name': 'Grab',
+                'transaksi': ",".join(row)
+            }
+        except Exception as e:
+            print(f"[Grab Parse Error] Row: {row} | Error: {str(e)}")
+            return None
+    @staticmethod
+    def parse_shopee_row(row):
+        """
+        Parse a Shopee CSV row (list of strings) into a dict suitable for BankMutation.
+        Only parse if col 10 (index 9) is 'INTERNATION'.
+        - platform_code: column 8 (index 7)
+        - transaction_amount: from column 12 (index 11)
+        - platform_name: Check in column 6 (index 5). If it ends with 'MC', set to 'Shopee', if it ends with 'SF', set to 'ShopeeFood'
+        - tanggal: from column 1 (index 0)
+        """
+        try:
+            # Only parse if col 10 (index 9) is 'INTERNATION'
+            if row[9].strip().upper() != 'INTERNATION':
+                return None
+
+            tanggal = datetime.strptime(row[0].strip().replace("'", ""), '%d/%m/%Y').date()
+            platform_code = row[7].strip()  # column 8 (index 7)
+            amount_str = row[11].replace(',', '').replace('"', '').replace(".00",'').strip()
+            transaction_amount = float(amount_str)
+
+            # Determine platform_name from column 6 (index 5)
+            col6 = row[5].strip()
+            if col6.endswith('MC'):
+                platform_name = 'Shopee'
+            elif col6.endswith('SF'):
+                platform_name = 'ShopeeFood'
+            else:
+                platform_name = '-'  # Default/fallback
+
+            return {
+                'tanggal': tanggal,
+                'transaction_type': None,
+                'transaction_id': None,
+                'transaction_amount': transaction_amount,
+                'platform_code': platform_code,
+                'platform_name': platform_name,
+                'transaksi': ",".join(row)
+            }
+        except Exception as e:
+            print(f"[Shopee Parse Error] Row: {row} | Error: {str(e)}")
+            return None
+
+    @staticmethod
+    def detect_platform(row):
+        """
+        Detects the platform for a given CSV row and returns the corresponding parser function.
+        """
+        # Gojek: Only parse if col 10 (index 9) is 'BANGSA'
+        if row[9].strip().upper() == "BANGSA":
+            return BankMutation.parse_gojek_row
+        # Grab: Only parse if col 8 (index 7) is 'VISIONET'
+        if row[7].strip().upper() == 'VISIONET':
+            return BankMutation.parse_grab_row
+        # Shopee: Only parse if col 10 (index 9) is 'INTERNATION'
+        if row[9].strip().upper() == 'INTERNATION':
+            return BankMutation.parse_shopee_row
+        # Add more platform checks here as needed
+        return None
 
     def __repr__(self):
         return f"<BankMutation {self.tanggal} {self.platform_name} {self.transaction_amount}>"
