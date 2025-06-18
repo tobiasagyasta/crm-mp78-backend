@@ -1,4 +1,5 @@
 from flask import Blueprint, request, jsonify, send_file
+from decimal import Decimal
 from flask_cors import cross_origin
 from datetime import datetime, timedelta
 from io import BytesIO
@@ -224,9 +225,9 @@ def export_reports():
                     # Default matching for gojek/grab
                     platform_data, mutation_data = matcher.match_transactions(mock_total, mutations)
                     if mutation_data:
-                        mutation_amount = mutation_data.get('transaction_amount', 0)
+                        mutation_amount = float(mutation_data.get('transaction_amount', 0))
                         totals[platform_mutation_key] = mutation_amount
-                        totals[platform_difference_key] = mutation_amount - totals[platform_net_key]
+                        totals[platform_difference_key] = float(mutation_amount) - float(totals[platform_net_key])
                     else:
                         totals[platform_mutation_key] = None
                         totals[platform_difference_key] = None
@@ -519,6 +520,29 @@ def export_reports():
                         pass
                 adjusted_width = max_length + 2
                 pukis_sheet.column_dimensions[get_column_letter(column_cells[0].column)].width = adjusted_width
+
+            # After writing all daily rows, calculate totals for the date range
+            totals = {
+                'jumbo': {'produksi': 0, 'terjual': 0, 'retur': 0, 'free': 0},
+                'klasik': {'produksi': 0, 'terjual': 0, 'retur': 0, 'free': 0}
+            }
+
+            for report in pukis_reports:
+                ptype = report.pukis_product_type
+                itype = report.pukis_inventory_type
+                if ptype in totals and itype in totals[ptype]:
+                    totals[ptype][itype] += float(report.amount or 0)
+
+            # Write the totals at the end of the sheet
+            summary_start_row = current_row + 2  # Leave a blank row after the last data row
+
+            for product_type in ['jumbo', 'klasik']:
+                for inv_type in ['produksi', 'terjual', 'retur', 'free']:
+                    pukis_sheet.cell(row=summary_start_row, column=1, value='TOTAL')
+                    pukis_sheet.cell(row=summary_start_row, column=2, value=inv_type.capitalize())
+                    pukis_sheet.cell(row=summary_start_row, column=3, value=product_type.capitalize())
+                    pukis_sheet.cell(row=summary_start_row, column=4, value=totals[product_type][inv_type])
+                    summary_start_row += 1
        
 
         # Summary Sheet Formatting
