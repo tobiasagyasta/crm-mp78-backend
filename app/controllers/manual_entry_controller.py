@@ -48,6 +48,13 @@ def get_entries():
     end_date = request.args.get('end_date')
     category_id = request.args.get('category_id')
 
+    if outlet_code == '' or outlet_code is None:
+        return jsonify({'error': 'Outlet code is required'}), 400
+    
+    # Pagination parameters
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 10, type=int)
+
     query = ManualEntry.query
 
     if outlet_code:
@@ -71,8 +78,25 @@ def get_entries():
                          (ManualEntry.category_id == ExpenseCategory.id) & 
                          (ManualEntry.entry_type == 'expense'))
 
-    entries = query.order_by(ManualEntry.start_date.desc()).all()
-    return jsonify([entry.to_dict() for entry in entries])
+    # Order by date descending
+    query = query.order_by(ManualEntry.start_date.desc())
+    
+    # Get total count before pagination
+    total_records = query.count()
+    total_pages = (total_records + per_page - 1) // per_page
+
+    # Apply pagination
+    entries = query.offset((page - 1) * per_page).limit(per_page).all()
+
+    return jsonify({
+        'data': [entry.to_dict() for entry in entries],
+        'pagination': {
+            'current_page': page,
+            'per_page': per_page,
+            'total_pages': total_pages,
+            'total_records': total_records
+        }
+    })
 
 @manual_entries_bp.route('/<int:entry_id>', methods=['GET'])
 def get_entry(entry_id):

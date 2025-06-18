@@ -793,11 +793,11 @@ def export_reports():
                         pass
                 adjusted_width = (max_length + 2)
                 sheet.column_dimensions[get_column_letter(column[0].column)].width = adjusted_width
-            # Protect each worksheet
-            sheet.protection.sheet = True
-            sheet.protection.enable()
-       # Protect workbook structure properly
-        wb.security = WorkbookProtection(workbookPassword=None, lockStructure=True)
+    #         # Protect each worksheet
+    #         sheet.protection.sheet = True
+    #         sheet.protection.enable()
+    #    # Protect workbook structure properly
+    #     wb.security = WorkbookProtection(workbookPassword=None, lockStructure=True)
         # Save to BytesIO
         excel_file = BytesIO()
         wb.save(excel_file)
