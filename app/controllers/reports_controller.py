@@ -15,10 +15,22 @@ import sys
 
 from datetime import datetime
 
-def parse_date(date_str):
+def parse_date(date_str, default_year=None):
     date_str = date_str.strip()
-    for fmt in ('%d-%b-%y', '%m/%d/%Y', '%d/%m/%Y', '%Y-%m-%d'):
+    formats = [
+        '%d-%b-%y',
+        '%m/%d/%Y',
+        '%d/%m/%Y',
+        '%Y-%m-%d',
+        '%d-%b'  # Add this format for '10-Apr'
+    ]
+    for fmt in formats:
         try:
+            if fmt == '%d-%b':
+                # If no year, use current year or provided default_year
+                dt = datetime.strptime(date_str, fmt)
+                year = default_year or datetime.now().year
+                return dt.replace(year=year)
             return datetime.strptime(date_str, fmt)
         except ValueError:
             continue
@@ -571,13 +583,13 @@ def upload_manual_entry():
                         continue
 
                     try:
-                        entry_date = datetime.strptime(date_str, '%d-%b-%y').date()
+                        entry_date = parse_date(date_str, default_year=datetime.now().year)
                     except ValueError:
                         skipped_entries += 1
                         continue
 
                     # Parse amount (remove commas and convert to float)
-                    amount_str = row[2].replace(',', '').strip()
+                    amount_str = row[2].replace('.','').replace(',', '').strip()
                     if not amount_str:
                         skipped_entries += 1
                         continue
@@ -606,7 +618,7 @@ def upload_manual_entry():
                         continue
 
                       # Create manual entry
-                    entry_date = datetime.strptime(date_str, '%d-%b-%y').date()
+                    entry_date = parse_date(date_str, default_year=datetime.now().year)
                     outlet_code = row[6].strip()
                     category_id = category.id if category else None
 
