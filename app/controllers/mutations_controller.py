@@ -518,72 +518,72 @@ def convert_mutation_to_manual_entry():
         return jsonify({'error': str(e)}), 500
 
 
-@mutations_bp.route('/update-grab-platform-codes', methods=['POST'])
-def update_grab_platform_codes():
-    """Update platform_code for ALL matched Grab transactions in date range"""
-    try:
-        start_date = datetime.strptime(request.json.get('start_date'), '%Y-%m-%d').date()
-        end_date = datetime.strptime(request.json.get('end_date'), '%Y-%m-%d').date()
-        platform_code_filter = request.json.get('platform_code')  # Optional
+# @mutations_bp.route('/update-grab-platform-codes', methods=['POST'])
+# def update_grab_platform_codes():
+#     """Update platform_code for ALL matched Grab transactions in date range"""
+#     try:
+#         start_date = datetime.strptime(request.json.get('start_date'), '%Y-%m-%d').date()
+#         end_date = datetime.strptime(request.json.get('end_date'), '%Y-%m-%d').date()
+#         platform_code_filter = request.json.get('platform_code')  # Optional
 
-        matcher = TransactionMatcher('grab')
+#         matcher = TransactionMatcher('grab')
 
-        daily_totals_query = matcher.get_daily_totals_query(start_date, end_date, platform_code_filter)
-        all_daily_totals = daily_totals_query.all()
-        mutations = matcher.get_mutations_query(start_date, end_date).all()
+#         daily_totals_query = matcher.get_daily_totals_query(start_date, end_date, platform_code_filter)
+#         all_daily_totals = daily_totals_query.all()
+#         mutations = matcher.get_mutations_query(start_date, end_date).all()
 
-        updates_made = 0
-        matched_count = 0
-        mutations_to_update = []
+#         updates_made = 0
+#         matched_count = 0
+#         mutations_to_update = []
 
-        for daily_total in all_daily_totals:
-            platform_data, mutation_data = matcher.match_transactions(daily_total, mutations)
+#         for daily_total in all_daily_totals:
+#             platform_data, mutation_data = matcher.match_transactions(daily_total, mutations)
 
-            if platform_data and mutation_data:
-                matched_count += 1
+#             if platform_data and mutation_data:
+#                 matched_count += 1
 
-                # 👇 Replace lookup by matching date + amount instead of transaction_id
-                mutation_obj = next(
-                    (m for m in mutations
-                     if m.tanggal.date() == mutation_data['tanggal'].date()
-                     and float(m.amount) == float(mutation_data['amount'])),
-                    None
-                )
+#                 # 👇 Replace lookup by matching date + amount instead of transaction_id
+#                 mutation_obj = next(
+#                     (m for m in mutations
+#                      if m.tanggal.date() == mutation_data['tanggal'].date()
+#                      and float(m.amount) == float(mutation_data['amount'])),
+#                     None
+#                 )
 
-                if mutation_obj and mutation_obj.platform_code != daily_total.outlet_id:
-                    mutation_obj.platform_code = daily_total.outlet_id
-                    mutations_to_update.append(mutation_obj)
-                    updates_made += 1
+#                 if mutation_obj and mutation_obj.platform_code != daily_total.outlet_id:
+#                     mutation_obj.platform_code = daily_total.outlet_id
+#                     mutations_to_update.append(mutation_obj)
+#                     updates_made += 1
 
-        if mutations_to_update:
-            try:
-                db.session.bulk_save_objects(mutations_to_update)
-                db.session.commit()
-                return jsonify({
-                    'success': True,
-                    'message': f'Successfully updated {updates_made} platform codes',
-                    'statistics': {
-                        'total_matched': matched_count,
-                        'platform_codes_updated': updates_made,
-                        'date_range': f'{start_date} to {end_date}'
-                    }
-                }), 200
-            except Exception as e:
-                db.session.rollback()
-                return jsonify({'success': False, 'error': f'Database error: {str(e)}'}), 500
-        else:
-            return jsonify({
-                'success': True,
-                'message': 'No platform code updates needed',
-                'statistics': {
-                    'total_matched': matched_count,
-                    'platform_codes_updated': 0,
-                    'date_range': f'{start_date} to {end_date}'
-                }
-            }), 200
+#         if mutations_to_update:
+#             try:
+#                 db.session.bulk_save_objects(mutations_to_update)
+#                 db.session.commit()
+#                 return jsonify({
+#                     'success': True,
+#                     'message': f'Successfully updated {updates_made} platform codes',
+#                     'statistics': {
+#                         'total_matched': matched_count,
+#                         'platform_codes_updated': updates_made,
+#                         'date_range': f'{start_date} to {end_date}'
+#                     }
+#                 }), 200
+#             except Exception as e:
+#                 db.session.rollback()
+#                 return jsonify({'success': False, 'error': f'Database error: {str(e)}'}), 500
+#         else:
+#             return jsonify({
+#                 'success': True,
+#                 'message': 'No platform code updates needed',
+#                 'statistics': {
+#                     'total_matched': matched_count,
+#                     'platform_codes_updated': 0,
+#                     'date_range': f'{start_date} to {end_date}'
+#                 }
+#             }), 200
 
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+#     except Exception as e:
+#         return jsonify({'success': False, 'error': str(e)}), 500
 
 
 

@@ -7,7 +7,7 @@ class ShopeeReport(db.Model):
     no = db.Column(db.Integer, primary_key=True, autoincrement=True)
     brand_name = db.Column(db.String, nullable=True)
     outlet_code = db.Column(db.String, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
     transaction_type = db.Column(db.String, nullable=False)
     order_id = db.Column(db.String, nullable=False)
     order_pick_up_id = db.Column(db.String, nullable=True)

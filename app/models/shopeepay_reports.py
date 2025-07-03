@@ -7,7 +7,7 @@ class ShopeepayReport(db.Model):
     no = db.Column(db.Integer, primary_key=True, autoincrement=True)
     brand_name = db.Column(db.String, nullable=True)
     outlet_code = db.Column(db.String, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
     
     merchant_host = db.Column(db.String, nullable=True)
     partner_merchant_id = db.Column(db.String, nullable=True)

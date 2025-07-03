@@ -6,7 +6,7 @@ class GojekReport(db.Model):
 
     brand_name = db.Column(db.String, nullable=False)
     outlet_code = db.Column(db.String, nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
     transaction_id = db.Column(db.String, nullable=False)
     transaction_date = db.Column(db.Date, nullable=False)
     stan = db.Column(db.String, nullable=True)

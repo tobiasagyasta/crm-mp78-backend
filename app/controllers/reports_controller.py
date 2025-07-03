@@ -10,6 +10,7 @@ from app.models.bank_mutations import BankMutation
 from app.models.expense_category import ExpenseCategory
 from app.models.income_category import IncomeCategory
 from app.models.pukis import Pukis
+from app.models.tiktok_reports import TiktokReport
 from app.extensions import db
 import sys
 
@@ -546,6 +547,60 @@ def upload_report_shopeepay():
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
+    
+@reports_bp.route('/upload/tiktok', methods=['POST'])
+def upload_report_tiktok():
+    files = request.files.getlist('file')
+    if not files:
+        files = [request.files.get('file')]
+    if not files or not files[0]:
+        return jsonify({'msg': 'No files uploaded'}), 400
+
+    try:
+        total_reports = 0
+        skipped_reports = 0
+        debug_skipped = []
+
+        for file in files:
+            file_contents = file.read().decode('utf-8')
+            csv_file = StringIO(file_contents)
+            reader = csv.reader(csv_file)
+            for _ in range(4):
+                next(reader, None)  # Skip first 4 rows
+
+            reports = []
+            for idx, row in enumerate(reader):
+                parsed = TiktokReport.parse_tiktok_row(row)
+                print(f"DEBUG Parsed Row {idx+1}: {parsed}") 
+
+                if parsed:
+                    report = TiktokReport(**parsed)
+                    reports.append(report)
+                    total_reports += 1
+                else:
+                    skipped_reports += 1
+                    debug_skipped.append({
+                        'row_number': idx + 2,
+                        'reason': 'Parse failed or outlet not found',
+                        'row': row
+                    })
+
+            if reports:
+                db.session.bulk_save_objects(reports)
+                db.session.commit()
+
+        return jsonify({
+            'msg': 'Tiktok reports uploaded successfully',
+            'total_records': total_reports,
+            'skipped_records': skipped_reports,
+            'skipped_rows_debug': debug_skipped
+        }), 201
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
 
 @reports_bp.route('/upload/manual', methods=['POST'])
 def upload_manual_entry():
