@@ -574,6 +574,19 @@ def upload_report_tiktok():
                 print(f"DEBUG Parsed Row {idx+1}: {parsed}") 
 
                 if parsed:
+                     # Duplicate check: adjust fields as needed for your business logic
+                    exists = TiktokReport.query.filter_by(
+                        outlet_order_id=parsed['outlet_order_id'],
+                        order_time=parsed['order_time']
+                    ).first()
+                    if exists:
+                        skipped_reports += 1
+                        debug_skipped.append({
+                            'row_number': idx + 2,
+                            'reason': 'Duplicate entry',
+                            'row': row
+                        })
+                        continue
                     report = TiktokReport(**parsed)
                     reports.append(report)
                     total_reports += 1
@@ -1313,6 +1326,7 @@ def get_reports_totals():
         grab_query = GrabFoodReport.query
         shopee_query = ShopeeReport.query
         shopeepay_query = ShopeepayReport.query
+        tiktok_query = TiktokReport.query
         cash_query = CashReport.query
         manual_entries_query = ManualEntry.query
         # Return error if outlet_code is not provided
@@ -1324,6 +1338,7 @@ def get_reports_totals():
             grab_query = grab_query.filter(GrabFoodReport.outlet_code == outlet_code)
             shopee_query = shopee_query.filter(ShopeeReport.outlet_code == outlet_code)
             shopeepay_query = shopeepay_query.filter(ShopeepayReport.outlet_code == outlet_code)
+            tiktok_query = tiktok_query.filter(TiktokReport.outlet_code == outlet_code)
             cash_query = cash_query.filter(CashReport.outlet_code == outlet_code)
             manual_entries_query = manual_entries_query.filter(ManualEntry.outlet_code == outlet_code)
 
@@ -1333,6 +1348,7 @@ def get_reports_totals():
             shopee_query = shopee_query.filter(ShopeeReport.brand_name == brand_name)
             cash_query = cash_query.filter(CashReport.brand_name == brand_name)
             shopeepay_query = shopeepay_query.filter(ShopeepayReport.brand_name == brand_name)
+            tiktok_query = tiktok_query.filter(TiktokReport.brand_name == brand_name)
             manual_entries_query = manual_entries_query.filter(ManualEntry.brand_name == brand_name)
 
         # Apply date filters if provided
@@ -1358,6 +1374,10 @@ def get_reports_totals():
             shopeepay_query = shopeepay_query.filter(
                 ShopeepayReport.create_time >= start_date,
                 ShopeepayReport.create_time <= end_date_inclusive
+            )
+            tiktok_query = tiktok_query.filter(
+                TiktokReport.order_time >= start_date,
+                TiktokReport.order_time <= end_date_inclusive
             )
             
             # Use SQLAlchemy filtering for cash reports instead of post-filtering
@@ -1388,6 +1408,7 @@ def get_reports_totals():
             for report in shopeepay_query.all() 
             if report.transaction_type != "Withdrawal"
         )
+        tiktok_total = sum(float(report.net_amount or 0) for report in tiktok_query.all())   
         
         # Calculate cash totals using the filtered queries
         cash_income = sum(float(report.total or 0) for report in cash_income_query.all())
@@ -1412,6 +1433,7 @@ def get_reports_totals():
                 'grab': round(grab_total, 2),
                 'shopee': round(shopee_total, 2),
                 'shopeepay': round(shopeepay_total, 2),
+                'tiktok': round(tiktok_total, 2),
                 'cash': {
                     'income': round(cash_income, 2),
                     'expense': round(cash_expense, 2),
