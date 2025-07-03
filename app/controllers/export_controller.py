@@ -10,6 +10,7 @@ from app.models.grabfood_reports import GrabFoodReport
 from app.models.cash_reports import CashReport
 from app.models.manual_entry import ManualEntry
 from app.models.shopeepay_reports import ShopeepayReport
+from app.models.tiktok_reports import TiktokReport
 from app.models.bank_mutations import BankMutation
 from app.models.pukis import Pukis
 from app.utils.transaction_matcher import TransactionMatcher
@@ -57,6 +58,7 @@ def export_reports():
                 'Grab_Gross': 0, 'Grab_Net': 0,
                 'ShopeePay_Gross': 0, 'ShopeePay_Net': 0,
                 'Shopee_Gross': 0, 'Shopee_Net': 0,
+                'Tiktok_Gross':0, 'Tiktok_Net': 0,
                 'Cash_Income': 0, 'Cash_Expense': 0,
                 'Gojek_Mutation': None, 'Gojek_Difference': 0,
                 'Grab_Mutation': None, 'Grab_Difference': 0,
@@ -76,7 +78,7 @@ def export_reports():
             'Gojek Net', 'Gojek Mutation', 'Gojek Difference',
             'Grab Net', 'Grab Mutation', 'Grab Difference',
             'Shopee Net', 'Shopee Mutation', 'Shopee Difference',
-            'ShopeePay Net','ShopeePay Mutation', 'ShopeePay Difference','Cash Income', 'Cash Expense'
+            'ShopeePay Net','ShopeePay Mutation', 'ShopeePay Difference','Tiktok Net','Cash Income', 'Cash Expense'
         ])
 
         # Query reports with inclusive end date
@@ -104,6 +106,11 @@ def export_reports():
             ShopeepayReport.outlet_code == outlet_code,
             ShopeepayReport.create_time >= start_date,
             ShopeepayReport.create_time <= end_date_inclusive
+        ).all()
+        tiktok_reports = TiktokReport.query.filter(
+            TiktokReport.outlet_code == outlet_code,
+            TiktokReport.order_time >= start_date,
+            TiktokReport.order_time <= end_date_inclusive
         ).all()
 
         # Query cash reports with separate income and expense queries
@@ -172,6 +179,12 @@ def export_reports():
                     daily_totals[date] = init_daily_total()
                 daily_totals[date]['ShopeePay_Net'] += float(report.settlement_amount or 0)
                 daily_totals[date]['ShopeePay_Gross'] += float(report.transaction_amount or 0)
+        for report in tiktok_reports:
+            date = report.order_time.date()
+            if date not in daily_totals:
+                daily_totals[date] = init_daily_total()
+            daily_totals[date]['Tiktok_Net'] += float(report.net_amount or 0)
+            daily_totals[date]['Tiktok_Gross'] += float(report.gross_amount or 0)
         # Handle cash reports separately for income and expense
         for report in cash_income_reports:
             date = report.tanggal.date()
@@ -254,6 +267,7 @@ def export_reports():
                 totals['ShopeePay_Net'],
                 totals['ShopeePay_Mutation'],
                 totals['ShopeePay_Difference'],
+                totals['Tiktok_Net'],
                 totals['Cash_Income'],
                 totals['Cash_Expense']
             ])
@@ -276,6 +290,8 @@ def export_reports():
             'ShopeePay_Net': sum(day['ShopeePay_Net'] for day in daily_totals.values()),
             'ShopeePay_Mutation': sum(day['ShopeePay_Mutation'] for day in daily_totals.values() if day['ShopeePay_Mutation'] is not None),
             'ShopeePay_Difference': sum(day['ShopeePay_Difference'] for day in daily_totals.values() if day['ShopeePay_Difference'] is not None),
+            'Tiktok_Net': sum(day['Tiktok_Net'] for day in daily_totals.values()),
+            'Tiktok_Gross': sum(day['Tiktok_Gross'] for day in daily_totals.values()),
             'Cash_Income': sum(day['Cash_Income'] for day in daily_totals.values()),
             'Cash_Expense': sum(day['Cash_Expense'] for day in daily_totals.values())
         }
@@ -295,6 +311,7 @@ def export_reports():
             grand_totals['ShopeePay_Net'],
             grand_totals['ShopeePay_Mutation'],
             grand_totals['ShopeePay_Difference'],
+            grand_totals['Tiktok_Net'],
             grand_totals['Cash_Income'],
             grand_totals['Cash_Expense']
         ])
@@ -342,6 +359,7 @@ def export_reports():
             'Shopee Mutation': shopee_fill, 'Shopee Difference': difference_fill,
             'ShopeePay Net': shopeepay_fill,
             'ShopeePay Mutation': shopeepay_fill, 'ShopeePay Difference': difference_fill,
+            'Tiktok Net': PatternFill(start_color='FFB6C1', end_color='FFB6C1', fill_type='solid'),  # Light pink for TikTok
             'Cash Income': cash_fill, 'Cash Expense': cash_fill
         }
 
@@ -350,7 +368,7 @@ def export_reports():
             'Gojek Net', 'Gojek Mutation', 'Gojek Difference',
             'Grab Net', 'Grab Mutation', 'Grab Difference',
             'Shopee Net', 'Shopee Mutation', 'Shopee Difference',
-            'ShopeePay Net','ShopeePay Mutation', 'ShopeePay Difference', 'Cash Income', 'Cash Expense'
+            'ShopeePay Net','ShopeePay Mutation', 'ShopeePay Difference', 'Tiktok Net', 'Cash Income', 'Cash Expense'
         ]
 
         # Write headers to Excel
@@ -379,6 +397,7 @@ def export_reports():
                 totals['ShopeePay_Net'],
                 totals['ShopeePay_Mutation'],
                 totals['ShopeePay_Difference'],
+                totals['Tiktok_Net'],   
                 totals['Cash_Income'],
                 totals['Cash_Expense']
             ]
@@ -419,6 +438,7 @@ def export_reports():
             grand_totals['ShopeePay_Net'],
             grand_totals['ShopeePay_Mutation'],
             grand_totals['ShopeePay_Difference'],
+            grand_totals['Tiktok_Net'],
             grand_totals['Cash_Income'],
             grand_totals['Cash_Expense']
         ]
@@ -576,6 +596,7 @@ def export_reports():
             ('   OVO', grabovo_gross_total, grabovo_net_total, None),         # Already correct
             ('Shopee', 'Shopee_Gross', 'Shopee_Net', 'Shopee_Mutation'),
             ('ShopeePay', 'ShopeePay_Gross', 'ShopeePay_Net', 'ShopeePay_Mutation'),
+            ('Tiktok', 'Tiktok_Gross', 'Tiktok_Net', None)  # Tiktok does not have mutation data
         ]
         
         for platform_data in platforms:
@@ -699,7 +720,7 @@ def export_reports():
             grand_totals['Gojek_Net'] +
             grand_totals['Grab_Net'] +
             grand_totals['Shopee_Net'] +
-            grand_totals['ShopeePay_Net']
+            grand_totals['ShopeePay_Net'] + grand_totals['Tiktok_Net']
         )
         
         # Calculate commission first (moved from below)
