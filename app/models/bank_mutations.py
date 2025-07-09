@@ -51,6 +51,40 @@ class BankMutation(db.Model):
         # Extract transaction description (everything after platform code)
         after_code = text.split(self.platform_code, 1)[-1].strip()
         self.transaksi = after_code  # override with cleaned-up description
+    @staticmethod
+    def parse_pkb_sosmed_row(row):
+        """
+        Parse a PKB CSV row (list of strings) for the term 'SOSMED GLOBAL'.
+        If found, log the row to the console and skip DB insertion.
+        """
+        try:
+            joined_row = ",".join(row)
+            if "SOSMED GLOBAL" in joined_row:
+                print(f"[PKB LOG] Found 'SOSMED GLOBAL' in row: {row}")
+                return None  # Do not insert into DB for now
+            return None  # Not a PKB SOSMED GLOBAL row
+        except Exception as e:
+            print(f"[PKB Parse Error] Row: {row} | Error: {str(e)}")
+            return None
+    
+    @staticmethod
+    def parse_pkb_avanger_row(row):
+        """
+        Parse a PKB CSV row (list of strings) for avangers.
+        If found, log the row to the console and skip DB insertion.
+        """
+        try:
+            joined_row = ",".join(row)
+            if "UM AVANGER" in joined_row:
+                print(f"[PKB LOG] Found 'UM AVANGER' in row: {row}")
+                return None  # Do not insert into DB for now
+            if "GAJI AVANGER" in joined_row:
+                print(f"[PKB LOG] Found 'GAJI AVANGER' in row: {row}")
+                return None  # Do not insert into DB for now
+            return None  # Not a PKB AVANGER row
+        except Exception as e:
+            print(f"[PKB Parse Error] Row: {row} | Error: {str(e)}")
+            return None
 
     @staticmethod
     def parse_gojek_row(row):

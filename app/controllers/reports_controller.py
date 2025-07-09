@@ -1263,6 +1263,8 @@ def upload_report_pkb():
                         transaksi=transaksi_text,
                     )
                     mutation.parse_pkb_transaction()
+                    mutation.parse_pkb_sosmed_row(row)
+                    mutation.parse_pkb_avanger_row(row)
 
                     # Only save valid PKB mutations
                     if mutation.platform_name == "PKB" and mutation.platform_code:
