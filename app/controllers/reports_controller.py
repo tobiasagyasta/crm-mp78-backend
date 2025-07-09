@@ -147,11 +147,26 @@ def upload_report_shopee_adjustment():
 
                 # Check if adjustment already exists
                 refund_id = row.get('Wallet Adjustment ID', '')
-                if refund_id:
-                        existing_report = ShopeeReport.query.filter_by(order_id=refund_id, transaction_type='Adjustment').first()                    
-                        if existing_report:
-                            skipped_reports += 1
-                            continue
+                adjustment_time_str = row.get('Wallet Adjustment Time', '')
+                adjustment_time = None
+                if adjustment_time_str:
+                    try:
+                        adjustment_time = datetime.strptime(adjustment_time_str, '%Y-%m-%d %H:%M:%S')
+                    except Exception as e:
+                        print(f"SKIPPED: Invalid adjustment time format: {adjustment_time_str} | Row: {row}")
+                        skipped_reports += 1
+                        continue
+
+                if refund_id and adjustment_time:
+                    existing_report = ShopeeReport.query.filter_by(
+                        order_id=refund_id,
+                        transaction_type='Adjustment',
+                        order_create_time=adjustment_time
+                    ).first()
+                    if existing_report:
+                        print(f"SKIPPED: Duplicate adjustment for Wallet Adjustment ID '{refund_id}' and time '{adjustment_time}' | Row: {row}")
+                        skipped_reports += 1
+                        continue
 
                 try:
                     # Parse the adjustment time
