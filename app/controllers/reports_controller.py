@@ -141,15 +141,17 @@ def upload_report_shopee_adjustment():
                 if not outlet and store_name:
                     outlet = Outlet.query.filter_by(outlet_name_grab=store_name).first()
                 if not outlet:
+                    print(f"SKIPPED: Outlet not found for Store Name '{store_name}', Store ID '{store_id}' | Row: {row}")
+                    skipped_reports += 1
                     continue
 
                 # Check if adjustment already exists
                 refund_id = row.get('Wallet Adjustment ID', '')
                 if refund_id:
-                    existing_report = ShopeeReport.query.filter_by(order_id=refund_id).first()
-                    if existing_report:
-                        skipped_reports += 1
-                        continue
+                        existing_report = ShopeeReport.query.filter_by(order_id=refund_id, transaction_type='Adjustment').first()                    
+                        if existing_report:
+                            skipped_reports += 1
+                            continue
 
                 try:
                     # Parse the adjustment time
@@ -159,7 +161,7 @@ def upload_report_shopee_adjustment():
                         brand_name=outlet.brand,
                         outlet_code=outlet.outlet_code,
                         transaction_type='Adjustment',  # Mark as adjustment
-                        order_id=refund_id,  # Use refund ID as order ID
+                        order_id=row.get('Wallet Adjustment ID', ''),  # Use refund ID as order ID
                         store_id=store_id,
                         store_name=store_name,
                         order_create_time=adjustment_time,
@@ -172,7 +174,8 @@ def upload_report_shopee_adjustment():
                     reports.append(report)
                     total_reports += 1
                 except (ValueError, TypeError) as e:
-                    print(f"Error processing row: {e}")
+                    print(f"SKIPPED: Error processing row: {e} | Row: {row}")
+                    skipped_reports += 1
                     continue
 
             if reports:
