@@ -724,8 +724,8 @@ def export_reports():
         )
         
         # Calculate commission first (moved from below)
-        management_commission = grabfood_gross_total * 0.01 if outlet.brand in ["MP78", "MP78 Express", "Martabak 777 Sinar Bulan","Martabak 999 Asli Bandung", "Martabak Surya Kencana","Martabak Akim"] else 0
-        partner_commission = grabfood_gross_total * 0.01 if outlet.brand in ["MP78", "MP78 Express", "Martabak 777 Sinar Bulan","Martabak 999 Asli Bandung", "Martabak Surya Kencana","Martabak Akim"] else 0
+        management_commission = grabfood_net_total * 1/74 if outlet.brand in ["MP78", "MP78 Express", "Martabak 777 Sinar Bulan","Martabak 999 Asli Bandung", "Martabak Surya Kencana","Martabak Akim"] else 0
+        partner_commission = grabfood_net_total * 1/74 if outlet.brand in ["MP78", "MP78 Express", "Martabak 777 Sinar Bulan","Martabak 999 Asli Bandung", "Martabak Surya Kencana","Martabak Akim"] else 0
 
         cash_manual_net_total = (
             (grand_totals['Cash_Income'] + manual_income) -
