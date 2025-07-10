@@ -5,6 +5,7 @@ from app.models.income_category import IncomeCategory
 from app.models.expense_category import ExpenseCategory
 from datetime import datetime
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy import func
 
 manual_entries_bp = Blueprint('manual_entries', __name__, url_prefix='/manual-entries')
 
@@ -88,6 +89,33 @@ def get_entries():
     # Apply pagination
     entries = query.offset((page - 1) * per_page).limit(per_page).all()
 
+    # Calculate total income and total expense for all matching records (ignoring pagination)
+    income_sum = query.session.query(func.coalesce(func.sum(ManualEntry.amount), 0)).filter(
+        ManualEntry.outlet_code == outlet_code,
+        ManualEntry.entry_type == 'income'
+    )
+    if category_id:
+        income_sum = income_sum.filter(ManualEntry.category_id == category_id)
+    if start_date:
+        income_sum = income_sum.filter(ManualEntry.end_date >= datetime.strptime(start_date, '%Y-%m-%d').date())
+    if end_date:
+        income_sum = income_sum.filter(ManualEntry.start_date <= datetime.strptime(end_date, '%Y-%m-%d').date())
+    income_sum = income_sum.scalar()
+
+    expense_sum = query.session.query(func.coalesce(func.sum(ManualEntry.amount), 0)).filter(
+        ManualEntry.outlet_code == outlet_code,
+        ManualEntry.entry_type == 'expense'
+    )
+    if category_id:
+        expense_sum = expense_sum.filter(ManualEntry.category_id == category_id)
+    if start_date:
+        expense_sum = expense_sum.filter(ManualEntry.end_date >= datetime.strptime(start_date, '%Y-%m-%d').date())
+    if end_date:
+        expense_sum = expense_sum.filter(ManualEntry.start_date <= datetime.strptime(end_date, '%Y-%m-%d').date())
+    expense_sum = expense_sum.scalar()
+
+    total_amount = float(income_sum) - float(expense_sum)
+
     return jsonify({
         'data': [entry.to_dict() for entry in entries],
         'pagination': {
@@ -95,6 +123,11 @@ def get_entries():
             'per_page': per_page,
             'total_pages': total_pages,
             'total_records': total_records
+        },
+        'totals': {
+            'total_income': float(income_sum),
+            'total_expense': float(expense_sum),
+            'total_amount': total_amount
         }
     })
 
