@@ -24,6 +24,7 @@ import os
 export_bp = Blueprint('export', __name__, url_prefix="/export")
 
 @export_bp.route('', methods=['POST', 'OPTIONS'])
+@cross_origin(expose_headers=["Content-Disposition"])
 def export_reports():
     try:
 
@@ -33,6 +34,7 @@ def export_reports():
             response = jsonify({'status': 'OK'})
             response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
             response.headers.add('Access-Control-Allow-Methods', 'POST')
+            # response.headers.add('Access-Control-Allow-Origin', '*')
             return response, 200
 
         data = request.get_json()
@@ -200,12 +202,22 @@ def export_reports():
 
         # Add mutation matching logic for each platform
         platforms = ['gojek', 'grab', 'shopee','shopeepay']
-        
+        # Prepare a dict to collect mutations grouped by rekening_number and date
+        mutations_by_platform = {}
         for platform in platforms:
             try:
                 matcher = TransactionMatcher(platform)
                 mutations = matcher.get_mutations_query(start_date.date(), end_date.date()).all()
-            
+                # Group mutations by rekening_number and date for this platform
+                from collections import defaultdict
+                if platform not in mutations_by_platform:
+                    mutations_by_platform[platform] = defaultdict(lambda: defaultdict(list))
+                for m in mutations:
+                    date = m.tanggal if hasattr(m, 'tanggal') else None
+                    rekening = m.rekening_number if hasattr(m, 'rekening_number') else None
+                    if date and rekening:
+                        mutations_by_platform[platform][rekening][date].append(m)
+                # ...existing code for printing and mutation matching...
                 if platform == "shopee":
                     for m in mutations[:5]:
                         print(f"  {m.tanggal} | {m.platform_code} | {m.transaction_amount} | {m.platform_name}")
@@ -814,6 +826,57 @@ def export_reports():
                         pass
                 adjusted_width = (max_length + 2)
                 sheet.column_dimensions[get_column_letter(column[0].column)].width = adjusted_width
+
+        # After all main sheets, add a new sheet for mutation grouping by rekening_number and date
+        mutation_sheet = wb.create_sheet(title='Mutations by Rekening')
+        mutation_headers = ['Platform', 'Rekening Number', 'Date', 'Total Mutation Amount', 'Platform Name']
+        mutation_sheet.append(mutation_headers)
+        # Style header row
+        header_font = Font(bold=True, color='FFFFFF')
+        header_fill = PatternFill(start_color='4F81BD', end_color='4F81BD', fill_type='solid')  # Blue
+        center_align = Alignment(horizontal='center', vertical='center')
+        for col, header in enumerate(mutation_headers, 1):
+            cell = mutation_sheet.cell(row=1, column=col)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = center_align
+        # Add data rows with alternating row fill
+        alt_fill = PatternFill(start_color='F2F2F2', end_color='F2F2F2', fill_type='solid')  # Light gray
+        for i, (platform, rekening_dict) in enumerate(mutations_by_platform.items()):
+            for rekening, date_dict in rekening_dict.items():
+                for date, mutation_list in date_dict.items():
+                    total_amount = sum(float(m.transaction_amount or 0) for m in mutation_list)
+                    row = [
+                        platform.capitalize(),
+                        rekening,
+                        date.strftime('%Y-%m-%d') if hasattr(date, 'strftime') else str(date),
+                        total_amount,
+                        ', '.join(sorted(set(str(m.platform_name) for m in mutation_list)))
+                    ]
+                    mutation_sheet.append(row)
+                    # Apply alternating fill
+                    row_idx = mutation_sheet.max_row
+                    fill = alt_fill if row_idx % 2 == 0 else None
+                    for col in range(1, len(mutation_headers) + 1):
+                        cell = mutation_sheet.cell(row=row_idx, column=col)
+                        if col == 4:  # Amount column
+                            cell.number_format = '#,##0'
+                        if fill:
+                            cell.fill = fill
+                        cell.alignment = Alignment(horizontal='center' if col != 4 else 'right')
+        # Auto-adjust column widths for the new sheet
+        for column_cells in mutation_sheet.columns:
+            max_length = 0
+            column_cells = list(column_cells)
+            for cell in column_cells:
+                try:
+                    if cell.value is not None and len(str(cell.value)) > max_length:
+                        max_length = len(str(cell.value))
+                except:
+                    pass
+            adjusted_width = max_length + 2
+            mutation_sheet.column_dimensions[get_column_letter(column_cells[0].column)].width = adjusted_width
+
     #         # Protect each worksheet
     #         sheet.protection.sheet = True
     #         sheet.protection.enable()
@@ -842,6 +905,7 @@ def export_reports():
             # Build filename
             filename = f"Report_{safe_outlet_name}_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}.xlsx"
         elif outlet.brand == "MP78":
+            location_clean = "Unknown"
             if ',' in outlet.outlet_name_gojek:
                 _, location = outlet.outlet_name_gojek.split(',', 1)
                 location_clean = location.strip().replace(' ', '')
@@ -851,7 +915,6 @@ def export_reports():
         else:
             safe_outlet_name = outlet.outlet_name_gojek.replace('/', '_').replace('\\', '_').replace(' ', '_')
             filename = f"Report_{safe_outlet_name}_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}.xlsx"
-        
         return send_file(
             excel_file,
             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
