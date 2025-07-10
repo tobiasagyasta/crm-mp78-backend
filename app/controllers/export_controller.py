@@ -612,10 +612,10 @@ def export_reports():
                 platform, gross_key, net_key, mutation_key = platform_data
                 gross = grand_totals[gross_key]
                 # Use mutation total if available, else use net total
-                if mutation_key and grand_totals.get(mutation_key) is not None and grand_totals.get(mutation_key) != 0:
-                    net = grand_totals[mutation_key]
-                else:
-                    net = grand_totals[net_key]
+                # if mutation_key and grand_totals.get(mutation_key) is not None and grand_totals.get(mutation_key) != 0:
+                #     net = grand_totals[mutation_key]
+                # else:
+                net = grand_totals[net_key]
                 row_data = [
                     platform,
                     gross,
