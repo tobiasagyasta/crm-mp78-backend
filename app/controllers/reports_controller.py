@@ -1619,21 +1619,26 @@ def get_top_outlets():
         start = (page - 1) * per_page
         end = start + per_page
         paginated_outlets = top_outlets[start:end]
+        # Filter paginated_outlets to only those with a valid Outlet object and matching brand
+        filtered_outlets = []
+        for outlet, total in paginated_outlets:
+            outlet_obj = Outlet.query.filter_by(outlet_code=outlet, brand=brand_name).first()
+            if outlet_obj and outlet_obj.brand == brand_name and outlet_obj.outlet_name_gojek:
+                filtered_outlets.append({
+                    'outlet_code': outlet,
+                    'outlet_brand': outlet_obj.brand,
+                    'outlet_name': outlet_obj.outlet_name_gojek,
+                    'running_total': round(total, 2)
+                })
+
         response = {
-           'top_outlets': [
-        {
-            'outlet_code': outlet,
-            'outlet_name': Outlet.query.filter_by(outlet_code=outlet).first().outlet_name_gojek if Outlet.query.filter_by(outlet_code=outlet).first() else None,
-            'running_total': round(total, 2)
-        }
-        for outlet, total in paginated_outlets
-    ],
-    'pagination': {
-        'current_page': page,
-        'per_page': per_page,
-        'total_pages': total_pages,
-        'total_records': total_records
-        }
+            'top_outlets': filtered_outlets,
+            'pagination': {
+                'current_page': page,
+                'per_page': per_page,
+                'total_pages': total_pages,
+                'total_records': total_records
+            }
         }
 
         return jsonify(response), 200

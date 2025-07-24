@@ -171,8 +171,20 @@ def get_outlet(outlet_id):
     return jsonify(outlet.to_dict())
 
 # Get outlet by outlet_code
+
+@outlet_bp.route("/closing/<outlet_code>", methods=["GET"])
+def get_closing_date_by_code(outlet_code):
+    outlet = Outlet.query.filter_by(outlet_code=outlet_code).first()
+    if not outlet:
+        return jsonify({"error": "Outlet not found"}), 404
+    # Convert to string if it's a date/datetime object
+    closing_date = (
+        outlet.closing_date.isoformat() if hasattr(outlet.closing_date, "isoformat") else outlet.closing_date
+    )
+    return jsonify({"closing_date": closing_date}), 200
 @outlet_bp.route("/code/<outlet_code>", methods=["GET"])
 def get_outlet_by_code(outlet_code):
+    
     outlet = Outlet.query.filter_by(outlet_code=outlet_code).first()
     if not outlet:
         return jsonify({"error": "Outlet not found"}), 404
