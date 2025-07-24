@@ -1614,25 +1614,26 @@ def get_top_outlets():
 
         # Sort outlets by running total descending
         top_outlets = sorted(outlet_totals.items(), key=lambda x: x[1], reverse=True)
-        total_records = len(top_outlets)
-        total_pages = (total_records + per_page - 1) // per_page
-        start = (page - 1) * per_page
-        end = start + per_page
-        paginated_outlets = top_outlets[start:end]
-        # Filter paginated_outlets to only those with a valid Outlet object and matching brand
-        filtered_outlets = []
-        for outlet, total in paginated_outlets:
+        # Filter to only valid outlets with matching brand and non-null name BEFORE pagination
+        valid_outlets = []
+        for outlet, total in top_outlets:
             outlet_obj = Outlet.query.filter_by(outlet_code=outlet, brand=brand_name).first()
             if outlet_obj and outlet_obj.brand == brand_name and outlet_obj.outlet_name_gojek:
-                filtered_outlets.append({
+                valid_outlets.append({
                     'outlet_code': outlet,
                     'outlet_brand': outlet_obj.brand,
                     'outlet_name': outlet_obj.outlet_name_gojek,
                     'running_total': round(total, 2)
                 })
 
+        total_records = len(valid_outlets)
+        total_pages = (total_records + per_page - 1) // per_page
+        start = (page - 1) * per_page
+        end = start + per_page
+        paginated_outlets = valid_outlets[start:end]
+
         response = {
-            'top_outlets': filtered_outlets,
+            'top_outlets': paginated_outlets,
             'pagination': {
                 'current_page': page,
                 'per_page': per_page,
