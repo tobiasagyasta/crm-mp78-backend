@@ -47,15 +47,23 @@ class TransactionMatcher:
         return store_id == platform_code
 
     def _match_shopee(self, store_id: str, platform_code: str) -> bool:
-        """Shopee matches last 5 digits of store_id_shopee with platform_code"""
-        if not store_id or not platform_code or len(store_id) < 5:
+        """Shopee matches last 4 or 5 digits of store_id_shopee with platform_code"""
+        if not store_id or not platform_code:
             return False
-        return platform_code[-5:] in store_id
+        store_id = store_id.strip()
+        platform_code = platform_code.strip()
+
+        # Match if platform_code == last 4 or 5 digits of store_id
+        return platform_code == store_id[-4:] or platform_code == store_id[-5:]
     def _match_shopeepay(self, store_id: str, platform_code: str) -> bool:
         """ShopeePay matches last 5 digits of store_id_shopee with platform_code"""
-        if not store_id or not platform_code or len(store_id) < 5:
+        if not store_id or not platform_code:
             return False
-        return platform_code[-5:] in store_id
+        store_id = store_id.strip()
+        platform_code = platform_code.strip()
+
+        # Match if platform_code == last 4 or 5 digits of store_id
+        return platform_code == store_id[-4:] or platform_code == store_id[-5:]
     
     def _match_grab(self, transaction_amount: float, daily_total_amount: float, tolerance: float = 10000.0) -> bool:
         """Grab matches only by transaction amount within a tolerance"""
@@ -131,6 +139,7 @@ class TransactionMatcher:
                 self._match_grab(m.transaction_amount or 0.0, daily_total.total_net)),
                 None
             )
+           
             if mutation:
                 # NOTE: Platform code update is now handled by the calling function
                 # No longer doing individual commits here
@@ -150,6 +159,14 @@ class TransactionMatcher:
                 and m.tanggal == match_date),
                 None
             )
+            # print(f"[DEBUG] Gojek match trial: store_id={store_id}, match_date={match_date}")
+            # for m in mutations:
+            #     if m.tanggal == match_date:
+            #         print(f"  ⤷ Checking platform_code={m.platform_code}")
+            #         if match_func(store_id, m.platform_code):
+            #             print("  ✅ MATCHED!")
+            #         else:
+            #             print("  ❌ Not matched")
         if mutation:
             mutation_data = {
                 'transaction_id': mutation.transaction_id,

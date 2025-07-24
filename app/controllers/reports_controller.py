@@ -1524,6 +1524,8 @@ def get_top_outlets():
     start_date_param = request.args.get('start_date')
     end_date_param = request.args.get('end_date')
     brand_name = request.args.get('brand_name')
+    page = int(request.args.get('page', 1))
+    per_page = int(request.args.get('per_page', 20))
 
     if not start_date_param or not end_date_param or not brand_name:
         return jsonify({'error': 'start_date, end_date, and brand_name are required'}), 400
@@ -1611,22 +1613,27 @@ def get_top_outlets():
             add_total(entry.outlet_code, -float(entry.amount or 0))
 
         # Sort outlets by running total descending
-        top_outlets = sorted(outlet_totals.items(), key=lambda x: x[1], reverse=True)[:10]
-
+        top_outlets = sorted(outlet_totals.items(), key=lambda x: x[1], reverse=True)
+        total_records = len(top_outlets)
+        total_pages = (total_records + per_page - 1) // per_page
+        start = (page - 1) * per_page
+        end = start + per_page
+        paginated_outlets = top_outlets[start:end]
         response = {
-            'brand_name': brand_name,
-            'period': {
-                'start_date': start_date_param,
-                'end_date': end_date_param
-            },
-            'top_outlets': [
-                {
-                    'outlet_code': outlet,
-                    'outlet_name': Outlet.query.filter_by(outlet_code=outlet).first().outlet_name_gojek if Outlet.query.filter_by(outlet_code=outlet).first() else None,
-                    'running_total': round(total, 2)
-                }
-                for outlet, total in top_outlets
-            ]
+           'top_outlets': [
+        {
+            'outlet_code': outlet,
+            'outlet_name': Outlet.query.filter_by(outlet_code=outlet).first().outlet_name_gojek if Outlet.query.filter_by(outlet_code=outlet).first() else None,
+            'running_total': round(total, 2)
+        }
+        for outlet, total in paginated_outlets
+    ],
+    'pagination': {
+        'current_page': page,
+        'per_page': per_page,
+        'total_pages': total_pages,
+        'total_records': total_records
+        }
         }
 
         return jsonify(response), 200

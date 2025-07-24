@@ -217,13 +217,7 @@ def export_reports():
                     rekening = m.rekening_number if hasattr(m, 'rekening_number') else None
                     if date and rekening:
                         mutations_by_platform[platform][rekening][date].append(m)
-                # ...existing code for printing and mutation matching...
-                if platform == "shopee":
-                    for m in mutations[:5]:
-                        print(f"  {m.tanggal} | {m.platform_code} | {m.transaction_amount} | {m.platform_name}")
-                if platform == "shopeepay":
-                    for m in mutations[:5]:
-                        print(f"  {m.tanggal} | {m.platform_code} | {m.transaction_amount} | {m.platform_name}")
+              
                 for date, totals in daily_totals.items():
                     # Handle platform name capitalization properly
                     if platform == 'shopeepay':
@@ -245,7 +239,7 @@ def export_reports():
                             self.total_net = total_net
 
                     mock_total = MockDailyTotal(outlet_code, date, totals[platform_net_key])
-                    print(mock_total.outlet_id, mock_total.date, mock_total.total_net)
+                    
 
                     # Default matching for gojek/grab
                     platform_data, mutation_data = matcher.match_transactions(mock_total, mutations)
@@ -827,55 +821,7 @@ def export_reports():
                 adjusted_width = (max_length + 2)
                 sheet.column_dimensions[get_column_letter(column[0].column)].width = adjusted_width
 
-        # After all main sheets, add a new sheet for mutation grouping by rekening_number and date
-        mutation_sheet = wb.create_sheet(title='Mutations by Rekening')
-        mutation_headers = ['Platform', 'Rekening Number', 'Date', 'Total Mutation Amount', 'Platform Name']
-        mutation_sheet.append(mutation_headers)
-        # Style header row
-        header_font = Font(bold=True, color='FFFFFF')
-        header_fill = PatternFill(start_color='4F81BD', end_color='4F81BD', fill_type='solid')  # Blue
-        center_align = Alignment(horizontal='center', vertical='center')
-        for col, header in enumerate(mutation_headers, 1):
-            cell = mutation_sheet.cell(row=1, column=col)
-            cell.font = header_font
-            cell.fill = header_fill
-            cell.alignment = center_align
-        # Add data rows with alternating row fill
-        alt_fill = PatternFill(start_color='F2F2F2', end_color='F2F2F2', fill_type='solid')  # Light gray
-        for i, (platform, rekening_dict) in enumerate(mutations_by_platform.items()):
-            for rekening, date_dict in rekening_dict.items():
-                for date, mutation_list in date_dict.items():
-                    total_amount = sum(float(m.transaction_amount or 0) for m in mutation_list)
-                    row = [
-                        platform.capitalize(),
-                        rekening,
-                        date.strftime('%Y-%m-%d') if hasattr(date, 'strftime') else str(date),
-                        total_amount,
-                        ', '.join(sorted(set(str(m.platform_name) for m in mutation_list)))
-                    ]
-                    mutation_sheet.append(row)
-                    # Apply alternating fill
-                    row_idx = mutation_sheet.max_row
-                    fill = alt_fill if row_idx % 2 == 0 else None
-                    for col in range(1, len(mutation_headers) + 1):
-                        cell = mutation_sheet.cell(row=row_idx, column=col)
-                        if col == 4:  # Amount column
-                            cell.number_format = '#,##0'
-                        if fill:
-                            cell.fill = fill
-                        cell.alignment = Alignment(horizontal='center' if col != 4 else 'right')
-        # Auto-adjust column widths for the new sheet
-        for column_cells in mutation_sheet.columns:
-            max_length = 0
-            column_cells = list(column_cells)
-            for cell in column_cells:
-                try:
-                    if cell.value is not None and len(str(cell.value)) > max_length:
-                        max_length = len(str(cell.value))
-                except:
-                    pass
-            adjusted_width = max_length + 2
-            mutation_sheet.column_dimensions[get_column_letter(column_cells[0].column)].width = adjusted_width
+       
 
     #         # Protect each worksheet
     #         sheet.protection.sheet = True
