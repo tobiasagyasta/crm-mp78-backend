@@ -655,16 +655,29 @@ def export_reports():
             cell.fill = cash_fill
         current_row += 1
 
-        # Query manual entries first
-        manual_entries = ManualEntry.query.filter(
-            ManualEntry.outlet_code == outlet_code,
-            ManualEntry.start_date <= end_date,
-            ManualEntry.end_date >= start_date
-        ).all()
+        # Query manual entries with joined category (income or expense)
+        from sqlalchemy.orm import aliased
+        from app.models.income_category import IncomeCategory
+        from app.models.expense_category import ExpenseCategory
+        IncomeCat = aliased(IncomeCategory)
+        ExpenseCat = aliased(ExpenseCategory)
+        manual_entries = (
+            ManualEntry.query
+            .filter(
+                ManualEntry.outlet_code == outlet_code,
+                ManualEntry.start_date <= end_date,
+                ManualEntry.end_date >= start_date
+            )
+            .outerjoin(IncomeCat, (ManualEntry.category_id == IncomeCat.id) & (ManualEntry.entry_type == 'income'))
+            .outerjoin(ExpenseCat, (ManualEntry.category_id == ExpenseCat.id) & (ManualEntry.entry_type == 'expense'))
+            .add_entity(IncomeCat)
+            .add_entity(ExpenseCat)
+            .all()
+        )
 
         # Calculate manual entry totals
-        manual_income = sum(float(entry.amount or 0) for entry in manual_entries if entry.entry_type == 'income')
-        manual_expense = sum(float(entry.amount or 0) for entry in manual_entries if entry.entry_type == 'expense')
+        manual_income = sum(float(entry.amount or 0) for entry, income_cat, expense_cat in manual_entries if entry.entry_type == 'income')
+        manual_expense = sum(float(entry.amount or 0) for entry, income_cat, expense_cat in manual_entries if entry.entry_type == 'expense')
 
         # Add cash data
         cash_net_total = grand_totals['Cash_Income'] - grand_totals['Cash_Expense']
@@ -677,15 +690,18 @@ def export_reports():
                 cell.number_format = '#,##0'
         current_row += 1
 
-        # Add manual entries with their details
-        for entry in manual_entries:
+        # Add manual entries with their details (category name from joined table)
+        for entry, income_cat, expense_cat in manual_entries:
             amount = float(entry.amount or 0)
             income_amount = amount if entry.entry_type == 'income' else 0
             expense_amount = amount if entry.entry_type == 'expense' else 0
             net_amount = income_amount - expense_amount
-            
+            if entry.entry_type == 'income':
+                category_name = income_cat.name if income_cat else ''
+            else:
+                category_name = expense_cat.name if expense_cat else ''
             row_data = [
-                'Manual Entry',
+                category_name,
                 income_amount,
                 expense_amount,
                 net_amount,
