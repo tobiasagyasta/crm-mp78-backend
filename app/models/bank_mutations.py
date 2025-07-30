@@ -59,16 +59,14 @@ class BankMutation(db.Model):
         If found, return a dict with 'tanggal' (date) and 'amount' (float). Otherwise, return None.
         """
         try:
-            # Check if column 1 contains 'SOSMED GLOBAL (ALL)'
+            # Check for SOSMED GLOBAL (ALL)
             if len(row) > 3 and "SOSMED GLOBAL (ALL)" in row[1]:
-                print(f"[PKB LOG] Found 'SOSMED GLOBAL' in row: {row}")
-                # Get date from column 0
+                print(f"[PKB LOG] Found 'SOSMED GLOBAL (ALL)' in row: {row}")
                 try:
                     tanggal = datetime.strptime(row[0].strip().replace("'", ""), '%d/%m/%Y').date()
                 except Exception as e:
                     print(f"[PKB SOSMED Parse Error] Invalid date: {row[0]} | Error: {str(e)}")
                     return None
-                # Get amount from column 3, remove commas, quotes, and 'DB'/'CR'
                 amount_str = row[3].replace(',', '').replace('"', '').replace('DB', '').replace('CR', '').strip()
                 try:
                     amount = float(amount_str)
@@ -76,7 +74,25 @@ class BankMutation(db.Model):
                     print(f"[PKB SOSMED Parse Error] Invalid amount: {row[3]} | Error: {str(e)}")
                     return None
                 if amount > 0:
-                    return {'tanggal': tanggal, 'amount': amount}
+                    return {'tanggal': tanggal, 'amount': amount, 'type': 'ALL'}
+            # Check for SOSMED GLOBAL (AREA)
+            area_match = re.search(r'SOSMED GLOBAL \(([^)]+)\)', row[1])
+            if len(row) > 3 and area_match:
+                area = area_match.group(1).strip().upper()
+                print(f"[PKB LOG] Found 'SOSMED GLOBAL ({area})' in row: {row}")
+                try:
+                    tanggal = datetime.strptime(row[0].strip().replace("'", ""), '%d/%m/%Y').date()
+                except Exception as e:
+                    print(f"[PKB SOSMED Parse Error] Invalid date: {row[0]} | Error: {str(e)}")
+                    return None
+                amount_str = row[3].replace(',', '').replace('"', '').replace('DB', '').replace('CR', '').strip()
+                try:
+                    amount = float(amount_str)
+                except Exception as e:
+                    print(f"[PKB SOSMED Parse Error] Invalid amount: {row[3]} | Error: {str(e)}")
+                    return None
+                if amount > 0:
+                    return {'tanggal': tanggal, 'amount': amount, 'type': 'AREA', 'area': area}
             return None
         except Exception as e:
             print(f"[PKB Parse Error] Row: {row} | Error: {str(e)}")
@@ -120,24 +136,42 @@ class BankMutation(db.Model):
             print(f"[PKB DANA Parse Error] Row: {row} | Error: {str(e)}")
             return None
 
-    # @staticmethod
-    # def parse_pkb_avanger_row(row):
-    #     """
-    #     Parse a PKB CSV row (list of strings) for avangers.
-    #     If found, log the row to the console and skip DB insertion.
-    #     """
-    #     try:
-    #         joined_row = ",".join(row)
-    #         if "UM AVANGER" in joined_row:
-    #             print(f"[PKB LOG] Found 'UM AVANGER' in row: {row}")
-    #             return None  # Do not insert into DB for now
-    #         if "GAJI AVANGER" in joined_row:
-    #             print(f"[PKB LOG] Found 'GAJI AVANGER' in row: {row}")
-    #             return None  # Do not insert into DB for now
-    #         return None  # Not a PKB AVANGER row
-    #     except Exception as e:
-    #         print(f"[PKB Parse Error] Row: {row} | Error: {str(e)}")
-    #         return None
+    @staticmethod
+    def parse_pkb_avanger_row(row):
+        """
+        Parse a PKB CSV row for 'UM AVANGER' or 'GAJI AVANGER'.
+        If found, return a dict with 'tanggal' and 'amount'. Otherwise, return None.
+        """
+        try:
+            if len(row) > 3 and ("UM AVANGER" in row[1] or "GAJI AVANGER" in row[1]):
+                print(f"[PKB LOG] Found AVANGER in row: {row}")
+                avanger_type = "UM AVANGER" if "UM AVANGER" in row[1] else "GAJI AVANGER"
+                # Get date from column 0
+                try:
+                    tanggal = datetime.strptime(row[0].strip().replace("'", ""), '%d/%m/%Y').date()
+                except Exception as e:
+                    print(f"[PKB AVANGER Parse Error] Invalid date: {row[0]} | Error: {str(e)}")
+                    return None
+                # Get amount from column 3, remove commas, quotes, and 'DB'/'CR'
+                amount_str = row[3].replace(',', '').replace('"', '').replace('DB', '').replace('CR', '').strip()
+                try:
+                    amount = float(amount_str)
+                except Exception as e:
+                    print(f"[PKB AVANGER Parse Error] Invalid amount: {row[3]} | Error: {str(e)}")
+                    return None
+                # Extract description: from 'UM AVANGER' or 'GAJI AVANGER' up to the last number (date) in the string
+                desc_match = re.search(r'(UM AVANGER|GAJI AVANGER).*?(\d{1,2}\s*-\s*\d{1,2}\s*[A-Z]{3}\s*\d{2})', row[1])
+                if desc_match:
+                    description = desc_match.group(0).strip()
+                else:
+                    # fallback: just use avanger_type
+                    description = avanger_type
+                if amount > 0:
+                    return {'tanggal': tanggal, 'amount': amount, 'type': avanger_type, 'description': description}
+            return None
+        except Exception as e:
+            print(f"[PKB AVANGER Parse Error] Row: {row} | Error: {str(e)}")
+            return None
 
     @staticmethod
     def parse_gojek_row(row):
