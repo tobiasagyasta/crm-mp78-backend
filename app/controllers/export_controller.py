@@ -150,6 +150,7 @@ def export_reports():
         grabovo_gross_total = 0
         grabfood_net_total = 0
         grabovo_net_total = 0
+        tiktok_gross_total = 0
 
         for report in grab_reports:
             date = report.tanggal_dibuat.date()
@@ -748,6 +749,7 @@ def export_reports():
         # Calculate commission first (moved from below)
         management_commission = grabfood_net_total * 1/74 if outlet.brand in ["MP78", "MP78 Express", "Martabak 777 Sinar Bulan","Martabak 999 Asli Bandung", "Martabak Surya Kencana","Martabak Akim"] else 0
         partner_commission = grabfood_net_total * 1/74 if outlet.brand in ["MP78", "MP78 Express", "Martabak 777 Sinar Bulan","Martabak 999 Asli Bandung", "Martabak Surya Kencana","Martabak Akim"] else 0
+        tiktok_commission = grand_totals['Tiktok_Gross'] * 1/74 if outlet.brand in ["MP78", "MP78 Express", "Martabak 777 Sinar Bulan","Martabak 999 Asli Bandung", "Martabak Surya Kencana","Martabak Akim"] else 0
 
         cash_manual_net_total = (
             (grand_totals['Cash_Income'] + manual_income) -
@@ -808,6 +810,8 @@ def export_reports():
             commission_data = [
                 ('Management Commission (GrabFood)', '1%', management_commission),
                 ('Partner Commission (GrabFood)', '1%', partner_commission),
+                ('Management Commission (TikTok)', '1%', tiktok_commission),
+
             ]
 
             for category, rate, commission in commission_data:
