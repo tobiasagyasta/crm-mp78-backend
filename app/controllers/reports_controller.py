@@ -1238,7 +1238,10 @@ def upload_report_pkb():
             # Skip header
             next(reader, None)
 
+
             mutations = []
+            sosmed_total = 0
+            sosmed_date = None
 
             for row in reader:
                 try:
@@ -1263,12 +1266,46 @@ def upload_report_pkb():
                         transaksi=transaksi_text,
                     )
                     mutation.parse_pkb_transaction()
-                    mutation.parse_pkb_sosmed_row(row)
-                    mutation.parse_pkb_avanger_row(row)
+                    sosmed_info = mutation.parse_pkb_sosmed_row(row)
+                    dana_info = mutation.parse_pkb_dana_row(row)
+                    # mutation.parse_pkb_avanger_row(row)
+                    if sosmed_info:
+                        sosmed_total += sosmed_info['amount']
+                        sosmed_date = sosmed_info['tanggal']  # Use the first found date for manual entry
+                        continue  # Do not process this row as a mutation
+                    # Process DANA row: match phone to Outlet.pic_phone and create manual entry
+                    if dana_info:
+                        outlet = Outlet.query.filter_by(pic_phone=dana_info['phone']).first()
+                        if not outlet:
+                            print("Outlet not found for phone:", dana_info['phone'])
+                        if outlet:
+                            category = ExpenseCategory.query.filter_by(name='DANA Transfer').first()
+                            # Check for duplicate manual entry
+                            existing_entry = ManualEntry.query.filter(
+                                ManualEntry.outlet_code == outlet.outlet_code,
+                                ManualEntry.category_id == (category.id if category else None),
+                                ManualEntry.start_date == dana_info['tanggal'],
+                                ManualEntry.end_date == dana_info['tanggal'],
+                                ManualEntry.entry_type == 'expense',
+                                func.abs(ManualEntry.amount - dana_info['amount']) < 0.01
+                            ).first()
 
+                            if not existing_entry:
+                                manual_entry = ManualEntry(
+                                    outlet_code=outlet.outlet_code,
+                                    brand_name=outlet.brand,
+                                    entry_type='expense',
+                                    amount=dana_info['amount'],
+                                    description=f"DANA Transfer at {dana_info['tanggal'].strftime('%d %b %Y')}",
+                                    start_date=dana_info['tanggal'],
+                                    end_date=dana_info['tanggal'],
+                                    category_id=category.id if category else None
+                                )
+                                db.session.add(manual_entry)
+                                db.session.commit()
+                        continue  # Do not process this row as a mutation
                     # Only save valid PKB mutations
                     if mutation.platform_name == "PKB" and mutation.platform_code:
-                        # Deduplication logic (optional, based on tanggal + amount + platform_code)
                         exists = BankMutation.query.filter_by(
                             tanggal=mutation.tanggal,
                             transaction_amount=mutation.transaction_amount,
@@ -1301,6 +1338,44 @@ def upload_report_pkb():
                             db.session.rollback()
                             print(f"Error saving mutation: {e}")
                             skipped_mutations += 1
+
+            # After processing all rows, distribute sosmed_total as manual entries
+            if sosmed_total > 0:
+                outlets = Outlet.query.filter_by(
+                    brand='Pukis & Martabak Kota Baru',
+                    status='Active',
+                    is_global=True
+                ).filter(Outlet.pkb_code.isnot(None)).all()
+                n = len(outlets)
+                if n > 0:
+                    per_outlet_amount = sosmed_total / n
+                    category = ExpenseCategory.query.filter_by(name='Sosmed Global').first()
+                    for outlet in outlets:
+                        # Check for duplicate manual entry
+                        # Improved duplicate check: compare all relevant fields, use filter() for float comparison
+                        existing_entry = ManualEntry.query.filter(
+                            ManualEntry.outlet_code == outlet.outlet_code,
+                            ManualEntry.category_id == (category.id if category else None),
+                            ManualEntry.start_date == (sosmed_date or datetime.now().date()),
+                            ManualEntry.end_date == (sosmed_date or datetime.now().date()),
+                            ManualEntry.entry_type == 'expense',
+                            func.abs(ManualEntry.amount - per_outlet_amount) < 0.01
+                        ).first()
+                        if existing_entry:
+                            continue  # Skip duplicate
+                        manual_entry = ManualEntry(
+                            outlet_code=outlet.outlet_code,
+                            brand_name=outlet.brand,
+                            entry_type='expense',
+                            amount=per_outlet_amount,
+                            description='SOSMED GLOBAL (ALL) PKB',
+                            start_date=sosmed_date or datetime.now().date(),
+                            end_date=sosmed_date or datetime.now().date(),
+                            category_id=category.id if category else None
+                        )
+                        db.session.add(manual_entry)
+                    db.session.commit()
+                            
 
         return jsonify({
             'msg': 'PKB mutations uploaded successfully',
