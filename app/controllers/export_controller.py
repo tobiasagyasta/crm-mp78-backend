@@ -80,7 +80,7 @@ def export_reports():
             'Gojek Net', 'Gojek Mutation', 'Gojek Difference',
             'Grab Net', 'Grab Mutation', 'Grab Difference',
             'Shopee Net', 'Shopee Mutation', 'Shopee Difference',
-            'ShopeePay Net','ShopeePay Mutation', 'ShopeePay Difference','Tiktok Net','Cash Income', 'Cash Expense'
+            'ShopeePay Net','ShopeePay Mutation', 'ShopeePay Difference','Tiktok Net','Cash Income (Admin)', 'Cash Expense (Admin)', 'Sisa Cash (Admin)'
         ])
 
         # Query reports with inclusive end date
@@ -367,7 +367,7 @@ def export_reports():
             'ShopeePay Net': shopeepay_fill,
             'ShopeePay Mutation': shopeepay_fill, 'ShopeePay Difference': difference_fill,
             'Tiktok Net': PatternFill(start_color='FFB6C1', end_color='FFB6C1', fill_type='solid'),  # Light pink for TikTok
-            'Cash Income': cash_fill, 'Cash Expense': cash_fill
+            'Cash Income': cash_fill, 'Cash Expense': cash_fill, 'Sisa Cash (Admin)': cash_fill
         }
 
         headers = [
@@ -375,7 +375,7 @@ def export_reports():
             'Gojek Net', 'Gojek Mutation', 'Gojek Difference',
             'Grab Net', 'Grab Mutation', 'Grab Difference',
             'Shopee Net', 'Shopee Mutation', 'Shopee Difference',
-            'ShopeePay Net','ShopeePay Mutation', 'ShopeePay Difference', 'Tiktok Net', 'Cash Income', 'Cash Expense'
+            'ShopeePay Net','ShopeePay Mutation', 'ShopeePay Difference', 'Tiktok Net', 'Cash Income (Admin)', 'Cash Expense (Admin)', 'Sisa Cash (Admin)'
         ]
 
         # Write headers to Excel
@@ -406,7 +406,8 @@ def export_reports():
                 totals['ShopeePay_Difference'],
                 totals['Tiktok_Net'],   
                 totals['Cash_Income'],
-                totals['Cash_Expense']
+                totals['Cash_Expense'],
+                totals['Cash_Income'] - totals['Cash_Expense']
             ]
             for col, value in enumerate(row_data, 1):
                 cell = daily_sheet.cell(row=current_row, column=col)

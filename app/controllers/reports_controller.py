@@ -1381,6 +1381,7 @@ def upload_report_pkb():
                         ManualEntry.category_id == (category.id if category else None),
                         ManualEntry.start_date == (sosmed_date or datetime.now().date()),
                         ManualEntry.end_date == (sosmed_date or datetime.now().date()),
+                        ManualEntry.description == f'SOSMED GLOBAL ({sosmed_area}) PKB' if sosmed_type == 'AREA' and sosmed_area else 'SOSMED GLOBAL (ALL) PKB',
                         ManualEntry.entry_type == 'expense',
                         func.abs(ManualEntry.amount - per_outlet_amount) < 0.01
                     ).first()
