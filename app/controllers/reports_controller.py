@@ -1,3 +1,5 @@
+from io import BytesIO
+from fpdf import FPDF
 from flask import Blueprint, jsonify, request, Response, send_file
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.models.gojek_reports import GojekReport
@@ -1776,4 +1778,155 @@ def get_top_outlets():
     except Exception as e:
         print(f"Error in /top-outlets: {str(e)}")
         return jsonify({'error': str(e)}), 500
+
+@reports_bp.route('/top-outlets/pdf', methods=['GET'])
+def get_top_outlets_pdf():
+    start_date_param = request.args.get('start_date')
+    end_date_param = request.args.get('end_date')
+    brand_name = request.args.get('brand_name')
+
+    if not start_date_param or not end_date_param or not brand_name:
+        return jsonify({'error': 'start_date, end_date, and brand_name are required'}), 400
+
+    start_date = datetime.strptime(start_date_param, '%Y-%m-%d')
+    end_date = datetime.strptime(end_date_param, '%Y-%m-%d')
+    end_date_inclusive = datetime(end_date.year, end_date.month, end_date.day, 23, 59, 59)
+
+    # Fetch all relevant data by brand and date
+    gojek_data = GojekReport.query.filter(
+        GojekReport.brand_name == brand_name,
+        GojekReport.transaction_date >= start_date,
+        GojekReport.transaction_date <= end_date_inclusive
+    ).all()
+
+    grab_data = GrabFoodReport.query.filter(
+        GrabFoodReport.brand_name == brand_name,
+        GrabFoodReport.tanggal_dibuat >= start_date,
+        GrabFoodReport.tanggal_dibuat <= end_date_inclusive
+    ).all()
+
+    shopee_data = ShopeeReport.query.filter(
+        ShopeeReport.brand_name == brand_name,
+        ShopeeReport.order_create_time >= start_date,
+        ShopeeReport.order_create_time <= end_date_inclusive
+    ).all()
+
+    shopeepay_data = ShopeepayReport.query.filter(
+        ShopeepayReport.brand_name == brand_name,
+        ShopeepayReport.create_time >= start_date,
+        ShopeepayReport.create_time <= end_date_inclusive
+    ).all()
+
+    cash_data = CashReport.query.filter(
+        CashReport.brand_name == brand_name,
+        CashReport.tanggal >= start_date,
+        CashReport.tanggal <= end_date_inclusive
+    ).all()
+
+    manual_entries_data = ManualEntry.query.filter(
+        ManualEntry.brand_name == brand_name,
+        ManualEntry.start_date >= start_date,
+        ManualEntry.end_date <= end_date_inclusive
+    ).all()
+
+    outlet_totals = {}
+
+    def add_total(outlet, amount):
+        outlet_totals[outlet] = outlet_totals.get(outlet, 0) + amount
+
+    for report in gojek_data:
+        add_total(report.outlet_code, float(report.nett_amount or 0))
+
+    for report in grab_data:
+        add_total(report.outlet_code, float(report.total or 0))
+
+    for report in shopee_data:
+        if report.order_status != "Cancelled":
+            add_total(report.outlet_code, float(report.net_income or 0))
+
+    for report in shopeepay_data:
+        if report.transaction_type != "Withdrawal":
+            add_total(report.outlet_code, float(report.settlement_amount or 0))
+
+    # For cash: income - expense
+    cash_summary = {}
+    for report in cash_data:
+        code = report.outlet_code
+        amount = float(report.total or 0)
+        if code not in cash_summary:
+            cash_summary[code] = {'income': 0, 'expense': 0}
+        if report.type == 'income':
+            cash_summary[code]['income'] += amount
+        elif report.type == 'expense':
+            cash_summary[code]['expense'] += amount
+
+    for code, summary in cash_summary.items():
+        net_cash = summary['income'] - summary['expense']
+        add_total(code, net_cash)
+
+    # Subtract manual entry expenses
+    for entry in manual_entries_data:
+        add_total(entry.outlet_code, -float(entry.amount or 0))
+
+    # Sort outlets by running total descending
+    top_outlets = sorted(outlet_totals.items(), key=lambda x: x[1], reverse=True)
+    # Filter to only valid outlets with matching brand and non-null name BEFORE pagination
+    valid_outlets = []
+    for outlet, total in top_outlets:
+        outlet_obj = Outlet.query.filter_by(outlet_code=outlet, brand=brand_name).first()
+        if outlet_obj and outlet_obj.brand == brand_name and outlet_obj.outlet_name_gojek:
+            valid_outlets.append({
+                'outlet_code': outlet,
+                'outlet_brand': outlet_obj.brand,
+                'outlet_name': outlet_obj.outlet_name_gojek,
+                'running_total': round(total, 2)
+            })
+
+    # Prepare table data: rank, outlet name, net income
+    TABLE_HEADER = ("Rank", "Outlet Name", "Net Income (Rp)")
+    table_rows = [TABLE_HEADER]
+    for idx, outlet in enumerate(valid_outlets, 1):
+        table_rows.append((str(idx), outlet['outlet_name'], f"{outlet['running_total']:,.2f}"))
+
+    # Paginate 20 per page
+    pdf = FPDF()
+    pdf.set_font("Times", size=12)
+
+    brand_name_out = brand_name
+    if brand_name == 'Pukis & Martabak Kota Baru':
+        brand_name_out = 'PKB'
+    
+    for page_start in range(1, len(table_rows), 20):
+            pdf.add_page()
+            if page_start == 1:
+                # Only on the first page
+                pdf.set_font("Times", style="B", size=16)
+                pdf.cell(0, 10, "Outlet Net Income Rankings", ln=True, align="C")
+                pdf.set_font("Times", style="", size=12)
+                pdf.cell(0, 8, f"Brand: {brand_name_out}", ln=True, align="C")
+                pdf.cell(0, 8, f"Period: {start_date.strftime('%d %b %Y')} - {end_date.strftime('%d %b %Y')}", ln=True, align="C")
+                pdf.ln(2)
+            else:
+                # Add some spacing on subsequent pages to separate header from table
+                pdf.ln(10)
+            # pdf.set_font("Times", style="B", size=16)
+            # pdf.cell(0, 10, "Outlet Net Income Rankings", ln=True, align="C")
+            # pdf.set_font("Times", style="", size=12)
+            # pdf.cell(0, 8, f"Brand: {brand_name}", ln=True, align="C")
+            # pdf.cell(0, 8, f"Period: {start_date.strftime('%d %b %Y')} - {end_date.strftime('%d %b %Y')}", ln=True, align="C")
+            # pdf.ln(2)
+            with pdf.table(col_widths=(5,50,20), text_align=("center", "left", "left")) as table:
+                # Always add header
+                row = table.row()
+                for datum in TABLE_HEADER:
+                    row.cell(datum)
+                # Add up to 20 rows
+                for row_data in table_rows[page_start:page_start+20]:
+                    row = table.row()
+                    for datum in row_data:
+                        row.cell(datum)
+    pdf_bytes = BytesIO()
+    pdf.output(pdf_bytes)
+    pdf_bytes.seek(0)
+    return send_file(pdf_bytes, mimetype='application/pdf', as_attachment=True, download_name= f'Top_Outlets_{brand_name_out}_{start_date.strftime("%Y%m%d")}_{end_date.strftime("%Y%m%d")}.pdf')
 
