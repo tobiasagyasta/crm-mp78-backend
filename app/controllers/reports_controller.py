@@ -1873,7 +1873,7 @@ def get_top_outlets_pdf():
     # Filter to only valid outlets with matching brand and non-null name BEFORE pagination
     valid_outlets = []
     for outlet, total in top_outlets:
-        outlet_obj = Outlet.query.filter_by(outlet_code=outlet, brand=brand_name).first()
+        outlet_obj = Outlet.query.filter_by(outlet_code=outlet, brand=brand_name, status='Active').first()
         if outlet_obj and outlet_obj.brand == brand_name and outlet_obj.outlet_name_gojek:
             valid_outlets.append({
                 'outlet_code': outlet,
