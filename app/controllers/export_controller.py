@@ -67,6 +67,14 @@ def export_reports():
                 'Shopee_Mutation': None, 'Shopee_Difference': 0,
                 'ShopeePay_Mutation': None, 'ShopeePay_Difference': 0
             }
+        all_dates = []
+        date = start_date.date()
+        end = end_date.date()
+        while date <= end:
+            all_dates.append(date)
+            if date not in daily_totals:
+                daily_totals[date] = init_daily_total()
+            date += timedelta(days=1)
         
         # Add title rows
         dataset = []
@@ -256,9 +264,8 @@ def export_reports():
                 print(f"Warning: Mutation matching failed for {platform}: {str(e)}")
                 continue
 
-        # Add aggregated data to dataset, sorted by date
-        # Update the data output to include ShopeePay and mutation data
-        for date in sorted(daily_totals.keys()):
+        # Add aggregated data to dataset, using all_dates to ensure all dates are present
+        for date in all_dates:
             totals = daily_totals[date]
             dataset.append([
                 date,
@@ -386,9 +393,9 @@ def export_reports():
             cell.fill = header_colors.get(header, header_fill)
             cell.alignment = center_align
 
-        # Write daily data rows to Excel
+        # Write daily data rows to Excel using all_dates
         current_row = 6
-        for date in sorted(daily_totals.keys()):
+        for date in all_dates:
             totals = daily_totals[date]
             row_data = [
                 date,
