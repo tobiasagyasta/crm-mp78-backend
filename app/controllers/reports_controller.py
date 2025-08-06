@@ -1282,18 +1282,20 @@ def upload_report_pkb():
 
                     # print("Sosmed:",sosmed_info)
                     if sosmed_info:
-                        if sosmed_info.get('type', 'ALL'):
+                        sosmed_type_val = sosmed_info.get('type', 'ALL')
+                        if sosmed_type_val == 'ALL':
                             sosmed_all['total'] += sosmed_info['amount']
                             sosmed_all['date'] = sosmed_info['tanggal']
-                        elif sosmed_info.get('type', 'AREA') and sosmed_info.get('area'):
+                        elif sosmed_type_val == 'AREA' and sosmed_info.get('area'):
                             area = sosmed_info.get('area')
                             if area not in sosmed_area_dict:
                                 sosmed_area_dict[area] = {'total': 0, 'date': None}
                             sosmed_area_dict[area]['total'] += sosmed_info['amount']
                             sosmed_area_dict[area]['date'] = sosmed_info['tanggal']
+                        # Do NOT add AREA to ALL
                         sosmed_total += sosmed_info['amount']
                         sosmed_date = sosmed_info['tanggal']
-                        sosmed_type = sosmed_info.get('type', 'ALL')
+                        sosmed_type = sosmed_type_val
                         sosmed_area = sosmed_info.get('area')
                         continue  # Do not process this row as a mutation
                     # Process DANA row: match phone to Outlet.pic_phone and create manual entry
