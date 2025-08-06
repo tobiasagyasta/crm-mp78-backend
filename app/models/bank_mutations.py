@@ -37,7 +37,7 @@ class BankMutation(db.Model):
             return  # Skip parsing if no valid PKB platform code
         
         normalized_code = f"{code_match.group(1).upper()}-{code_match.group(2)}"
-        print(f"[PKB LOG] Normalized code: {normalized_code}")
+        # print(f"[PKB LOG] Normalized code: {normalized_code}")
         # Safe to proceed
         self.platform_name = "PKB"
         self.platform_code = normalized_code
@@ -45,7 +45,7 @@ class BankMutation(db.Model):
         # Extract amount (first float-looking number with at least 4 digits before the decimal)
         amount_match = re.search(r'\b\d{4,}\.\d{2}\b', text)
         if amount_match:
-            print(f"[PKB LOG] Found amount: {amount_match.group()}")
+            # print(f"[PKB LOG] Found amount: {amount_match.group()}")
             self.transaction_amount = float(amount_match.group())
 
         # Set generic transaction_type if needed
@@ -62,40 +62,41 @@ class BankMutation(db.Model):
         If found, return a dict with 'tanggal' (date) and 'amount' (float). Otherwise, return None.
         """
         try:
-            # Check for SOSMED GLOBAL (ALL)
-            if len(row) > 3 and "SOSMED GLOBAL (ALL)" in row[1]:
-                print(f"[PKB LOG] Found 'SOSMED GLOBAL (ALL)' in row: {row}")
-                try:
-                    tanggal = datetime.strptime(row[0].strip().replace("'", ""), '%d/%m/%Y').date()
-                except Exception as e:
-                    print(f"[PKB SOSMED Parse Error] Invalid date: {row[0]} | Error: {str(e)}")
-                    return None
-                amount_str = row[3].replace(',', '').replace('"', '').replace('DB', '').replace('CR', '').strip()
-                try:
-                    amount = float(amount_str)
-                except Exception as e:
-                    print(f"[PKB SOSMED Parse Error] Invalid amount: {row[3]} | Error: {str(e)}")
-                    return None
-                if amount > 0:
-                    return {'tanggal': tanggal, 'amount': amount, 'type': 'ALL'}
-            # Check for SOSMED GLOBAL (AREA)
-            area_match = re.search(r'SOSMED GLOBAL \(([^)]+)\)', row[1])
-            if len(row) > 3 and area_match:
-                area = area_match.group(1).strip().upper()
-                print(f"[PKB LOG] Found 'SOSMED GLOBAL ({area})' in row: {row}")
-                try:
-                    tanggal = datetime.strptime(row[0].strip().replace("'", ""), '%d/%m/%Y').date()
-                except Exception as e:
-                    print(f"[PKB SOSMED Parse Error] Invalid date: {row[0]} | Error: {str(e)}")
-                    return None
-                amount_str = row[3].replace(',', '').replace('"', '').replace('DB', '').replace('CR', '').strip()
-                try:
-                    amount = float(amount_str)
-                except Exception as e:
-                    print(f"[PKB SOSMED Parse Error] Invalid amount: {row[3]} | Error: {str(e)}")
-                    return None
-                if amount > 0:
-                    return {'tanggal': tanggal, 'amount': amount, 'type': 'AREA', 'area': area}
+            # Check for SOSMED GLOBAL (ALL) first, and only match (AREA) if (ALL) is not present
+            if len(row) > 3:
+                sosmed_text = row[1]
+                if "SOSMED GLOBAL (ALL)" in sosmed_text:
+                    print(f"[PKB LOG] Found 'SOSMED GLOBAL (ALL)' in row: {row}")
+                    try:
+                        tanggal = datetime.strptime(row[0].strip().replace("'", ""), '%d/%m/%Y').date()
+                    except Exception as e:
+                        print(f"[PKB SOSMED Parse Error] Invalid date: {row[0]} | Error: {str(e)}")
+                        return None
+                    amount_str = row[3].replace(',', '').replace('"', '').replace('DB', '').replace('CR', '').strip()
+                    try:
+                        amount = float(amount_str)
+                    except Exception as e:
+                        print(f"[PKB SOSMED Parse Error] Invalid amount: {row[3]} | Error: {str(e)}")
+                        return None
+                    if amount > 0:
+                        return {'tanggal': tanggal, 'amount': amount, 'type': 'ALL'}
+                elif re.search(r'SOSMED GLOBAL \(([^)]+)\)', sosmed_text):
+                    area_match = re.search(r'SOSMED GLOBAL \(([^)]+)\)', sosmed_text)
+                    area = area_match.group(1).strip().upper()
+                    print(f"[PKB LOG] Found 'SOSMED GLOBAL ({area})' in row: {row}")
+                    try:
+                        tanggal = datetime.strptime(row[0].strip().replace("'", ""), '%d/%m/%Y').date()
+                    except Exception as e:
+                        print(f"[PKB SOSMED Parse Error] Invalid date: {row[0]} | Error: {str(e)}")
+                        return None
+                    amount_str = row[3].replace(',', '').replace('"', '').replace('DB', '').replace('CR', '').strip()
+                    try:
+                        amount = float(amount_str)
+                    except Exception as e:
+                        print(f"[PKB SOSMED Parse Error] Invalid amount: {row[3]} | Error: {str(e)}")
+                        return None
+                    if amount > 0:
+                        return {'tanggal': tanggal, 'amount': amount, 'type': 'AREA', 'area': area}
             return None
         except Exception as e:
             print(f"[PKB Parse Error] Row: {row} | Error: {str(e)}")

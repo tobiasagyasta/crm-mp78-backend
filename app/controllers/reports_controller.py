@@ -1246,6 +1246,8 @@ def upload_report_pkb():
             sosmed_date = None
             sosmed_area = None
             sosmed_type = None
+            sosmed_all = {'total': 0, 'date': None}
+            sosmed_area_dict = {}
             avanger_totals = {
                 'UM AVANGER': {'total': 0, 'date': None},
                 'GAJI AVANGER': {'total': 0, 'date': None}
@@ -1277,7 +1279,18 @@ def upload_report_pkb():
                     sosmed_info = mutation.parse_pkb_sosmed_row(row)
                     dana_info = mutation.parse_pkb_dana_row(row)
                     avanger_info = mutation.parse_pkb_avanger_row(row)
+
+                    # print("Sosmed:",sosmed_info)
                     if sosmed_info:
+                        if sosmed_info.get('type', 'ALL'):
+                            sosmed_all['total'] += sosmed_info['amount']
+                            sosmed_all['date'] = sosmed_info['tanggal']
+                        elif sosmed_info.get('type', 'AREA') and sosmed_info.get('area'):
+                            area = sosmed_info.get('area')
+                            if area not in sosmed_area_dict:
+                                sosmed_area_dict[area] = {'total': 0, 'date': None}
+                            sosmed_area_dict[area]['total'] += sosmed_info['amount']
+                            sosmed_area_dict[area]['date'] = sosmed_info['tanggal']
                         sosmed_total += sosmed_info['amount']
                         sosmed_date = sosmed_info['tanggal']
                         sosmed_type = sosmed_info.get('type', 'ALL')
@@ -1355,35 +1368,23 @@ def upload_report_pkb():
                             print(f"Error saving mutation: {e}")
                             skipped_mutations += 1
 
-            # After processing all rows, distribute sosmed_total as manual entries
-            outlets = None
-            n = 0
-            if sosmed_type == 'AREA' and sosmed_area:
-                outlets = Outlet.query.filter_by(
-                    brand='Pukis & Martabak Kota Baru',
-                    status='Active',
-                    area=sosmed_area,
-                    is_global=True
-                ).filter(Outlet.pkb_code.isnot(None)).all()
-                n = len(outlets)
-            else:
+            # After processing all rows, distribute SOSMED GLOBAL (ALL)
+            if sosmed_all['total'] > 0:
                 outlets = Outlet.query.filter_by(
                     brand='Pukis & Martabak Kota Baru',
                     status='Active',
                     is_global=True
                 ).filter(Outlet.pkb_code.isnot(None)).all()
                 n = len(outlets)
-            # Distribute SOSMED GLOBAL
-            if sosmed_total > 0 and n > 0:
-                per_outlet_amount = sosmed_total / n
+                per_outlet_amount = sosmed_all['total'] / n if n > 0 else 0
                 category = ExpenseCategory.query.filter_by(name='Sosmed Global').first()
                 for outlet in outlets:
                     existing_entry = ManualEntry.query.filter(
                         ManualEntry.outlet_code == outlet.outlet_code,
                         ManualEntry.category_id == (category.id if category else None),
-                        ManualEntry.start_date == (sosmed_date or datetime.now().date()),
-                        ManualEntry.end_date == (sosmed_date or datetime.now().date()),
-                        ManualEntry.description == f'SOSMED GLOBAL ({sosmed_area}) PKB' if sosmed_type == 'AREA' and sosmed_area else 'SOSMED GLOBAL (ALL) PKB',
+                        ManualEntry.start_date == (sosmed_all['date'] or datetime.now().date()),
+                        ManualEntry.end_date == (sosmed_all['date'] or datetime.now().date()),
+                        ManualEntry.description == 'SOSMED GLOBAL (ALL) PKB',
                         ManualEntry.entry_type == 'expense',
                         func.abs(ManualEntry.amount - per_outlet_amount) < 0.01
                     ).first()
@@ -1394,9 +1395,45 @@ def upload_report_pkb():
                         brand_name=outlet.brand,
                         entry_type='expense',
                         amount=per_outlet_amount,
-                        description=f'SOSMED GLOBAL ({sosmed_area}) PKB' if sosmed_type == 'AREA' and sosmed_area else 'SOSMED GLOBAL (ALL) PKB',
-                        start_date=sosmed_date or datetime.now().date(),
-                        end_date=sosmed_date or datetime.now().date(),
+                        description='SOSMED GLOBAL (ALL) PKB',
+                        start_date=sosmed_all['date'] or datetime.now().date(),
+                        end_date=sosmed_all['date'] or datetime.now().date(),
+                        category_id=category.id if category else None
+                    )
+                    db.session.add(manual_entry)
+                db.session.commit()
+
+            # Distribute SOSMED GLOBAL (AREA)
+            for area, area_data in sosmed_area_dict.items():
+                outlets = Outlet.query.filter_by(
+                    brand='Pukis & Martabak Kota Baru',
+                    status='Active',
+                    area=area,
+                    is_global=True
+                ).filter(Outlet.pkb_code.isnot(None)).all()
+                n = len(outlets)
+                per_outlet_amount = area_data['total'] / n if n > 0 else 0
+                category = ExpenseCategory.query.filter_by(name='Sosmed Global').first()
+                for outlet in outlets:
+                    existing_entry = ManualEntry.query.filter(
+                        ManualEntry.outlet_code == outlet.outlet_code,
+                        ManualEntry.category_id == (category.id if category else None),
+                        ManualEntry.start_date == (area_data['date'] or datetime.now().date()),
+                        ManualEntry.end_date == (area_data['date'] or datetime.now().date()),
+                        ManualEntry.description == f'SOSMED GLOBAL ({area}) PKB',
+                        ManualEntry.entry_type == 'expense',
+                        func.abs(ManualEntry.amount - per_outlet_amount) < 0.01
+                    ).first()
+                    if existing_entry:
+                        continue  # Skip duplicate
+                    manual_entry = ManualEntry(
+                        outlet_code=outlet.outlet_code,
+                        brand_name=outlet.brand,
+                        entry_type='expense',
+                        amount=per_outlet_amount,
+                        description=f'SOSMED GLOBAL ({area}) PKB',
+                        start_date=area_data['date'] or datetime.now().date(),
+                        end_date=area_data['date'] or datetime.now().date(),
                         category_id=category.id if category else None
                     )
                     db.session.add(manual_entry)
