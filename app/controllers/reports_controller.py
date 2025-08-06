@@ -1442,6 +1442,12 @@ def upload_report_pkb():
                 db.session.commit()
             # Distribute AVANGER rows
             for av_type, av_data in avanger_totals.items():
+                outlets = Outlet.query.filter_by(
+                    brand='Pukis & Martabak Kota Baru',
+                    status='Active',
+                    is_global=True
+                ).filter(Outlet.pkb_code.isnot(None)).all()
+                n = len(outlets)
                 if av_data['total'] > 0 and n > 0:
                     per_outlet_amount = av_data['total'] / n
                     category = ExpenseCategory.query.filter_by(name="Avanger").first()
