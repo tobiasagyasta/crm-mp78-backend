@@ -31,18 +31,21 @@ class BankMutation(db.Model):
 
         text = self.transaksi.strip()
 
-        # Must contain valid PKB platform code like PDG-085
-        code_match = re.search(r'\b[A-Z]{3}-\d{3}\b', text)
+        # Match codes like PDG085
+        code_match = re.search(r'([A-Za-z]{3})[-_\s]?(\d{3})', text)
         if not code_match:
             return  # Skip parsing if no valid PKB platform code
-
+        
+        normalized_code = f"{code_match.group(1).upper()}-{code_match.group(2)}"
+        print(f"[PKB LOG] Normalized code: {normalized_code}")
         # Safe to proceed
         self.platform_name = "PKB"
-        self.platform_code = code_match.group()
+        self.platform_code = normalized_code
 
         # Extract amount (first float-looking number with at least 4 digits before the decimal)
         amount_match = re.search(r'\b\d{4,}\.\d{2}\b', text)
         if amount_match:
+            print(f"[PKB LOG] Found amount: {amount_match.group()}")
             self.transaction_amount = float(amount_match.group())
 
         # Set generic transaction_type if needed
