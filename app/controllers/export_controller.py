@@ -82,13 +82,13 @@ def export_reports():
         dataset.append(['Period:', f'{start_date.strftime("%Y-%m-%d")} to {end_date.strftime("%Y-%m-%d")}', '', '', '', '', '', '', ''])
         dataset.append(['Outlet:', outlet.outlet_name_gojek, '', '', '', '', '', '', ''])
         dataset.append([]) # Empty row for spacing
-        # Update the initial headers to include ShopeePay and mutation data
+        # Update the initial headers to include ShopeePay, mutation data, and Minusan (Mutasi)
         dataset.append([
             'Date',
             'Gojek Net', 'Gojek Mutation', 'Gojek Difference',
             'Grab Net', 'Grab Mutation', 'Grab Difference',
             'Shopee Net', 'Shopee Mutation', 'Shopee Difference',
-            'ShopeePay Net','ShopeePay Mutation', 'ShopeePay Difference','Tiktok Net','Cash Income (Admin)', 'Cash Expense (Admin)', 'Sisa Cash (Admin)'
+            'ShopeePay Net','ShopeePay Mutation', 'ShopeePay Difference','Tiktok Net','Cash Income (Admin)', 'Cash Expense (Admin)', 'Minusan (Mutasi)', 'Sisa Cash (Admin)'
         ])
 
         # Query reports with inclusive end date
@@ -265,8 +265,24 @@ def export_reports():
                 continue
 
         # Add aggregated data to dataset, using all_dates to ensure all dates are present
+        from app.utils.pkb_mutation import get_minus_manual_entries
+        minusan_entries = get_minus_manual_entries(outlet_code, start_date.date(), end_date_inclusive.date())
+        # Build a lookup: date -> sum of minusan amounts for that date
+        print([{"amount": entry.amount,"description": entry.description, "minus_date": entry.minus_date} for entry in minusan_entries])
+        minusan_by_date = {}
+        for entry in minusan_entries:
+            d = getattr(entry, 'minus_date', None)
+            if d:
+                minusan_by_date.setdefault(d, 0)
+                minusan_by_date[d] += float(entry.amount or 0)
+
+        print("Minusan by date:", minusan_by_date)
+        print("All dates:", all_dates)
+
         for date in all_dates:
             totals = daily_totals[date]
+            minusan_total = minusan_by_date.get(date, 0)
+            print(f"Row date: {date}, Minusan total: {minusan_total}")
             dataset.append([
                 date,
                 totals['Gojek_Net'],
@@ -283,9 +299,13 @@ def export_reports():
                 totals['ShopeePay_Difference'],
                 totals['Tiktok_Net'],
                 totals['Cash_Income'],
-                totals['Cash_Expense']
+                totals['Cash_Expense'],
+                minusan_total,
+                totals['Cash_Income'] - totals['Cash_Expense']
             ])
-
+        
+        cash_income = sum(day['Cash_Income'] for day in daily_totals.values())
+        cash_expense = sum(day['Cash_Expense'] for day in daily_totals.values())
         # Update grand totals to include ShopeePay and mutation data
         grand_totals = {
             'Gojek_Gross': sum(day['Gojek_Gross'] for day in daily_totals.values()),
@@ -306,8 +326,9 @@ def export_reports():
             'ShopeePay_Difference': sum(day['ShopeePay_Difference'] for day in daily_totals.values() if day['ShopeePay_Difference'] is not None),
             'Tiktok_Net': sum(day['Tiktok_Net'] for day in daily_totals.values()),
             'Tiktok_Gross': sum(day['Tiktok_Gross'] for day in daily_totals.values()),
-            'Cash_Income': sum(day['Cash_Income'] for day in daily_totals.values()),
-            'Cash_Expense': sum(day['Cash_Expense'] for day in daily_totals.values())
+            'Cash_Income': cash_income,
+            'Cash_Expense': cash_expense,
+            'Cash_Difference': cash_income - cash_expense
         }
 
         # Update grand total row to include ShopeePay and mutation data
@@ -327,7 +348,9 @@ def export_reports():
             grand_totals['ShopeePay_Difference'],
             grand_totals['Tiktok_Net'],
             grand_totals['Cash_Income'],
-            grand_totals['Cash_Expense']
+            grand_totals['Cash_Expense'],
+
+            grand_totals['Cash_Difference']
         ])
 
         # Create a new workbook and select the active sheet
@@ -382,7 +405,7 @@ def export_reports():
             'Gojek Net', 'Gojek Mutation', 'Gojek Difference',
             'Grab Net', 'Grab Mutation', 'Grab Difference',
             'Shopee Net', 'Shopee Mutation', 'Shopee Difference',
-            'ShopeePay Net','ShopeePay Mutation', 'ShopeePay Difference', 'Tiktok Net', 'Cash Income (Admin)', 'Cash Expense (Admin)', 'Sisa Cash (Admin)'
+            'ShopeePay Net','ShopeePay Mutation', 'ShopeePay Difference', 'Tiktok Net', 'Cash Income (Admin)', 'Cash Expense (Admin)','Minusan (Mutasi)', 'Sisa Cash (Admin)'
         ]
 
         # Write headers to Excel
@@ -397,6 +420,7 @@ def export_reports():
         current_row = 6
         for date in all_dates:
             totals = daily_totals[date]
+            minusan_total = minusan_by_date.get(date, 0)
             row_data = [
                 date,
                 totals['Gojek_Net'],
@@ -414,6 +438,7 @@ def export_reports():
                 totals['Tiktok_Net'],   
                 totals['Cash_Income'],
                 totals['Cash_Expense'],
+                minusan_total,
                 totals['Cash_Income'] - totals['Cash_Expense']
             ]
             for col, value in enumerate(row_data, 1):
@@ -455,7 +480,8 @@ def export_reports():
             grand_totals['ShopeePay_Difference'],
             grand_totals['Tiktok_Net'],
             grand_totals['Cash_Income'],
-            grand_totals['Cash_Expense']
+            grand_totals['Cash_Expense'],
+            grand_totals['Cash_Difference']
         ]
         for col, value in enumerate(grand_total_data, 2):
             cell = daily_sheet.cell(row=grand_total_row, column=col)

@@ -487,23 +487,30 @@ def convert_mutation_to_manual_entry():
                 start_date=mutation.tanggal,
                 end_date=mutation.tanggal,
                 description=mutation.transaksi or '',
-                category_id=9,
-                entry_type='expense',
+                # category_id=9,
+                entry_type='expense' or 'income',
                 brand_name='Pukis & Martabak Kota Baru'
             ).first()
             if exists:
                 number_of_skips += 1
                 continue  # Skip if already exists
 
+            entry_type = 'income' if mutation.transaction_type == 'CR' else 'expense'
+            if entry_type == 'income':
+                from app.models.income_category import IncomeCategory
+                category = IncomeCategory.query.filter_by(name='PKB').first()
+            else:
+                from app.models.expense_category import ExpenseCategory
+                category = ExpenseCategory.query.filter_by(name='PKB').first()
             manual_entry = ManualEntry(
                 outlet_code=outlet.outlet_code,  # Use the mapped outlet_code
                 brand_name='Pukis & Martabak Kota Baru',
-                entry_type='expense',
+                entry_type=entry_type,
                 amount=abs(mutation.transaction_amount) if mutation.transaction_amount is not None else 0,
                 description=mutation.transaksi or '',
                 start_date=mutation.tanggal,
                 end_date=mutation.tanggal,
-                category_id=9
+                category_id=category.id if category else None
             )
             db.session.add(manual_entry)
           

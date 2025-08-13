@@ -15,6 +15,7 @@ from app.controllers.export_controller import export_bp
 from app.controllers.reports_controller_s3 import reports_s3_bp
 from app.controllers.mutations_controller import mutations_bp
 from app.controllers.daily_merchant_totals_controller import daily_merchant_totals_bp
+from app.controllers.test_controller import test_bp
 from flask_cors import CORS
 
 def create_app():
@@ -56,6 +57,7 @@ def create_app():
     app.register_blueprint(reports_s3_bp)
     app.register_blueprint(mutations_bp)
     app.register_blueprint(daily_merchant_totals_bp)
+    app.register_blueprint(test_bp)
     
     @app.route('/')
     def welcome():

@@ -31,6 +31,9 @@ class BankMutation(db.Model):
 
         text = self.transaksi.strip()
 
+        type_match = re.search(r'TRSF E-BANKING (CR|DB)', text)
+        if type_match:
+            type_result = type_match.group(1)
         # Match codes like PDG085
         code_match = re.search(r'([A-Za-z]{3})[-_\s]?(\d{3})', text)
         if not code_match:
@@ -49,7 +52,7 @@ class BankMutation(db.Model):
             self.transaction_amount = float(amount_match.group())
 
         # Set generic transaction_type if needed
-        self.transaction_type = "TRSF E-BANKING DB"
+        self.transaction_type = type_result
         self.transaction_id = None
 
         # Extract transaction description (everything after platform code)

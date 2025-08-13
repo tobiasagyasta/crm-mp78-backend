@@ -22,10 +22,38 @@ def create_product():
     return jsonify(product.to_dict()), 201
 
 # Get all products
+from sqlalchemy import case
+
 @product_bp.route("", methods=["GET"])
 def get_products():
-    products = Product.query.order_by(Product.name.asc()).all()
-    return jsonify([product.to_dict() for product in products])
+    # 1. List of products to show at the top
+    priority_names = ["MP78","Pukis & Martabak Kota Baru"]
+
+    # 2. Query for priority products, preserving the order
+    priority_products = (
+        Product.query
+        .filter(Product.name.in_(priority_names))
+        .order_by(
+            case(
+                {name: i for i, name in enumerate(priority_names)},
+                value=Product.name
+            )
+        )
+        .all()
+    )
+
+    # 3. Query for the rest of the products (excluding priority ones), alphabetically
+    other_products = (
+        Product.query
+        .filter(~Product.name.in_(priority_names))
+        .order_by(Product.name.asc())
+        .all()
+    )
+
+    # 4. Combine and return all
+    all_products = priority_products + other_products
+    return jsonify([product.to_dict() for product in all_products])
+
 
 # Get a single product by ID
 @product_bp.route("/<int:product_id>", methods=["GET"])
