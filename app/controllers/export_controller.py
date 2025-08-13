@@ -745,7 +745,8 @@ def export_reports():
             'Jul': 7, 'Agu': 8, 'Sep': 9, 'Okt': 10, 'Nov': 11, 'Des': 12
         }
         def parse_indonesian_date(description):
-            match = re.search(r'(\d{1,2})\s+([A-Za-z]+)', description)
+            # Match formats like '5-Jan', '2-Feb', '11-Agu', etc.
+            match = re.search(r'(\d{1,2})[-\s]?([A-Za-z]+)', description)
             if match:
                 day = int(match.group(1))
                 month_str = match.group(2).capitalize()
