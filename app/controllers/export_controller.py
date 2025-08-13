@@ -201,18 +201,13 @@ def export_reports():
             date = report.tanggal.date()
             if date not in daily_totals:
                 daily_totals[date] = init_daily_total()
-            # Use Decimal for precise aggregation
-            current_income = Decimal(str(daily_totals[date]['Cash_Income']))
-            report_income = Decimal(str(report.total or 0))
-            daily_totals[date]['Cash_Income'] = current_income + report_income
+            daily_totals[date]['Cash_Income'] += float(report.total or 0)
 
         for report in cash_expense_reports:
             date = report.tanggal.date()
             if date not in daily_totals:
                 daily_totals[date] = init_daily_total()
-            current_expense = Decimal(str(daily_totals[date]['Cash_Expense']))
-            report_expense = Decimal(str(report.total or 0))
-            daily_totals[date]['Cash_Expense'] = current_expense + report_expense
+            daily_totals[date]['Cash_Expense'] += float(report.total or 0)
             print(daily_totals[date]['Cash_Expense'])
 
         # Add mutation matching logic for each platform
@@ -286,9 +281,8 @@ def export_reports():
         for date in all_dates:
             totals = daily_totals[date]
             minusan_total = minusan_by_date.get(date, 0)
-            # Convert Decimal to float for Excel output
-            cash_income = float(totals['Cash_Income']) if isinstance(totals['Cash_Income'], Decimal) else totals['Cash_Income']
-            cash_expense = float(totals['Cash_Expense']) if isinstance(totals['Cash_Expense'], Decimal) else totals['Cash_Expense']
+            cash_income = totals['Cash_Income']
+            cash_expense = totals['Cash_Expense']
             dataset.append([
                 date,
                 totals['Gojek_Net'],
@@ -310,10 +304,8 @@ def export_reports():
                 minusan_total,
             ])
         
-        # Use Decimal for cash aggregation
-        cash_income = sum(Decimal(str(day['Cash_Income'])) for day in daily_totals.values())
-        cash_expense = sum(Decimal(str(day['Cash_Expense'])) for day in daily_totals.values())
-        # Update grand totals to include ShopeePay and mutation data
+        cash_income = sum(day['Cash_Income'] for day in daily_totals.values())
+        cash_expense = sum(day['Cash_Expense'] for day in daily_totals.values())        # Update grand totals to include ShopeePay and mutation data
         grand_totals = {
             'Gojek_Gross': sum(day['Gojek_Gross'] for day in daily_totals.values()),
             'Gojek_Net': sum(day['Gojek_Net'] for day in daily_totals.values()),
