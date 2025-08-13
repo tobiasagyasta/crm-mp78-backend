@@ -201,13 +201,19 @@ def export_reports():
             date = report.tanggal.date()
             if date not in daily_totals:
                 daily_totals[date] = init_daily_total()
-            daily_totals[date]['Cash_Income'] += float(report.total or 0)
+            # Use Decimal for precise aggregation
+            current_income = Decimal(str(daily_totals[date]['Cash_Income']))
+            report_income = Decimal(str(report.total or 0))
+            daily_totals[date]['Cash_Income'] = current_income + report_income
 
         for report in cash_expense_reports:
             date = report.tanggal.date()
             if date not in daily_totals:
                 daily_totals[date] = init_daily_total()
-            daily_totals[date]['Cash_Expense'] += float(report.total or 0)
+            current_expense = Decimal(str(daily_totals[date]['Cash_Expense']))
+            report_expense = Decimal(str(report.total or 0))
+            daily_totals[date]['Cash_Expense'] = current_expense + report_expense
+            print(daily_totals[date]['Cash_Expense'])
 
         # Add mutation matching logic for each platform
         platforms = ['gojek', 'grab', 'shopee','shopeepay']
@@ -268,7 +274,6 @@ def export_reports():
         from app.utils.pkb_mutation import get_minus_manual_entries
         minusan_entries = get_minus_manual_entries(outlet_code, start_date.date(), end_date_inclusive.date())
         # Build a lookup: date -> sum of minusan amounts for that date
-        print([{"amount": entry.amount,"description": entry.description, "minus_date": entry.minus_date} for entry in minusan_entries])
         minusan_by_date = {}
         for entry in minusan_entries:
             d = getattr(entry, 'minus_date', None)
@@ -276,13 +281,14 @@ def export_reports():
                 minusan_by_date.setdefault(d, 0)
                 minusan_by_date[d] += float(entry.amount or 0) * -1
 
-        print("Minusan by date:", minusan_by_date)
-        print("All dates:", all_dates)
+    
 
         for date in all_dates:
             totals = daily_totals[date]
             minusan_total = minusan_by_date.get(date, 0)
-            print(f"Row date: {date}, Minusan total: {minusan_total}")
+            # Convert Decimal to float for Excel output
+            cash_income = float(totals['Cash_Income']) if isinstance(totals['Cash_Income'], Decimal) else totals['Cash_Income']
+            cash_expense = float(totals['Cash_Expense']) if isinstance(totals['Cash_Expense'], Decimal) else totals['Cash_Expense']
             dataset.append([
                 date,
                 totals['Gojek_Net'],
@@ -298,14 +304,15 @@ def export_reports():
                 totals['ShopeePay_Mutation'],
                 totals['ShopeePay_Difference'],
                 totals['Tiktok_Net'],
-                totals['Cash_Income'],
-                totals['Cash_Expense'],
-                totals['Cash_Income'] - totals['Cash_Expense'],
+                cash_income,
+                cash_expense,
+                cash_income - cash_expense,
                 minusan_total,
             ])
         
-        cash_income = sum(day['Cash_Income'] for day in daily_totals.values())
-        cash_expense = sum(day['Cash_Expense'] for day in daily_totals.values())
+        # Use Decimal for cash aggregation
+        cash_income = sum(Decimal(str(day['Cash_Income'])) for day in daily_totals.values())
+        cash_expense = sum(Decimal(str(day['Cash_Expense'])) for day in daily_totals.values())
         # Update grand totals to include ShopeePay and mutation data
         grand_totals = {
             'Gojek_Gross': sum(day['Gojek_Gross'] for day in daily_totals.values()),
@@ -326,9 +333,9 @@ def export_reports():
             'ShopeePay_Difference': sum(day['ShopeePay_Difference'] for day in daily_totals.values() if day['ShopeePay_Difference'] is not None),
             'Tiktok_Net': sum(day['Tiktok_Net'] for day in daily_totals.values()),
             'Tiktok_Gross': sum(day['Tiktok_Gross'] for day in daily_totals.values()),
-            'Cash_Income': cash_income,
-            'Cash_Expense': cash_expense,
-            'Cash_Difference': cash_income - cash_expense
+            'Cash_Income': float(cash_income),
+            'Cash_Expense': float(cash_expense),
+            'Cash_Difference': float(cash_income - cash_expense)
         }
 
         # Update grand total row to include ShopeePay and mutation data
