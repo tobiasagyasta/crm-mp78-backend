@@ -701,7 +701,8 @@ def export_reports():
             .filter(
                 ManualEntry.outlet_code == outlet_code,
                 ManualEntry.start_date <= end_date,
-                ManualEntry.end_date >= start_date
+                ManualEntry.end_date >= start_date,
+                ~ManualEntry.description.ilike('%minus%')
             )
             .outerjoin(IncomeCat, (ManualEntry.category_id == IncomeCat.id) & (ManualEntry.entry_type == 'income'))
             .outerjoin(ExpenseCat, (ManualEntry.category_id == ExpenseCat.id) & (ManualEntry.entry_type == 'expense'))
