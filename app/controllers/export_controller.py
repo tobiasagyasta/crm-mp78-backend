@@ -63,7 +63,8 @@ def export_reports():
                 'Tiktok_Gross':0, 'Tiktok_Net': 0,
                 'Cash_Income': 0, 'Cash_Expense': 0,
                 'Gojek_Mutation': None, 'Gojek_Difference': 0,
-                'Grab_Mutation': None, 'Grab_Difference': 0,
+                # 'Grab_Mutation': None, 
+                'Grab_Difference': 0,
                 'Grab_Commission': 0,
                 'Shopee_Mutation': None, 'Shopee_Difference': 0,
                 'ShopeePay_Mutation': None, 'ShopeePay_Difference': 0
@@ -83,11 +84,12 @@ def export_reports():
         dataset.append(['Period:', f'{start_date.strftime("%Y-%m-%d")} to {end_date.strftime("%Y-%m-%d")}', '', '', '', '', '', '', ''])
         dataset.append(['Outlet:', outlet.outlet_name_gojek, '', '', '', '', '', '', ''])
         dataset.append([]) # Empty row for spacing
-        # Update the initial headers to include ShopeePay, mutation data, and Minusan (Mutasi)
+        # Update the initial headers to include ShopeePay, mutation data, and Minusan (Mutasi), but remove Grab Mutation and Grab Difference
         dataset.append([
             'Date',
             'Gojek Net', 'Gojek Mutation', 'Gojek Difference',
-            'Grab Net', 'Grab Mutation', 'Grab Difference', 'Grab Commission',
+            'Grab Net',
+            'Grab Net (after commission)',
             'Shopee Net', 'Shopee Mutation', 'Shopee Difference',
             'ShopeePay Net','ShopeePay Mutation', 'ShopeePay Difference','Tiktok Net','Cash Income (Admin)', 'Cash Expense (Admin)', 'Sisa Cash (Admin)','Minusan (Mutasi)'
         ])
@@ -289,7 +291,7 @@ def export_reports():
             minusan_total = minusan_by_date.get(date, 0)
             cash_income = totals['Cash_Income']
             cash_expense = totals['Cash_Expense']
-            daily_commission = totals['Grab_Net'] * 1/74 if outlet.brand not in ["Pukis & Martabak Kota Baru"] else 0
+            daily_commission = (totals['Grab_Net'] - (totals['Grab_Net'] * 1/74)) if outlet.brand not in ["Pukis & Martabak Kota Baru"] else 0
             totals['Grab_Commission'] = daily_commission
             dataset.append([
                 date,
@@ -297,8 +299,6 @@ def export_reports():
                 totals['Gojek_Mutation'],
                 totals['Gojek_Difference'],
                 totals['Grab_Net'],
-                totals['Grab_Mutation'],
-                totals['Grab_Difference'],
                 totals['Grab_Commission'],
                 totals['Shopee_Net'],
                 totals['Shopee_Mutation'],
@@ -306,7 +306,7 @@ def export_reports():
                 totals['ShopeePay_Net'],
                 totals['ShopeePay_Mutation'],
                 totals['ShopeePay_Difference'],
-                totals['Tiktok_Net'],
+                totals['Tiktok_Net'],   
                 cash_income,
                 cash_expense,
                 cash_income - cash_expense,
@@ -322,9 +322,9 @@ def export_reports():
             'Gojek_Difference': sum(day['Gojek_Difference'] for day in daily_totals.values() if day['Gojek_Difference'] is not None),
             'Grab_Gross': sum(day['Grab_Gross'] for day in daily_totals.values()),
             'Grab_Net': sum(day['Grab_Net'] for day in daily_totals.values()),
-            'Grab_Mutation': sum(day['Grab_Mutation'] for day in daily_totals.values() if day['Grab_Mutation'] is not None),
+            # 'Grab_Mutation': sum(day['Grab_Mutation'] for day in daily_totals.values() if day['Grab_Mutation'] is not None),
             'Grab_Commission': sum(day['Grab_Commission'] for day in daily_totals.values() if day['Grab_Commission'] is not None),
-            'Grab_Difference': sum(day['Grab_Difference'] for day in daily_totals.values() if day['Grab_Difference'] is not None),
+            # 'Grab_Difference': sum(day['Grab_Difference'] for day in daily_totals.values() if day['Grab_Difference'] is not None),
             'Shopee_Gross': sum(day['Shopee_Gross'] for day in daily_totals.values()),
             'Shopee_Net': sum(day['Shopee_Net'] for day in daily_totals.values()),
             'Shopee_Mutation': sum(day['Shopee_Mutation'] for day in daily_totals.values() if day['Shopee_Mutation'] is not None),
@@ -340,15 +340,13 @@ def export_reports():
             'Cash_Difference': float(cash_income - cash_expense)
         }
 
-        # Update grand total row to include ShopeePay and mutation data
+        # Update grand total row to include ShopeePay and mutation data, but remove Grab Mutation and Grab Difference
         dataset.append([
             'Grand Total',
             grand_totals['Gojek_Net'],
             grand_totals['Gojek_Mutation'],
             grand_totals['Gojek_Difference'],
             grand_totals['Grab_Net'],
-            grand_totals['Grab_Mutation'],
-            grand_totals['Grab_Difference'],
             grand_totals['Grab_Commission'],
             grand_totals['Shopee_Net'],
             grand_totals['Shopee_Mutation'],
@@ -412,7 +410,8 @@ def export_reports():
         headers = [
             'Date',
             'Gojek Net', 'Gojek Mutation', 'Gojek Difference',
-            'Grab Net', 'Grab Mutation', 'Grab Difference', 'Grab Commission',
+            'Grab Net',
+            'Grab Net (after commission)',
             'Shopee Net', 'Shopee Mutation', 'Shopee Difference',
             'ShopeePay Net','ShopeePay Mutation', 'ShopeePay Difference', 'Tiktok Net', 'Cash Income (Admin)', 'Cash Expense (Admin)', 'Sisa Cash (Admin)','Minusan (Mutasi)'
         ]
@@ -430,7 +429,7 @@ def export_reports():
         for date in all_dates:
             totals = daily_totals[date]
             minusan_total = minusan_by_date.get(date, 0)
-            daily_commission = totals['Grab_Net'] * 1/74 if outlet.brand not in ["Pukis & Martabak Kota Baru"] else 0
+            daily_commission = (totals['Grab_Net'] - (totals['Grab_Net'] * 1/74)) if outlet.brand not in ["Pukis & Martabak Kota Baru"] else 0
             totals['Grab_Commission'] = daily_commission            
             row_data = [
                 date,
@@ -438,8 +437,6 @@ def export_reports():
                 totals['Gojek_Mutation'],
                 totals['Gojek_Difference'],
                 totals['Grab_Net'],
-                totals['Grab_Mutation'],
-                totals['Grab_Difference'],
                 totals['Grab_Commission'],
                 totals['Shopee_Net'],
                 totals['Shopee_Mutation'],
@@ -459,9 +456,9 @@ def export_reports():
                 if col > 1:  # Format numbers
                     cell.number_format = '#,##0'
 
-                # Apply color for Difference columns (Gojek, Grab, Shopee)
-                # Columns: 4 (Gojek Difference), 7 (Grab Difference), 10 (Shopee Difference)
-                if col in [4, 7, 10,13]:
+                # Apply color for Difference columns (Gojek, Shopee)
+                # Columns: 4 (Gojek Difference), 10 (Shopee Difference)
+                if col in [4, 10, 13]:
                     if value is not None:
                         if value > 0:
                             cell.fill = PatternFill(start_color='C6EFCE', end_color='C6EFCE', fill_type='solid')  # Light green
@@ -482,8 +479,8 @@ def export_reports():
             grand_totals['Gojek_Mutation'],
             grand_totals['Gojek_Difference'],
             grand_totals['Grab_Net'],
-            grand_totals['Grab_Mutation'],
-            grand_totals['Grab_Difference'],
+            # grand_totals['Grab_Mutation'],
+            # grand_totals['Grab_Difference'],
             grand_totals['Grab_Commission'],
             grand_totals['Shopee_Net'],
             grand_totals['Shopee_Mutation'],
@@ -645,7 +642,9 @@ def export_reports():
         # Add platform data
         platforms = [
             ('Gojek', 'Gojek_Gross', 'Gojek_Net',  'Gojek_Mutation'),
-            ('Grab (Total)', 'Grab_Gross', 'Grab_Net', 'Grab_Mutation'),
+            ('Grab (Total)', 'Grab_Gross', 'Grab_Net', None
+            #  'Grab_Mutation'
+            ),
             ('   GrabFood', grabfood_gross_total, grabfood_net_total, None),  # Fixed: use grabfood_net_total
             ('   OVO', grabovo_gross_total, grabovo_net_total, None),         # Already correct
             ('Shopee', 'Shopee_Gross', 'Shopee_Net', 'Shopee_Mutation'),
