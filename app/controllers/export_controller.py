@@ -64,6 +64,7 @@ def export_reports():
                 'Cash_Income': 0, 'Cash_Expense': 0,
                 'Gojek_Mutation': None, 'Gojek_Difference': 0,
                 'Grab_Mutation': None, 'Grab_Difference': 0,
+                'Grab_Commission': 0,
                 'Shopee_Mutation': None, 'Shopee_Difference': 0,
                 'ShopeePay_Mutation': None, 'ShopeePay_Difference': 0
             }
@@ -86,7 +87,7 @@ def export_reports():
         dataset.append([
             'Date',
             'Gojek Net', 'Gojek Mutation', 'Gojek Difference',
-            'Grab Net', 'Grab Mutation', 'Grab Difference',
+            'Grab Net', 'Grab Mutation', 'Grab Difference', 'Grab Commission',
             'Shopee Net', 'Shopee Mutation', 'Shopee Difference',
             'ShopeePay Net','ShopeePay Mutation', 'ShopeePay Difference','Tiktok Net','Cash Income (Admin)', 'Cash Expense (Admin)', 'Sisa Cash (Admin)','Minusan (Mutasi)'
         ])
@@ -166,7 +167,6 @@ def export_reports():
                 daily_totals[date] = init_daily_total()
             daily_totals[date]['Grab_Net'] += float(report.total or 0)
             daily_totals[date]['Grab_Gross'] += float(report.amount or 0)
-            
             # Track separate totals for GrabOVO and GrabFood
             if hasattr(report, 'jenis'):
                 if report.jenis == 'OVO':
@@ -175,6 +175,13 @@ def export_reports():
                 elif report.jenis == 'GrabFood':
                     grabfood_gross_total += float(report.amount or 0)
                     grabfood_net_total += float(report.total or 0)
+
+        # Calculate Grab_Commission for each date after all Grab_Net values are summed
+        for date in daily_totals:
+            if outlet.brand not in ["Pukis & Martabak Kota Baru"]:
+                daily_totals[date]['Grab_Commission'] = daily_totals[date]['Grab_Net'] * 1/74
+            else:
+                daily_totals[date]['Grab_Commission'] = 0
 
         for report in shopee_reports:
             if report.order_status != "Cancelled":
@@ -208,7 +215,6 @@ def export_reports():
             if date not in daily_totals:
                 daily_totals[date] = init_daily_total()
             daily_totals[date]['Cash_Expense'] += float(report.total or 0)
-            print(daily_totals[date]['Cash_Expense'])
 
         # Add mutation matching logic for each platform
         platforms = ['gojek', 'grab', 'shopee','shopeepay']
@@ -283,6 +289,8 @@ def export_reports():
             minusan_total = minusan_by_date.get(date, 0)
             cash_income = totals['Cash_Income']
             cash_expense = totals['Cash_Expense']
+            daily_commission = totals['Grab_Net'] * 1/74 if outlet.brand not in ["Pukis & Martabak Kota Baru"] else 0
+            totals['Grab_Commission'] = daily_commission
             dataset.append([
                 date,
                 totals['Gojek_Net'],
@@ -291,6 +299,7 @@ def export_reports():
                 totals['Grab_Net'],
                 totals['Grab_Mutation'],
                 totals['Grab_Difference'],
+                totals['Grab_Commission'],
                 totals['Shopee_Net'],
                 totals['Shopee_Mutation'],
                 totals['Shopee_Difference'],
@@ -314,6 +323,7 @@ def export_reports():
             'Grab_Gross': sum(day['Grab_Gross'] for day in daily_totals.values()),
             'Grab_Net': sum(day['Grab_Net'] for day in daily_totals.values()),
             'Grab_Mutation': sum(day['Grab_Mutation'] for day in daily_totals.values() if day['Grab_Mutation'] is not None),
+            'Grab_Commission': sum(day['Grab_Commission'] for day in daily_totals.values() if day['Grab_Commission'] is not None),
             'Grab_Difference': sum(day['Grab_Difference'] for day in daily_totals.values() if day['Grab_Difference'] is not None),
             'Shopee_Gross': sum(day['Shopee_Gross'] for day in daily_totals.values()),
             'Shopee_Net': sum(day['Shopee_Net'] for day in daily_totals.values()),
@@ -339,6 +349,7 @@ def export_reports():
             grand_totals['Grab_Net'],
             grand_totals['Grab_Mutation'],
             grand_totals['Grab_Difference'],
+            grand_totals['Grab_Commission'],
             grand_totals['Shopee_Net'],
             grand_totals['Shopee_Mutation'],
             grand_totals['Shopee_Difference'],
@@ -348,7 +359,6 @@ def export_reports():
             grand_totals['Tiktok_Net'],
             grand_totals['Cash_Income'],
             grand_totals['Cash_Expense'],
-
             grand_totals['Cash_Difference']
         ])
 
@@ -402,7 +412,7 @@ def export_reports():
         headers = [
             'Date',
             'Gojek Net', 'Gojek Mutation', 'Gojek Difference',
-            'Grab Net', 'Grab Mutation', 'Grab Difference',
+            'Grab Net', 'Grab Mutation', 'Grab Difference', 'Grab Commission',
             'Shopee Net', 'Shopee Mutation', 'Shopee Difference',
             'ShopeePay Net','ShopeePay Mutation', 'ShopeePay Difference', 'Tiktok Net', 'Cash Income (Admin)', 'Cash Expense (Admin)', 'Sisa Cash (Admin)','Minusan (Mutasi)'
         ]
@@ -420,6 +430,8 @@ def export_reports():
         for date in all_dates:
             totals = daily_totals[date]
             minusan_total = minusan_by_date.get(date, 0)
+            daily_commission = totals['Grab_Net'] * 1/74 if outlet.brand not in ["Pukis & Martabak Kota Baru"] else 0
+            totals['Grab_Commission'] = daily_commission            
             row_data = [
                 date,
                 totals['Gojek_Net'],
@@ -428,6 +440,7 @@ def export_reports():
                 totals['Grab_Net'],
                 totals['Grab_Mutation'],
                 totals['Grab_Difference'],
+                totals['Grab_Commission'],
                 totals['Shopee_Net'],
                 totals['Shopee_Mutation'],
                 totals['Shopee_Difference'],
@@ -471,6 +484,7 @@ def export_reports():
             grand_totals['Grab_Net'],
             grand_totals['Grab_Mutation'],
             grand_totals['Grab_Difference'],
+            grand_totals['Grab_Commission'],
             grand_totals['Shopee_Net'],
             grand_totals['Shopee_Mutation'],
             grand_totals['Shopee_Difference'],
@@ -783,7 +797,7 @@ def export_reports():
         # Calculate commission first (moved from below)
         management_commission = grabfood_net_total * 1/74 if outlet.brand in ["MP78", "MP78 Express", "Martabak 777 Sinar Bulan","Martabak 999 Asli Bandung", "Martabak Surya Kencana","Martabak Akim"] else 0
         partner_commission = grabfood_net_total * 1/74 if outlet.brand in ["MP78", "MP78 Express", "Martabak 777 Sinar Bulan","Martabak 999 Asli Bandung", "Martabak Surya Kencana","Martabak Akim"] else 0
-        tiktok_commission = grand_totals['Tiktok_Gross'] * 1/74 if outlet.brand in ["MP78", "MP78 Express", "Martabak 777 Sinar Bulan","Martabak 999 Asli Bandung", "Martabak Surya Kencana","Martabak Akim"] else 0
+        tiktok_commission = grand_totals['Tiktok_Net'] * 1/74 if outlet.brand in ["MP78", "MP78 Express", "Martabak 777 Sinar Bulan","Martabak 999 Asli Bandung", "Martabak Surya Kencana","Martabak Akim"] else 0
 
         cash_manual_net_total = (
             (grand_totals['Cash_Income'] + manual_income) -
