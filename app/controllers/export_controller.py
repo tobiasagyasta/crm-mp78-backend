@@ -88,7 +88,7 @@ def export_reports():
             'Gojek Net', 'Gojek Mutation', 'Gojek Difference',
             'Grab Net', 'Grab Mutation', 'Grab Difference',
             'Shopee Net', 'Shopee Mutation', 'Shopee Difference',
-            'ShopeePay Net','ShopeePay Mutation', 'ShopeePay Difference','Tiktok Net','Cash Income (Admin)', 'Cash Expense (Admin)', 'Minusan (Mutasi)', 'Sisa Cash (Admin)'
+            'ShopeePay Net','ShopeePay Mutation', 'ShopeePay Difference','Tiktok Net','Cash Income (Admin)', 'Cash Expense (Admin)', 'Sisa Cash (Admin)','Minusan (Mutasi)'
         ])
 
         # Query reports with inclusive end date
@@ -274,7 +274,7 @@ def export_reports():
             d = getattr(entry, 'minus_date', None)
             if d:
                 minusan_by_date.setdefault(d, 0)
-                minusan_by_date[d] += float(entry.amount or 0)
+                minusan_by_date[d] += float(entry.amount or 0) * -1
 
         print("Minusan by date:", minusan_by_date)
         print("All dates:", all_dates)
@@ -300,8 +300,8 @@ def export_reports():
                 totals['Tiktok_Net'],
                 totals['Cash_Income'],
                 totals['Cash_Expense'],
+                totals['Cash_Income'] - totals['Cash_Expense'],
                 minusan_total,
-                totals['Cash_Income'] - totals['Cash_Expense']
             ])
         
         cash_income = sum(day['Cash_Income'] for day in daily_totals.values())
@@ -405,7 +405,7 @@ def export_reports():
             'Gojek Net', 'Gojek Mutation', 'Gojek Difference',
             'Grab Net', 'Grab Mutation', 'Grab Difference',
             'Shopee Net', 'Shopee Mutation', 'Shopee Difference',
-            'ShopeePay Net','ShopeePay Mutation', 'ShopeePay Difference', 'Tiktok Net', 'Cash Income (Admin)', 'Cash Expense (Admin)','Minusan (Mutasi)', 'Sisa Cash (Admin)'
+            'ShopeePay Net','ShopeePay Mutation', 'ShopeePay Difference', 'Tiktok Net', 'Cash Income (Admin)', 'Cash Expense (Admin)', 'Sisa Cash (Admin)','Minusan (Mutasi)'
         ]
 
         # Write headers to Excel
@@ -438,8 +438,8 @@ def export_reports():
                 totals['Tiktok_Net'],   
                 totals['Cash_Income'],
                 totals['Cash_Expense'],
-                minusan_total,
-                totals['Cash_Income'] - totals['Cash_Expense']
+                totals['Cash_Income'] - totals['Cash_Expense'],
+                minusan_total
             ]
             for col, value in enumerate(row_data, 1):
                 cell = daily_sheet.cell(row=current_row, column=col)

@@ -42,6 +42,6 @@ def get_minus_manual_entries(outlet_code_param, start_date=None, end_date=None):
                 continue
         else:
             continue
-        e.minus_date = minus_date + timedelta(days=1)
+        e.minus_date = minus_date
         filtered.append(e)
     return filtered
