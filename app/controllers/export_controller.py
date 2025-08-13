@@ -739,8 +739,30 @@ def export_reports():
                 cell.number_format = '#,##0'
         current_row += 1
 
+        # Sort manual entries by date parsed from Indonesian month names in description
+        import re
+        MONTH_MAP = {
+            'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4, 'Mei': 5, 'Jun': 6,
+            'Jul': 7, 'Agu': 8, 'Sep': 9, 'Okt': 10, 'Nov': 11, 'Des': 12
+        }
+        def parse_indonesian_date(description):
+            match = re.search(r'(\d{1,2})\s+([A-Za-z]+)', description)
+            if match:
+                day = int(match.group(1))
+                month_str = match.group(2).capitalize()
+                month = MONTH_MAP.get(month_str)
+                if month:
+                    year = datetime.now().year
+                    return datetime(year, month, day)
+            return datetime.min
+
+        manual_entries_sorted = sorted(
+            manual_entries,
+            key=lambda x: parse_indonesian_date(x[0].description)
+        )
+
         # Add manual entries with their details (category name from joined table)
-        for entry, income_cat, expense_cat in manual_entries:
+        for entry, income_cat, expense_cat in manual_entries_sorted:
             amount = float(entry.amount or 0)
             income_amount = amount if entry.entry_type == 'income' else 0
             expense_amount = amount if entry.entry_type == 'expense' else 0
