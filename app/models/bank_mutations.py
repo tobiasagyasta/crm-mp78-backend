@@ -129,6 +129,12 @@ class BankMutation(db.Model):
                 except Exception as e:
                     print(f"[PKB DANA Parse Error] Invalid date: {row[0]} | Error: {str(e)}")
                     return None
+                # Get type from column 3 (DB or CR)
+                type_match = None
+                if 'DB' in row[3]:
+                    type_match = 'DB'
+                elif 'CR' in row[3]:
+                    type_match = 'CR'
                 # Get amount from column 3, remove commas, quotes, and 'DB'/'CR'
                 amount_str = row[3].replace(',', '').replace('"', '').replace('DB', '').replace('CR', '').strip()
                 try:
@@ -137,7 +143,10 @@ class BankMutation(db.Model):
                     print(f"[PKB DANA Parse Error] Invalid amount: {row[3]} | Error: {str(e)}")
                     return None
                 if amount > 0:
-                    return {'tanggal': tanggal, 'amount': amount, 'phone': phone}
+                    result = {'tanggal': tanggal, 'amount': amount, 'phone': phone}
+                    if type_match:
+                        result['type'] = type_match
+                    return result
             return None
         except Exception as e:
             print(f"[PKB DANA Parse Error] Row: {row} | Error: {str(e)}")

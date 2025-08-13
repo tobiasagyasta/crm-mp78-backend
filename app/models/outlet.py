@@ -1,5 +1,6 @@
 from app.extensions import db
 from datetime import datetime
+from sqlalchemy.dialects.postgresql import ARRAY
 
 class Outlet(db.Model):
     __tablename__ = "outlets"
@@ -29,7 +30,7 @@ class Outlet(db.Model):
     partner_name = db.Column(db.String(255), nullable=True)
     partner_phone = db.Column(db.String(20), nullable=True)
     pic_partner_name = db.Column(db.String(255), nullable=True)
-    pic_phone = db.Column(db.String(20), nullable=True)
+    pic_phone = db.Column(ARRAY(db.String), nullable=True)
     
     # Operational Information
     status = db.Column(db.Enum("Active", "Inactive", name="outlet_status"), nullable=False, default="Active")

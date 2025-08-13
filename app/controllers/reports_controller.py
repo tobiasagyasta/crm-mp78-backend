@@ -1300,29 +1300,47 @@ def upload_report_pkb():
                         continue  # Do not process this row as a mutation
                     # Process DANA row: match phone to Outlet.pic_phone and create manual entry
                     if dana_info:
-                        outlet = Outlet.query.filter_by(pic_phone=dana_info['phone']).first()
+                        outlet = Outlet.query.filter(
+                            Outlet.pic_phone.any(dana_info['phone'])
+                        ).first()
                         if not outlet:
                             print("Outlet not found for phone:", dana_info['phone'])
                         if outlet:
-                            category = ExpenseCategory.query.filter_by(name='DANA Transfer').first()
+                            entry_type = None
+                            category = None
+                            if dana_info.get('type') == 'CR':
+                                entry_type = 'income'
+                                category = IncomeCategory.query.filter_by(name='DANA Transfer').first()
+                            elif dana_info.get('type') == 'DB':
+                                entry_type = 'expense'
+                                category = ExpenseCategory.query.filter_by(name='DANA Transfer').first()
+                            # Fallback: if category is still None, create or get a generic one
+                            if not category:
+                                if entry_type == 'income':
+                                    category = IncomeCategory.query.first()
+                                else:
+                                    category = ExpenseCategory.query.first()
+                            if not category:
+                                print("No valid category found for DANA Transfer entry.")
+                                continue
                             existing_entry = ManualEntry.query.filter(
                                 ManualEntry.outlet_code == outlet.outlet_code,
-                                ManualEntry.category_id == (category.id if category else None),
+                                ManualEntry.category_id == category.id,
                                 ManualEntry.start_date == dana_info['tanggal'],
                                 ManualEntry.end_date == dana_info['tanggal'],
-                                ManualEntry.entry_type == 'expense',
+                                ManualEntry.entry_type == entry_type,
                                 func.abs(ManualEntry.amount - dana_info['amount']) < 0.01
                             ).first()
                             if not existing_entry:
                                 manual_entry = ManualEntry(
                                     outlet_code=outlet.outlet_code,
                                     brand_name=outlet.brand,
-                                    entry_type='expense',
+                                    entry_type=entry_type,
                                     amount=dana_info['amount'],
                                     description=f"DANA Transfer at {dana_info['tanggal'].strftime('%d %b %Y')}",
                                     start_date=dana_info['tanggal'],
                                     end_date=dana_info['tanggal'],
-                                    category_id=category.id if category else None
+                                    category_id=category.id
                                 )
                                 db.session.add(manual_entry)
                                 db.session.commit()
