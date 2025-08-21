@@ -41,6 +41,8 @@ def export_reports():
         outlet_code = data.get('outlet_code')
         start_date = datetime.strptime(data.get('start_date'), '%Y-%m-%d')
         end_date = datetime.strptime(data.get('end_date'), '%Y-%m-%d')
+        user_role = data.get('user_role')
+        print(user_role)
 
         if not all([outlet_code, start_date, end_date]):
             return jsonify({"error": "Missing required parameters"}), 400
@@ -407,14 +409,24 @@ def export_reports():
             'Cash Income': cash_fill, 'Cash Expense': cash_fill, 'Sisa Cash (Admin)': cash_fill
         }
 
-        headers = [
-            'Date',
-            'Gojek Net', 'Gojek Mutation', 'Gojek Difference',
-            'Grab Net',
-            'Grab Net (after commission)',
-            'Shopee Net', 'Shopee Mutation', 'Shopee Difference',
-            'ShopeePay Net','ShopeePay Mutation', 'ShopeePay Difference', 'Tiktok Net', 'Cash Income (Admin)', 'Cash Expense (Admin)', 'Sisa Cash (Admin)','Minusan (Mutasi)'
-        ]
+        def get_daily_headers(user_role, outlet_brand):
+            base_headers = [
+                'Date',
+                'Gojek Net', 'Gojek Mutation', 'Gojek Difference',
+                'Grab Net (after commission)',
+                'Shopee Net', 'Shopee Mutation', 'Shopee Difference',
+                'ShopeePay Net', 'ShopeePay Mutation', 'ShopeePay Difference', 'Tiktok Net'
+            ]
+            extra_headers = ['Cash Income (Admin)', 'Cash Expense (Admin)', 'Sisa Cash (Admin)', 'Minusan (Mutasi)']
+            # For non-admin, add Grab Net before Grab Net (after commission)
+            if user_role != "admin":
+                base_headers.insert(4, 'Grab Net')
+            # For Pukis & Martabak Kota Baru, always add extra headers
+            if outlet_brand == "Pukis & Martabak Kota Baru":
+                base_headers += extra_headers
+            return base_headers
+
+        headers = get_daily_headers(user_role, outlet.brand)
 
         # Write headers to Excel
         for col, header in enumerate(headers, 1):
@@ -426,29 +438,36 @@ def export_reports():
 
         # Write daily data rows to Excel using all_dates
         current_row = 6
+        # Map header names to their corresponding values in totals
+        header_value_map = {
+            'Date': lambda totals, date, minusan_total: date,
+            'Gojek Net': lambda totals, date, minusan_total: totals['Gojek_Net'],
+            'Gojek Mutation': lambda totals, date, minusan_total: totals['Gojek_Mutation'],
+            'Gojek Difference': lambda totals, date, minusan_total: totals['Gojek_Difference'],
+            'Grab Net': lambda totals, date, minusan_total: totals['Grab_Net'],
+            'Grab Net (after commission)': lambda totals, date, minusan_total: totals['Grab_Commission'],
+            'Shopee Net': lambda totals, date, minusan_total: totals['Shopee_Net'],
+            'Shopee Mutation': lambda totals, date, minusan_total: totals['Shopee_Mutation'],
+            'Shopee Difference': lambda totals, date, minusan_total: totals['Shopee_Difference'],
+            'ShopeePay Net': lambda totals, date, minusan_total: totals['ShopeePay_Net'],
+            'ShopeePay Mutation': lambda totals, date, minusan_total: totals['ShopeePay_Mutation'],
+            'ShopeePay Difference': lambda totals, date, minusan_total: totals['ShopeePay_Difference'],
+            'Tiktok Net': lambda totals, date, minusan_total: totals['Tiktok_Net'],
+            'Cash Income (Admin)': lambda totals, date, minusan_total: totals['Cash_Income'],
+            'Cash Expense (Admin)': lambda totals, date, minusan_total: totals['Cash_Expense'],
+            'Sisa Cash (Admin)': lambda totals, date, minusan_total: totals['Cash_Income'] - totals['Cash_Expense'],
+            'Minusan (Mutasi)': lambda totals, date, minusan_total: minusan_total,
+        }
+
         for date in all_dates:
             totals = daily_totals[date]
             minusan_total = minusan_by_date.get(date, 0)
             daily_commission = (totals['Grab_Net'] - (totals['Grab_Net'] * 1/74)) if outlet.brand not in ["Pukis & Martabak Kota Baru"] else 0
-            totals['Grab_Commission'] = daily_commission            
+            totals['Grab_Commission'] = daily_commission
+            # Build row_data dynamically based on headers
             row_data = [
-                date,
-                totals['Gojek_Net'],
-                totals['Gojek_Mutation'],
-                totals['Gojek_Difference'],
-                totals['Grab_Net'],
-                totals['Grab_Commission'],
-                totals['Shopee_Net'],
-                totals['Shopee_Mutation'],
-                totals['Shopee_Difference'],
-                totals['ShopeePay_Net'],
-                totals['ShopeePay_Mutation'],
-                totals['ShopeePay_Difference'],
-                totals['Tiktok_Net'],   
-                totals['Cash_Income'],
-                totals['Cash_Expense'],
-                totals['Cash_Income'] - totals['Cash_Expense'],
-                minusan_total
+                header_value_map[header](totals, date, minusan_total) if header in header_value_map else None
+                for header in headers
             ]
             for col, value in enumerate(row_data, 1):
                 cell = daily_sheet.cell(row=current_row, column=col)
@@ -642,11 +661,8 @@ def export_reports():
         # Add platform data
         platforms = [
             ('Gojek', 'Gojek_Gross', 'Gojek_Net',  'Gojek_Mutation'),
-            ('Grab (Total)', 'Grab_Gross', 'Grab_Net', None
-            #  'Grab_Mutation'
-            ),
-            ('   GrabFood', grabfood_gross_total, grabfood_net_total, None),  # Fixed: use grabfood_net_total
-            ('   OVO', grabovo_gross_total, grabovo_net_total, None),         # Already correct
+            # Merge GrabFood and GrabOVO net totals into Grab (Total)
+            ('Grab (Total)', grabfood_gross_total + grabovo_gross_total, grabfood_net_total + grabovo_net_total, None),
             ('Shopee', 'Shopee_Gross', 'Shopee_Net', 'Shopee_Mutation'),
             ('ShopeePay', 'ShopeePay_Gross', 'ShopeePay_Net', 'ShopeePay_Mutation'),
             ('Tiktok', 'Tiktok_Gross', 'Tiktok_Net', None)  # Tiktok does not have mutation data
