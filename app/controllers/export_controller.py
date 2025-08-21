@@ -91,7 +91,7 @@ def export_reports():
             'Date',
             'Gojek Net', 'Gojek Mutation', 'Gojek Difference',
             'Grab Net',
-            'Grab Net (after commission)',
+            'Grab Net (ac)',
             'Shopee Net', 'Shopee Mutation', 'Shopee Difference',
             'ShopeePay Net','ShopeePay Mutation', 'ShopeePay Difference','Tiktok Net','Cash Income (Admin)', 'Cash Expense (Admin)', 'Sisa Cash (Admin)','Minusan (Mutasi)'
         ])
@@ -413,7 +413,7 @@ def export_reports():
             base_headers = [
                 'Date',
                 'Gojek Net', 'Gojek Mutation', 'Gojek Difference',
-                'Grab Net (after commission)',
+                'Grab Net (ac)',
                 'Shopee Net', 'Shopee Mutation', 'Shopee Difference',
                 'ShopeePay Net', 'ShopeePay Mutation', 'ShopeePay Difference', 'Tiktok Net'
             ]
@@ -490,29 +490,36 @@ def export_reports():
 
             current_row += 1
 
-        # Update grand total row to match new headers
+        # Dynamically build grand total row to match headers
         grand_total_row = current_row
-        daily_sheet.cell(row=grand_total_row, column=1, value='Grand Total').font = header_font
+        # Map header names to grand_totals or calculated values
+        grand_total_value_map = {
+            'Date': lambda grand_totals: '',
+            'Gojek Net': lambda grand_totals: grand_totals['Gojek_Net'],
+            'Gojek Mutation': lambda grand_totals: grand_totals['Gojek_Mutation'],
+            'Gojek Difference': lambda grand_totals: grand_totals['Gojek_Difference'],
+            'Grab Net': lambda grand_totals: grand_totals['Grab_Net'],
+            'Grab Net (after commission)': lambda grand_totals: grand_totals['Grab_Commission'],
+            'Shopee Net': lambda grand_totals: grand_totals['Shopee_Net'],
+            'Shopee Mutation': lambda grand_totals: grand_totals['Shopee_Mutation'],
+            'Shopee Difference': lambda grand_totals: grand_totals['Shopee_Difference'],
+            'ShopeePay Net': lambda grand_totals: grand_totals['ShopeePay_Net'],
+            'ShopeePay Mutation': lambda grand_totals: grand_totals['ShopeePay_Mutation'],
+            'ShopeePay Difference': lambda grand_totals: grand_totals['ShopeePay_Difference'],
+            'Tiktok Net': lambda grand_totals: grand_totals['Tiktok_Net'],
+            'Cash Income (Admin)': lambda grand_totals: grand_totals['Cash_Income'],
+            'Cash Expense (Admin)': lambda grand_totals: grand_totals['Cash_Expense'],
+            'Sisa Cash (Admin)': lambda grand_totals: grand_totals['Cash_Difference'],
+            'Minusan (Mutasi)': lambda grand_totals: sum(minusan_by_date.get(date, 0) for date in all_dates),
+        }
         grand_total_data = [
-            grand_totals['Gojek_Net'],
-            grand_totals['Gojek_Mutation'],
-            grand_totals['Gojek_Difference'],
-            grand_totals['Grab_Net'],
-            # grand_totals['Grab_Mutation'],
-            # grand_totals['Grab_Difference'],
-            grand_totals['Grab_Commission'],
-            grand_totals['Shopee_Net'],
-            grand_totals['Shopee_Mutation'],
-            grand_totals['Shopee_Difference'],
-            grand_totals['ShopeePay_Net'],
-            grand_totals['ShopeePay_Mutation'],
-            grand_totals['ShopeePay_Difference'],
-            grand_totals['Tiktok_Net'],
-            grand_totals['Cash_Income'],
-            grand_totals['Cash_Expense'],
-            grand_totals['Cash_Difference']
+            'Grand Total',
+            *[
+                grand_total_value_map[header](grand_totals) if header in grand_total_value_map else None
+                for header in headers[1:]
+            ]
         ]
-        for col, value in enumerate(grand_total_data, 2):
+        for col, value in enumerate(grand_total_data, 1):
             cell = daily_sheet.cell(row=grand_total_row, column=col)
             cell.value = value
             cell.font = header_font
