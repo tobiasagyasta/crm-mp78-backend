@@ -293,8 +293,8 @@ def export_reports():
             minusan_total = minusan_by_date.get(date, 0)
             cash_income = totals['Cash_Income']
             cash_expense = totals['Cash_Expense']
-            daily_commission = (totals['Grab_Net'] - (totals['Grab_Net'] * 1/74)) if outlet.brand not in ["Pukis & Martabak Kota Baru"] else 0
-            totals['Grab_Commission'] = daily_commission
+            grab_net_ac = (totals['Grab_Net'] - (totals['Grab_Net'] * 1/74)) if outlet.brand not in ["Pukis & Martabak Kota Baru"] else 0
+            totals['Grab_Commission'] = grab_net_ac
             dataset.append([
                 date,
                 totals['Gojek_Net'],
@@ -445,7 +445,7 @@ def export_reports():
             'Gojek Mutation': lambda totals, date, minusan_total: totals['Gojek_Mutation'],
             'Gojek Difference': lambda totals, date, minusan_total: totals['Gojek_Difference'],
             'Grab Net': lambda totals, date, minusan_total: totals['Grab_Net'],
-            'Grab Net (after commission)': lambda totals, date, minusan_total: totals['Grab_Commission'],
+            'Grab Net (ac)': lambda totals, date, minusan_total: totals['Grab_Commission'],
             'Shopee Net': lambda totals, date, minusan_total: totals['Shopee_Net'],
             'Shopee Mutation': lambda totals, date, minusan_total: totals['Shopee_Mutation'],
             'Shopee Difference': lambda totals, date, minusan_total: totals['Shopee_Difference'],
@@ -499,7 +499,7 @@ def export_reports():
             'Gojek Mutation': lambda grand_totals: grand_totals['Gojek_Mutation'],
             'Gojek Difference': lambda grand_totals: grand_totals['Gojek_Difference'],
             'Grab Net': lambda grand_totals: grand_totals['Grab_Net'],
-            'Grab Net (after commission)': lambda grand_totals: grand_totals['Grab_Commission'],
+            'Grab Net (ac)': lambda grand_totals: grand_totals['Grab_Commission'],
             'Shopee Net': lambda grand_totals: grand_totals['Shopee_Net'],
             'Shopee Mutation': lambda grand_totals: grand_totals['Shopee_Mutation'],
             'Shopee Difference': lambda grand_totals: grand_totals['Shopee_Difference'],
