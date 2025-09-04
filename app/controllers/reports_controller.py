@@ -1487,9 +1487,9 @@ def upload_report_pkb():
                         OutletCountPKB.end_date >= (date or datetime.now().date())
                     ).first()
                     n = outlet_count_obj.outlet_count if outlet_count_obj else 0
-                    print(f"Outlet count: {n}, per outlet amount: {per_outlet_amount}")
                     if total > 0 and n > 0:
                         per_outlet_amount = total / n
+                        print(f"Outlet count: {n}, per outlet amount: {per_outlet_amount}")
                         category = ExpenseCategory.query.filter_by(name="Avanger").first()
                         for outlet in outlets:
                             existing_entry = ManualEntry.query.filter(
