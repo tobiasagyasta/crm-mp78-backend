@@ -1285,19 +1285,15 @@ def upload_report_pkb():
                     if sosmed_info:
                         sosmed_type_val = sosmed_info.get('type', 'ALL')
                         if sosmed_type_val == 'ALL':
-                            sosmed_all['total'] += sosmed_info['amount']
-                            sosmed_all['date'] = sosmed_info['tanggal']
+                            if 'rows' not in sosmed_all:
+                                sosmed_all['rows'] = []
+                            sosmed_all['rows'].append({'total': sosmed_info['amount'], 'date': sosmed_info['tanggal']})
                         elif sosmed_type_val == 'AREA' and sosmed_info.get('area'):
                             area = sosmed_info.get('area')
                             if area not in sosmed_area_dict:
-                                sosmed_area_dict[area] = {'total': 0, 'date': None}
-                            sosmed_area_dict[area]['total'] += sosmed_info['amount']
-                            sosmed_area_dict[area]['date'] = sosmed_info['tanggal']
+                                sosmed_area_dict[area] = {'rows': []}
+                            sosmed_area_dict[area]['rows'].append({'total': sosmed_info['amount'], 'date': sosmed_info['tanggal']})
                         # Do NOT add AREA to ALL
-                        sosmed_total += sosmed_info['amount']
-                        sosmed_date = sosmed_info['tanggal']
-                        sosmed_type = sosmed_type_val
-                        sosmed_area = sosmed_info.get('area')
                         continue  # Do not process this row as a mutation
                     # Process DANA row: match phone to Outlet.pic_phone and create manual entry
                     if dana_info:
@@ -1349,10 +1345,9 @@ def upload_report_pkb():
                     # Process AVANGER row: accumulate totals for UM/GAJI AVANGER
                     if avanger_info:
                         av_type = avanger_info['type']
-                        avanger_totals[av_type]['total'] += avanger_info['amount']
-                        avanger_totals[av_type]['date'] = avanger_info['tanggal']
-                        avanger_totals[av_type]['description'] = avanger_info['description']  # <-- Add this line
-
+                        if 'rows' not in avanger_totals[av_type]:
+                            avanger_totals[av_type]['rows'] = []
+                        avanger_totals[av_type]['rows'].append({'total': avanger_info['amount'], 'date': avanger_info['tanggal'], 'description': avanger_info['description']})
                         continue  # Do not process this row as a mutation
                     # Only save valid PKB mutations
                     if mutation.platform_name == "PKB" and mutation.platform_code:
@@ -1392,26 +1387,36 @@ def upload_report_pkb():
             # After processing all rows, distribute SOSMED GLOBAL (ALL)
 
             outlets = Outlet.query.filter_by(
-                    brand='Pukis & Martabak Kota Baru',
-                    status='Active',
-                    is_global=True
-                ).filter(Outlet.pkb_code.isnot(None)).all()
-            if sosmed_all['total'] > 0:
-            # Get outlet count from OutletCountPKB for the date range
+                brand='Pukis & Martabak Kota Baru',
+                status='Active',
+                is_global=True
+            ).filter(Outlet.pkb_code.isnot(None)).all()
+
+            # Process all SOSMED GLOBAL (ALL) rows
+            sosmed_all_rows = []
+            if 'rows' in sosmed_all:
+                sosmed_all_rows = sosmed_all['rows']
+            elif sosmed_all['total'] > 0 and sosmed_all['date']:
+                sosmed_all_rows = [{'total': sosmed_all['total'], 'date': sosmed_all['date']}]
+                print(sosmed_all_rows)
+
+            for row in sosmed_all_rows:
+                total = row['total']
+                date = row['date']
                 outlet_count_obj = OutletCountPKB.query.filter(
-                    OutletCountPKB.start_date <= (sosmed_all['date'] or datetime.now().date()),
-                    OutletCountPKB.end_date >= (sosmed_all['date'] or datetime.now().date())
+                    OutletCountPKB.start_date <= (date or datetime.now().date()),
+                    OutletCountPKB.end_date >= (date or datetime.now().date())
                 ).first()
                 n = outlet_count_obj.outlet_count if outlet_count_obj else 0
-                per_outlet_amount = sosmed_all['total'] / n if n > 0 else 0
-                print(f"Outlet count: {n}, per outlet amount: {per_outlet_amount}")
+                per_outlet_amount = total / n if n > 0 else 0
+                # print(f"Outlet count: {n}, per outlet amount: {per_outlet_amount}")
                 category = ExpenseCategory.query.filter_by(name='Sosmed Global').first()
                 for outlet in outlets:
                     existing_entry = ManualEntry.query.filter(
                         ManualEntry.outlet_code == outlet.outlet_code,
                         ManualEntry.category_id == (category.id if category else None),
-                        ManualEntry.start_date == (sosmed_all['date'] or datetime.now().date()),
-                        ManualEntry.end_date == (sosmed_all['date'] or datetime.now().date()),
+                        ManualEntry.start_date == (date or datetime.now().date()),
+                        ManualEntry.end_date == (date or datetime.now().date()),
                         ManualEntry.description == 'SOSMED GLOBAL (ALL) PKB',
                         ManualEntry.entry_type == 'expense',
                         func.abs(ManualEntry.amount - per_outlet_amount) < 0.01
@@ -1424,62 +1429,34 @@ def upload_report_pkb():
                         entry_type='expense',
                         amount=per_outlet_amount,
                         description='SOSMED GLOBAL (ALL) PKB',
-                        start_date=sosmed_all['date'] or datetime.now().date(),
-                        end_date=sosmed_all['date'] or datetime.now().date(),
+                        start_date=date or datetime.now().date(),
+                        end_date=date or datetime.now().date(),
                         category_id=category.id if category else None
                     )
                     db.session.add(manual_entry)
-                db.session.commit()
+            db.session.commit()
 
             # Distribute SOSMED GLOBAL (AREA)
             for area, area_data in sosmed_area_dict.items():
-                outlet_count_obj = OutletCountPKB.query.filter(
-                    OutletCountPKB.start_date <= (area_data['date'] or datetime.now().date()),
-                    OutletCountPKB.end_date >= (area_data['date'] or datetime.now().date())
-                ).first()
-                n = outlet_count_obj.outlet_count if outlet_count_obj else 0
-                per_outlet_amount = area_data['total'] / n if n > 0 else 0
-                category = ExpenseCategory.query.filter_by(name='Sosmed Global').first()
-                for outlet in outlets:
-                    existing_entry = ManualEntry.query.filter(
-                        ManualEntry.outlet_code == outlet.outlet_code,
-                        ManualEntry.category_id == (category.id if category else None),
-                        ManualEntry.start_date == (area_data['date'] or datetime.now().date()),
-                        ManualEntry.end_date == (area_data['date'] or datetime.now().date()),
-                        ManualEntry.description == f'SOSMED GLOBAL ({area}) PKB',
-                        ManualEntry.entry_type == 'expense',
-                        func.abs(ManualEntry.amount - per_outlet_amount) < 0.01
+                # If area_data contains multiple rows, process each
+                area_rows = area_data.get('rows', [{'total': area_data['total'], 'date': area_data['date']}])
+                for row in area_rows:
+                    total = row['total']
+                    date = row['date']
+                    outlet_count_obj = OutletCountPKB.query.filter(
+                        OutletCountPKB.start_date <= (date or datetime.now().date()),
+                        OutletCountPKB.end_date >= (date or datetime.now().date())
                     ).first()
-                    if existing_entry:
-                        continue  # Skip duplicate
-                    manual_entry = ManualEntry(
-                        outlet_code=outlet.outlet_code,
-                        brand_name=outlet.brand,
-                        entry_type='expense',
-                        amount=per_outlet_amount,
-                        description=f'SOSMED GLOBAL ({area}) PKB',
-                        start_date=area_data['date'] or datetime.now().date(),
-                        end_date=area_data['date'] or datetime.now().date(),
-                        category_id=category.id if category else None
-                    )
-                    db.session.add(manual_entry)
-                db.session.commit()
-            # Distribute AVANGER rows
-            for av_type, av_data in avanger_totals.items():
-                outlet_count_obj = OutletCountPKB.query.filter(
-                    OutletCountPKB.start_date <= (av_data['date'] or datetime.now().date()),
-                    OutletCountPKB.end_date >= (av_data['date'] or datetime.now().date())
-                ).first()
-                n = outlet_count_obj.outlet_count if outlet_count_obj else 0
-                if av_data['total'] > 0 and n > 0:
-                    per_outlet_amount = av_data['total'] / n
-                    category = ExpenseCategory.query.filter_by(name="Avanger").first()
+                    n = outlet_count_obj.outlet_count if outlet_count_obj else 0
+                    per_outlet_amount = total / n if n > 0 else 0
+                    category = ExpenseCategory.query.filter_by(name='Sosmed Global').first()
                     for outlet in outlets:
                         existing_entry = ManualEntry.query.filter(
                             ManualEntry.outlet_code == outlet.outlet_code,
                             ManualEntry.category_id == (category.id if category else None),
-                            ManualEntry.start_date == (av_data['date'] or datetime.now().date()),
-                            ManualEntry.end_date == (av_data['date'] or datetime.now().date()),
+                            ManualEntry.start_date == (date or datetime.now().date()),
+                            ManualEntry.end_date == (date or datetime.now().date()),
+                            ManualEntry.description == f'SOSMED GLOBAL ({area}) PKB',
                             ManualEntry.entry_type == 'expense',
                             func.abs(ManualEntry.amount - per_outlet_amount) < 0.01
                         ).first()
@@ -1490,13 +1467,53 @@ def upload_report_pkb():
                             brand_name=outlet.brand,
                             entry_type='expense',
                             amount=per_outlet_amount,
-                            description= f"{av_data['description']} PKB",
-                            start_date=av_data['date'] or datetime.now().date(),
-                            end_date=av_data['date'] or datetime.now().date(),
+                            description=f'SOSMED GLOBAL ({area}) PKB',
+                            start_date=date or datetime.now().date(),
+                            end_date=date or datetime.now().date(),
                             category_id=category.id if category else None
                         )
                         db.session.add(manual_entry)
-                    db.session.commit()
+                db.session.commit()
+            # Distribute AVANGER rows
+            for av_type, av_data in avanger_totals.items():
+                # If av_data contains multiple rows, process each
+                av_rows = av_data.get('rows', [{'total': av_data['total'], 'date': av_data['date'], 'description': av_data.get('description', '')}])
+                for row in av_rows:
+                    total = row['total']
+                    date = row['date']
+                    description = row.get('description', '')
+                    outlet_count_obj = OutletCountPKB.query.filter(
+                        OutletCountPKB.start_date <= (date or datetime.now().date()),
+                        OutletCountPKB.end_date >= (date or datetime.now().date())
+                    ).first()
+                    n = outlet_count_obj.outlet_count if outlet_count_obj else 0
+                    print(f"Outlet count: {n}, per outlet amount: {per_outlet_amount}")
+                    if total > 0 and n > 0:
+                        per_outlet_amount = total / n
+                        category = ExpenseCategory.query.filter_by(name="Avanger").first()
+                        for outlet in outlets:
+                            existing_entry = ManualEntry.query.filter(
+                                ManualEntry.outlet_code == outlet.outlet_code,
+                                ManualEntry.category_id == (category.id if category else None),
+                                ManualEntry.start_date == (date or datetime.now().date()),
+                                ManualEntry.end_date == (date or datetime.now().date()),
+                                ManualEntry.entry_type == 'expense',
+                                func.abs(ManualEntry.amount - per_outlet_amount) < 0.01
+                            ).first()
+                            if existing_entry:
+                                continue  # Skip duplicate
+                            manual_entry = ManualEntry(
+                                outlet_code=outlet.outlet_code,
+                                brand_name=outlet.brand,
+                                entry_type='expense',
+                                amount=per_outlet_amount,
+                                description= f"{description} PKB",
+                                start_date=date or datetime.now().date(),
+                                end_date=date or datetime.now().date(),
+                                category_id=category.id if category else None
+                            )
+                            db.session.add(manual_entry)
+                db.session.commit()
                             
 
         return jsonify({
