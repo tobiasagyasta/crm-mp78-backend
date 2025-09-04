@@ -353,9 +353,9 @@ def export_reports():
             'ShopeePay_Difference': sum(day['ShopeePay_Difference'] for day in daily_totals.values() if day['ShopeePay_Difference'] is not None),
             'Tiktok_Net': sum(day['Tiktok_Net'] for day in daily_totals.values()),
             'Tiktok_Gross': sum(day['Tiktok_Gross'] for day in daily_totals.values()),
-            'Cash_Income': float(cash_income),
-            'Cash_Expense': float(cash_expense),
-            'Cash_Difference': float(cash_income - cash_expense)
+            'Cash_Income': int(round(cash_income)),
+            'Cash_Expense': int(round(cash_expense)),
+            'Cash_Difference': int(round(cash_income - cash_expense))
         }
 
         # Update grand total row to include ShopeePay and mutation data, but remove Grab Mutation and Grab Difference
