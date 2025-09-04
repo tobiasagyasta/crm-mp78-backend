@@ -954,7 +954,7 @@ def export_reports():
         import re
         MONTH_MAP = {
             'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4, 'Mei': 5, 'Jun': 6,
-            'Jul': 7, 'Agu': 8, 'Sep': 9, 'Okt': 10, 'Nov': 11, 'Des': 12
+            'Jul': 7, 'Aug': 8, 'Sep': 9, 'Oct': 10, 'Nov': 11, 'Des': 12
         }
         def parse_indonesian_date(description):
             # Match formats like '5-Jan', '2-Feb', '11-Agu', etc.
