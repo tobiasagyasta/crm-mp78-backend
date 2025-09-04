@@ -210,17 +210,31 @@ def export_reports():
             daily_totals[date]['Tiktok_Net'] += float(report.net_amount or 0)
             daily_totals[date]['Tiktok_Gross'] += float(report.gross_amount or 0)
         # Handle cash reports separately for income and expense
+
+        # Accumulate cash income and expense as floats first
+        cash_income_temp = {}
+        cash_expense_temp = {}
         for report in cash_income_reports:
             date = report.tanggal.date()
             if date not in daily_totals:
                 daily_totals[date] = init_daily_total()
-            daily_totals[date]['Cash_Income'] = int(round(daily_totals[date]['Cash_Income'] + float(report.total or 0)))
+            if date not in cash_income_temp:
+                cash_income_temp[date] = 0.0
+            cash_income_temp[date] += float(report.total or 0)
 
         for report in cash_expense_reports:
             date = report.tanggal.date()
             if date not in daily_totals:
                 daily_totals[date] = init_daily_total()
-            daily_totals[date]['Cash_Expense'] = int(round(daily_totals[date]['Cash_Expense'] + float(report.total or 0)))
+            if date not in cash_expense_temp:
+                cash_expense_temp[date] = 0.0
+            cash_expense_temp[date] += float(report.total or 0)
+
+        # After all additions, round and cast to int once per date
+        for date in cash_income_temp:
+            daily_totals[date]['Cash_Income'] = int(round(cash_income_temp[date]))
+        for date in cash_expense_temp:
+            daily_totals[date]['Cash_Expense'] = int(round(cash_expense_temp[date]))
 
         # Add mutation matching logic for each platform
         platforms = ['gojek', 'grab', 'shopee','shopeepay']
