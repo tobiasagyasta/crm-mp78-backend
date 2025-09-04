@@ -307,8 +307,9 @@ def export_reports():
         for date in all_dates:
             totals = daily_totals[date]
             minusan_total = minusan_by_date.get(date, 0)
-            cash_income = totals['Cash_Income']
-            cash_expense = totals['Cash_Expense']
+            cash_income = int(round(totals['Cash_Income']))
+            cash_expense = int(round(totals['Cash_Expense']))
+            sisa_cash = cash_income - cash_expense
             grab_net_ac = (totals['Grab_Net'] - (totals['Grab_Net'] * 1/74)) if outlet.brand not in ["Pukis & Martabak Kota Baru"] else 0
             totals['Grab_Commission'] = grab_net_ac
             dataset.append([
@@ -327,7 +328,7 @@ def export_reports():
                 totals['Tiktok_Net'],   
                 cash_income,
                 cash_expense,
-                cash_income - cash_expense,
+                sisa_cash,
                 minusan_total,
             ])
         
