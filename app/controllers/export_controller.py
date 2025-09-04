@@ -15,7 +15,7 @@ from app.models.bank_mutations import BankMutation
 from app.models.pukis import Pukis
 from app.utils.transaction_matcher import TransactionMatcher
 from openpyxl import Workbook
-from openpyxl.styles import Font, Alignment, PatternFill
+from openpyxl.styles import Font, Alignment, PatternFill,Border, Side
 from openpyxl.utils import get_column_letter
 from collections import defaultdict
 from openpyxl.workbook.protection import WorkbookProtection
@@ -26,10 +26,12 @@ export_bp = Blueprint('export', __name__, url_prefix="/export")
 @export_bp.route('', methods=['POST', 'OPTIONS'])
 @cross_origin(expose_headers=["Content-Disposition"])
 def export_reports():
+
     try:
 
           # Define yellow background for grand total
         yellow_fill = PatternFill(start_color='FFFF00', end_color='FFFF00', fill_type='solid')  # Yellow background
+
         if request.method == 'OPTIONS':
             response = jsonify({'status': 'OK'})
             response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
@@ -367,6 +369,178 @@ def export_reports():
         daily_sheet = wb.active
         daily_sheet.title = 'Daily'
         summary_sheet = wb.create_sheet(title='Summary')
+        closing_sheet = wb.create_sheet(title='Closing Sheet')
+
+        # Style configurations
+        header_font = Font(bold=True)
+        header_fill = PatternFill(start_color='CCCCCC', end_color='CCCCCC', fill_type='solid')
+        center_align = Alignment(horizontal='center')
+
+
+        # Define headers before using them
+        def get_daily_headers(user_role, outlet_brand):
+            base_headers = [
+                'Date',
+                'Gojek Net', 'Gojek Mutation', 'Gojek Difference',
+                'Grab Net (ac)',
+                'Shopee Net', 'Shopee Mutation', 'Shopee Difference',
+                'ShopeePay Net', 'ShopeePay Mutation', 'ShopeePay Difference', 'Tiktok Net'
+            ]
+            extra_headers = ['Cash Income (Admin)', 'Cash Expense (Admin)', 'Sisa Cash (Admin)', 'Minusan (Mutasi)']
+            # For non-admin, add Grab Net before Grab Net (after commission)
+            if user_role != "admin":
+                base_headers.insert(4, 'Grab Net')
+            # For Pukis & Martabak Kota Baru, always add extra headers
+            if outlet_brand == "Pukis & Martabak Kota Baru":
+                base_headers += extra_headers
+            return base_headers
+
+        headers = get_daily_headers(user_role, outlet.brand)
+
+        # Map header names to their corresponding values in totals
+        header_value_map = {
+            'Date': lambda totals, date, minusan_total: date,
+            'Gojek Net': lambda totals, date, minusan_total: totals['Gojek_Net'],
+            'Gojek Mutation': lambda totals, date, minusan_total: totals['Gojek_Mutation'],
+            'Gojek Difference': lambda totals, date, minusan_total: totals['Gojek_Difference'],
+            'Grab Net': lambda totals, date, minusan_total: totals['Grab_Net'],
+            'Grab Net (ac)': lambda totals, date, minusan_total: totals['Grab_Commission'],
+            'Shopee Net': lambda totals, date, minusan_total: totals['Shopee_Net'],
+            'Shopee Mutation': lambda totals, date, minusan_total: totals['Shopee_Mutation'],
+            'Shopee Difference': lambda totals, date, minusan_total: totals['Shopee_Difference'],
+            'ShopeePay Net': lambda totals, date, minusan_total: totals['ShopeePay_Net'],
+            'ShopeePay Mutation': lambda totals, date, minusan_total: totals['ShopeePay_Mutation'],
+            'ShopeePay Difference': lambda totals, date, minusan_total: totals['ShopeePay_Difference'],
+            'Tiktok Net': lambda totals, date, minusan_total: totals['Tiktok_Net'],
+            'Cash Income (Admin)': lambda totals, date, minusan_total: totals['Cash_Income'],
+            'Cash Expense (Admin)': lambda totals, date, minusan_total: totals['Cash_Expense'],
+            'Sisa Cash (Admin)': lambda totals, date, minusan_total: totals['Cash_Income'] - totals['Cash_Expense'],
+            'Minusan (Mutasi)': lambda totals, date, minusan_total: minusan_total,
+        }
+
+        yellow_fill = PatternFill(start_color='FFFF00', end_color='FFFF00', fill_type='solid')
+        gojek_fill = PatternFill(start_color='00AA13', end_color='00AA13', fill_type='solid')  # Light green
+        grab_fill = PatternFill(start_color='98FB98', end_color='98FB98', fill_type='solid')   # Pale green
+        shopee_fill = PatternFill(start_color='FF7A00', end_color='FF7A00', fill_type='solid') # Light pink
+        tiktok_fill = PatternFill(start_color='F227F5', end_color='F227F5', fill_type='solid')
+        blue_fill = PatternFill(start_color='27A3F5', end_color='27A3F5', fill_type='solid')
+        center_align = Alignment(horizontal='center', vertical='center')
+        thin_border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+)
+
+
+        # CLOSING SHEET
+        closing_sheet['A1'] = outlet.outlet_name_gojek
+        closing_sheet['A1'].alignment = center_align
+        closing_sheet['A1'].font = header_font
+        closing_sheet['B2'] = outlet.store_id_gojek
+        closing_sheet['B2'].alignment = center_align
+        closing_sheet['C2'] = outlet.store_id_grab
+        closing_sheet['C2'].alignment = center_align
+        closing_sheet['D2'] = outlet.store_id_shopee
+        closing_sheet['D2'].alignment = center_align
+        closing_sheet['E2'] = outlet.store_id_shopee
+        closing_sheet['E2'].alignment = center_align
+        closing_row = 3
+        platform_columns = ['Gojek_Net', 'Grab_Net', 'Shopee_Net', 'ShopeePay_Net', 'Tiktok_Net']
+        platform_names = ['Gojek', 'Grab', 'ShopeeFood', 'ShopeePay', 'Tiktok']
+        closing_headers = ['Tanggal'] + platform_columns
+
+        # Merge 'Tanggal' header for two rows
+        closing_sheet.merge_cells(start_row=closing_row, start_column=1, end_row=closing_row+1, end_column=1)
+        tanggal_cell = closing_sheet.cell(row=closing_row, column=1)
+        tanggal_cell.value = 'Tanggal'
+        tanggal_cell.font = header_font
+        tanggal_cell.alignment = center_align
+
+        # Write platform totals in first row
+        for col, header in enumerate(platform_columns, 2):
+            cell = closing_sheet.cell(row=closing_row, column=col)
+            cell.value = grand_totals[header]
+            cell.font = header_font
+            cell.alignment = center_align
+            cell.number_format = '#,##0'
+            cell.fill = yellow_fill
+
+        # Write platform names in second row
+        for col, name in enumerate(platform_names, 2):
+            cell = closing_sheet.cell(row=closing_row+1, column=col)
+            cell.value = name
+            cell.font = header_font
+            cell.alignment = center_align
+            if cell.value == 'Gojek':
+                cell.fill = gojek_fill
+            elif cell.value == 'Grab':
+                cell.fill = grab_fill
+            elif cell.value in ['ShopeeFood', 'ShopeePay']:
+                cell.fill = shopee_fill
+            elif cell.value == 'Tiktok':
+                cell.fill = tiktok_fill
+
+        closing_row += 2
+
+        # Write daily rows below header
+        for date in all_dates:
+            row_data = [date] + [daily_totals[date][header] for header in platform_columns]
+            for col, value in enumerate(row_data, 1):
+                cell = closing_sheet.cell(row=closing_row, column=col)
+                cell.value = value
+                cell.alignment = center_align
+                if col == 1:
+                    cell.number_format = 'yyyy-mm-dd'
+                else:
+                    cell.number_format = '#,##0'
+            closing_row += 1
+        
+        # Add grand total section with a gap of two columns to the right of the closing table
+        grand_total_col_start = closing_sheet.max_column + 3  # 2-column gap
+        grand_total_row_start = 3  # Place at the top, aligned with header
+        closing_sheet.cell(row=grand_total_row_start, column=grand_total_col_start, value=outlet.outlet_name_gojek).font = header_font
+        closing_sheet.cell(row=grand_total_row_start, column=grand_total_col_start).alignment = center_align
+        closing_sheet.cell(row=grand_total_row_start, column=grand_total_col_start).fill = blue_fill
+        closing_sheet.cell(row=grand_total_row_start + 1, column=grand_total_col_start, value=f'{start_date.strftime("%Y-%m-%d")} to {end_date.strftime("%Y-%m-%d")}').font = header_font
+        closing_sheet.cell(row=grand_total_row_start + 1, column=grand_total_col_start).alignment = center_align
+        closing_sheet.cell(row=grand_total_row_start + 1, column=grand_total_col_start).fill = blue_fill
+        closing_sheet.cell(row=grand_total_row_start + 1, column=grand_total_col_start + 1, value= grand_totals['Gojek_Net'] + grand_totals['Grab_Net'] + grand_totals['Shopee_Net'] + grand_totals['ShopeePay_Net'] + grand_totals['Tiktok_Net']).font = header_font
+        closing_sheet.cell(row=grand_total_row_start + 1, column=grand_total_col_start + 1).alignment = center_align
+        closing_sheet.cell(row=grand_total_row_start + 1, column=grand_total_col_start + 1).number_format = '#,##0'
+        closing_sheet.cell(row=grand_total_row_start + 1, column=grand_total_col_start + 1).fill = grab_fill
+        closing_sheet.cell(row=grand_total_row_start, column=grand_total_col_start + 1).fill = grab_fill
+
+
+        # List each platform and its grand total value
+        for i, header in enumerate(platform_columns, 1):
+            label_cell = closing_sheet.cell(row=grand_total_row_start + 1 + i, column=grand_total_col_start, value=platform_names[i-1])
+            label_cell.alignment = center_align
+            value_cell = closing_sheet.cell(row=grand_total_row_start + + 1 + i, column=grand_total_col_start + 1, value=grand_totals[header])
+            value_cell.number_format = '#,##0'
+            value_cell.alignment = center_align
+            value_cell.font = header_font
+            
+    
+
+        for col in range(1, closing_sheet.max_column + 1):
+            max_length = 0
+            column = get_column_letter(col)
+            for row in range(1, closing_sheet.max_row + 1):
+                cell = closing_sheet.cell(row=row, column=col)
+                if cell.value:
+                    max_length = max(max_length, len(str(cell.value)))
+            closing_sheet.column_dimensions[column].width = max_length + 2
+        
+        for row in closing_sheet.iter_rows(min_row=1, max_row=closing_sheet.max_row, min_col=1, max_col=6):
+            for cell in row:
+                cell.border = thin_border
+        
+        for row in closing_sheet.iter_rows(min_row=3, max_row=9, min_col=9, max_col=closing_sheet.max_column):
+            for cell in row:
+                cell.border = thin_border
+        
+
 
         # Style configurations
         header_font = Font(bold=True)

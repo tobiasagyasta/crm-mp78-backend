@@ -13,6 +13,7 @@ from app.models.expense_category import ExpenseCategory
 from app.models.income_category import IncomeCategory
 from app.models.pukis import Pukis
 from app.models.tiktok_reports import TiktokReport
+from app.models.outlet_count_pkb import OutletCountPKB
 from app.extensions import db
 import sys
 
@@ -1389,14 +1390,21 @@ def upload_report_pkb():
                             skipped_mutations += 1
 
             # After processing all rows, distribute SOSMED GLOBAL (ALL)
-            if sosmed_all['total'] > 0:
-                outlets = Outlet.query.filter_by(
+
+            outlets = Outlet.query.filter_by(
                     brand='Pukis & Martabak Kota Baru',
                     status='Active',
                     is_global=True
                 ).filter(Outlet.pkb_code.isnot(None)).all()
-                n = len(outlets)
+            if sosmed_all['total'] > 0:
+            # Get outlet count from OutletCountPKB for the date range
+                outlet_count_obj = OutletCountPKB.query.filter(
+                    OutletCountPKB.start_date <= (sosmed_all['date'] or datetime.now().date()),
+                    OutletCountPKB.end_date >= (sosmed_all['date'] or datetime.now().date())
+                ).first()
+                n = outlet_count_obj.outlet_count if outlet_count_obj else 0
                 per_outlet_amount = sosmed_all['total'] / n if n > 0 else 0
+                print(f"Outlet count: {n}, per outlet amount: {per_outlet_amount}")
                 category = ExpenseCategory.query.filter_by(name='Sosmed Global').first()
                 for outlet in outlets:
                     existing_entry = ManualEntry.query.filter(
@@ -1425,13 +1433,11 @@ def upload_report_pkb():
 
             # Distribute SOSMED GLOBAL (AREA)
             for area, area_data in sosmed_area_dict.items():
-                outlets = Outlet.query.filter_by(
-                    brand='Pukis & Martabak Kota Baru',
-                    status='Active',
-                    area=area,
-                    is_global=True
-                ).filter(Outlet.pkb_code.isnot(None)).all()
-                n = len(outlets)
+                outlet_count_obj = OutletCountPKB.query.filter(
+                    OutletCountPKB.start_date <= (area_data['date'] or datetime.now().date()),
+                    OutletCountPKB.end_date >= (area_data['date'] or datetime.now().date())
+                ).first()
+                n = outlet_count_obj.outlet_count if outlet_count_obj else 0
                 per_outlet_amount = area_data['total'] / n if n > 0 else 0
                 category = ExpenseCategory.query.filter_by(name='Sosmed Global').first()
                 for outlet in outlets:
@@ -1460,12 +1466,11 @@ def upload_report_pkb():
                 db.session.commit()
             # Distribute AVANGER rows
             for av_type, av_data in avanger_totals.items():
-                outlets = Outlet.query.filter_by(
-                    brand='Pukis & Martabak Kota Baru',
-                    status='Active',
-                    is_global=True
-                ).filter(Outlet.pkb_code.isnot(None)).all()
-                n = len(outlets)
+                outlet_count_obj = OutletCountPKB.query.filter(
+                    OutletCountPKB.start_date <= (av_data['date'] or datetime.now().date()),
+                    OutletCountPKB.end_date >= (av_data['date'] or datetime.now().date())
+                ).first()
+                n = outlet_count_obj.outlet_count if outlet_count_obj else 0
                 if av_data['total'] > 0 and n > 0:
                     per_outlet_amount = av_data['total'] / n
                     category = ExpenseCategory.query.filter_by(name="Avanger").first()
