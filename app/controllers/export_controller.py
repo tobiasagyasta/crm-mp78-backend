@@ -403,10 +403,12 @@ def export_reports():
             ]
             extra_headers = ['Cash Income (Admin)', 'Cash Expense (Admin)', 'Sisa Cash (Admin)', 'Minusan (Mutasi)']
             # For non-admin, add Grab Net before Grab Net (after commission)
-            if user_role == "management":
+            if user_role == "management" and outlet_brand != "Pukis & Martabak Kota Baru":
                 base_headers.insert(4, 'Grab Net')
             # For Pukis & Martabak Kota Baru, always add extra headers
             if outlet_brand == "Pukis & Martabak Kota Baru":
+                base_headers.insert(4, 'Grab Net')
+                base_headers.remove('Grab Net (ac)')
                 base_headers += extra_headers
             return base_headers
 
@@ -608,10 +610,12 @@ def export_reports():
             ]
             extra_headers = ['Cash Income (Admin)', 'Cash Expense (Admin)', 'Sisa Cash (Admin)', 'Minusan (Mutasi)']
             # For non-admin, add Grab Net before Grab Net (after commission)
-            if user_role == "management":
+            if user_role == "management" and outlet_brand != "Pukis & Martabak Kota Baru":
                 base_headers.insert(4, 'Grab Net')
             # For Pukis & Martabak Kota Baru, always add extra headers
             if outlet_brand == "Pukis & Martabak Kota Baru":
+                base_headers.insert(4, 'Grab Net')
+                base_headers.remove('Grab Net (ac)')
                 base_headers += extra_headers
             return base_headers
 
