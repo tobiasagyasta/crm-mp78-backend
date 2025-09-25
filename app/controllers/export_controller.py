@@ -463,7 +463,7 @@ def export_reports():
         closing_sheet['E2'] = outlet.store_id_shopee
         closing_sheet['E2'].alignment = center_align
         closing_row = 3
-        platform_columns = ['Gojek_Net', 'Grab_Net', 'Shopee_Net', 'ShopeePay_Net', 'Tiktok_Net']
+        platform_columns = ['Gojek_Mutation', 'Grab_Net', 'Shopee_Mutation', 'ShopeePay_Mutation', 'Tiktok_Net']
         platform_names = ['Gojek', 'Grab', 'ShopeeFood', 'ShopeePay', 'Tiktok']
         closing_headers = ['Tanggal'] + platform_columns
 
@@ -477,7 +477,12 @@ def export_reports():
         # Write platform totals in first row
         for col, header in enumerate(platform_columns, 2):
             cell = closing_sheet.cell(row=closing_row, column=col)
-            cell.value = grand_totals[header]
+            # Fallback to Net if mutation is 0 or None
+            value = grand_totals[header]
+            if header.endswith('_Mutation') and (value is None or value == 0):
+                net_key = header.replace('_Mutation', '_Net')
+                value = grand_totals.get(net_key, 0)
+            cell.value = value
             cell.font = header_font
             cell.alignment = center_align
             cell.number_format = '#,##0'
@@ -502,7 +507,14 @@ def export_reports():
 
         # Write daily rows below header
         for date in all_dates:
-            row_data = [date] + [daily_totals[date][header] for header in platform_columns]
+            row_data = [date]
+            for header in platform_columns:
+                value = daily_totals[date].get(header, None)
+                # Fallback for mutation columns if value is None, 0, '', or False
+                if header.endswith('_Mutation') and (not value):
+                    net_key = header.replace('_Mutation', '_Net')
+                    value = daily_totals[date].get(net_key, 0)
+                row_data.append(value)
             for col, value in enumerate(row_data, 1):
                 cell = closing_sheet.cell(row=closing_row, column=col)
                 cell.value = value
@@ -522,23 +534,57 @@ def export_reports():
         closing_sheet.cell(row=grand_total_row_start + 1, column=grand_total_col_start, value=f'{start_date.strftime("%Y-%m-%d")} to {end_date.strftime("%Y-%m-%d")}').font = header_font
         closing_sheet.cell(row=grand_total_row_start + 1, column=grand_total_col_start).alignment = center_align
         closing_sheet.cell(row=grand_total_row_start + 1, column=grand_total_col_start).fill = blue_fill
-        closing_sheet.cell(row=grand_total_row_start + 1, column=grand_total_col_start + 1, value= grand_totals['Gojek_Net'] + grand_totals['Grab_Net'] + grand_totals['Shopee_Net'] + grand_totals['ShopeePay_Net'] + grand_totals['Tiktok_Net']).font = header_font
+        # Fallback for mutation columns if value is None, 0, '', or False
+        def get_grand_total_with_fallback(header):
+            value = grand_totals.get(header, None)
+            if header.endswith('_Mutation') and (not value):
+                net_key = header.replace('_Mutation', '_Net')
+                value = grand_totals.get(net_key, 0)
+            return value
+
+        closing_sheet.cell(
+            row=grand_total_row_start + 1,
+            column=grand_total_col_start + 1,
+            value=
+                get_grand_total_with_fallback('Gojek_Mutation')
+                + get_grand_total_with_fallback('Grab_Net')
+                + get_grand_total_with_fallback('Shopee_Mutation')
+                + get_grand_total_with_fallback('ShopeePay_Mutation')
+                + get_grand_total_with_fallback('Tiktok_Net')
+                - (get_grand_total_with_fallback('Grab_Net') * 1/74)
+        ).font = header_font
         closing_sheet.cell(row=grand_total_row_start + 1, column=grand_total_col_start + 1).alignment = center_align
         closing_sheet.cell(row=grand_total_row_start + 1, column=grand_total_col_start + 1).number_format = '#,##0'
         closing_sheet.cell(row=grand_total_row_start + 1, column=grand_total_col_start + 1).fill = grab_fill
         closing_sheet.cell(row=grand_total_row_start, column=grand_total_col_start + 1).fill = grab_fill
 
-
+        final_i = 0
         # List each platform and its grand total value
         for i, header in enumerate(platform_columns, 1):
             label_cell = closing_sheet.cell(row=grand_total_row_start + 1 + i, column=grand_total_col_start, value=platform_names[i-1])
             label_cell.alignment = center_align
-            value_cell = closing_sheet.cell(row=grand_total_row_start + + 1 + i, column=grand_total_col_start + 1, value=grand_totals[header])
+            # Fallback for mutation columns if value is None, 0, '', or False
+            def get_grand_total_with_fallback(header):
+                value = grand_totals.get(header, None)
+                if header.endswith('_Mutation') and (not value):
+                    net_key = header.replace('_Mutation', '_Net')
+                    value = grand_totals.get(net_key, 0)
+                return value
+            value_cell = closing_sheet.cell(
+                row=grand_total_row_start + 1 + i,
+                column=grand_total_col_start + 1,
+                value=get_grand_total_with_fallback(header)
+            )
             value_cell.number_format = '#,##0'
             value_cell.alignment = center_align
             value_cell.font = header_font
-            
-    
+            final_i = i + 1
+        management_cell_label = closing_sheet.cell(row=grand_total_row_start + final_i + 1, column=grand_total_col_start, value="Grab Manag 1%")
+        management_cell_label.alignment = center_align
+        management_cell_value = closing_sheet.cell(row=grand_total_row_start + final_i + 1, column=grand_total_col_start + 1, value=-grand_totals['Grab_Net'] * 1/74)
+        management_cell_value.number_format = '#,##0'
+        management_cell_value.alignment = center_align
+        management_cell_value.font = header_font
 
         for col in range(1, closing_sheet.max_column + 1):
             max_length = 0
@@ -553,7 +599,7 @@ def export_reports():
             for cell in row:
                 cell.border = thin_border
         
-        for row in closing_sheet.iter_rows(min_row=3, max_row=9, min_col=9, max_col=closing_sheet.max_column):
+        for row in closing_sheet.iter_rows(min_row=3, max_row=10, min_col=9, max_col=closing_sheet.max_column):
             for cell in row:
                 cell.border = thin_border
         
