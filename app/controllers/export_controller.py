@@ -463,7 +463,7 @@ def export_reports():
         closing_sheet['E2'] = outlet.store_id_shopee
         closing_sheet['E2'].alignment = center_align
         closing_row = 3
-        platform_columns = ['Gojek_Mutation', 'Grab_Net', 'Shopee_Mutation', 'ShopeePay_Mutation', 'Tiktok_Net']
+        platform_columns = ['Gojek_Mutation', 'Grab_Net', 'Shopee_Net', 'ShopeePay_Net', 'Tiktok_Net']
         platform_names = ['Gojek', 'Grab', 'ShopeeFood', 'ShopeePay', 'Tiktok']
         closing_headers = ['Tanggal'] + platform_columns
 
@@ -548,8 +548,8 @@ def export_reports():
             value=
                 get_grand_total_with_fallback('Gojek_Mutation')
                 + get_grand_total_with_fallback('Grab_Net')
-                + get_grand_total_with_fallback('Shopee_Mutation')
-                + get_grand_total_with_fallback('ShopeePay_Mutation')
+                + get_grand_total_with_fallback('Shopee_Net')
+                + get_grand_total_with_fallback('ShopeePay_Net')
                 + get_grand_total_with_fallback('Tiktok_Net')
                 - (get_grand_total_with_fallback('Grab_Net') * 1/74)
         ).font = header_font
