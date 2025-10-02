@@ -14,6 +14,7 @@ from app.models.income_category import IncomeCategory
 from app.models.pukis import Pukis
 from app.models.tiktok_reports import TiktokReport
 from app.models.outlet_count_pkb import OutletCountPKB
+from app.models.ultra_voucher import VoucherReport
 from app.extensions import db
 import sys
 
@@ -225,6 +226,111 @@ def upload_report_shopee_adjustment():
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
+
+@reports_bp.route('/upload/voucher', methods=['POST'])
+def upload_voucher_report():
+    """
+    Handles the upload and processing of voucher report CSV files.
+    """
+    files = request.files.getlist('file')
+    if not files or not files[0]:
+        return jsonify({'msg': 'No files uploaded'}), 400
+
+    try:
+        total_reports_processed = 0
+        skipped_reports = 0
+        
+        for file in files:
+            if file.filename == '':
+                continue
+
+            file_contents = file.read().decode('utf-8-sig') # Use 'utf-8-sig' to handle potential BOM
+            csv_file = StringIO(file_contents)
+            reader = csv.DictReader(csv_file)
+            
+            reports_to_add = []
+            for row in reader:
+                # 1. Parse the row using the static method in the VoucherReport model
+                parsed_data = VoucherReport.parse_row(row)
+
+                if not parsed_data:
+                    # parse_row already prints the error, so we just count and skip
+                    skipped_reports += 1
+                    continue
+
+                # 2. Check for duplicates before adding
+                order_no = parsed_data.get('order_no')
+                if not order_no:
+                    print(f"SKIPPED: 'Order No' is missing. | Row: {row}")
+                    skipped_reports += 1
+                    continue
+
+                existing_report = VoucherReport.query.filter_by(order_no=order_no).first()
+                if existing_report:
+                    print(f"SKIPPED: Duplicate Order No '{order_no}' found.")
+                    skipped_reports += 1
+                    continue
+
+                # 3. Verify that the outlet_code exists in the Outlet table (optional but good practice)
+                outlet_code = parsed_data.get('outlet_code')
+                if outlet_code:
+                    outlet = Outlet.query.filter_by(outlet_code=outlet_code).first()
+                    if not outlet:
+                        print(f"SKIPPED: Outlet with code '{outlet_code}' not found in the database. | Row: {row}")
+                        skipped_reports += 1
+                        continue
+
+                # 4. Create the report object if all checks pass
+                try:
+                    report = VoucherReport(**parsed_data)
+                    reports_to_add.append(report)
+                except Exception as e:
+                    print(f"SKIPPED: Error creating report object: {e} | Data: {parsed_data}")
+                    skipped_reports += 1
+                    continue
+
+            # 5. Bulk insert the reports for the current file
+            if reports_to_add:
+                try:
+                    db.session.bulk_save_objects(reports_to_add)
+                    db.session.commit()
+                    total_reports_processed += len(reports_to_add)
+                except IntegrityError:
+                    # Fallback to one-by-one insert if bulk fails (e.g., duplicate within the file)
+                    db.session.rollback()
+                    print("Bulk insert failed, falling back to individual inserts.")
+                    for report in reports_to_add:
+                        try:
+                            # Re-check for duplicates that might exist from the same file batch
+                            if not VoucherReport.query.filter_by(order_no=report.order_no).first():
+                                db.session.add(report)
+                                db.session.commit()
+                                total_reports_processed += 1
+                            else:
+                                print(f"SKIPPED (Fallback): Duplicate Order No '{report.order_no}'.")
+                                skipped_reports +=1
+                        except Exception as e:
+                            db.session.rollback()
+                            print(f"SKIPPED (Fallback): Error saving report for Order No '{report.order_no}': {e}")
+                            skipped_reports += 1
+                except Exception as e:
+                    db.session.rollback()
+                    print(f"A critical error occurred during DB commit: {e}")
+
+
+        return jsonify({
+            'msg': 'Voucher reports uploaded successfully.',
+            'total_records_processed': total_reports_processed,
+            'skipped_records': skipped_reports
+        }), 201
+
+    except Exception as e:
+        db.session.rollback()
+        # It's good practice to log the full error here
+        # import traceback
+        # traceback.print_exc()
+        return jsonify({'error': f'An unexpected error occurred: {str(e)}'}), 500
+        
 
 @reports_bp.route('/upload/mutation', methods=['POST'])
 def upload_report_mutation():

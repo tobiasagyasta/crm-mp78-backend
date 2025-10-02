@@ -13,12 +13,14 @@ from app.models.shopeepay_reports import ShopeepayReport
 from app.models.tiktok_reports import TiktokReport
 from app.models.bank_mutations import BankMutation
 from app.models.pukis import Pukis
+from app.models.ultra_voucher import VoucherReport
 from app.utils.transaction_matcher import TransactionMatcher
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill,Border, Side
 from openpyxl.utils import get_column_letter
 from collections import defaultdict
 from openpyxl.workbook.protection import WorkbookProtection
+
 import os
 
 export_bp = Blueprint('export', __name__, url_prefix="/export")
@@ -71,7 +73,9 @@ def export_reports():
                 'Grab_Difference': 0,
                 'Grab_Commission': 0,
                 'Shopee_Mutation': None, 'Shopee_Difference': 0,
-                'ShopeePay_Mutation': None, 'ShopeePay_Difference': 0
+                'ShopeePay_Mutation': None, 'ShopeePay_Difference': 0,
+                'UV' : 0
+            
             }
         all_dates = []
         date = start_date.date()
@@ -95,7 +99,7 @@ def export_reports():
             'Grab Net',
             'Grab Net (ac)',
             'Shopee Net', 'Shopee Mutation', 'Shopee Difference',
-            'ShopeePay Net','ShopeePay Mutation', 'ShopeePay Difference','Tiktok Net','Cash Income (Admin)', 'Cash Expense (Admin)', 'Sisa Cash (Admin)','Minusan (Mutasi)'
+            'ShopeePay Net','ShopeePay Mutation', 'ShopeePay Difference','Tiktok Net','Cash Income (Admin)', 'Cash Expense (Admin)', 'Sisa Cash (Admin)','Minusan (Mutasi), UV'
         ])
 
         # Query reports with inclusive end date
@@ -129,6 +133,14 @@ def export_reports():
             TiktokReport.order_time >= start_date,
             TiktokReport.order_time <= end_date_inclusive
         ).all()
+        
+        # Query Ultra Voucher reports
+            
+        uv_reports = VoucherReport.query.filter(
+                VoucherReport.outlet_code == outlet_code,
+                VoucherReport.order_date >= start_date,
+                VoucherReport.order_date <= end_date_inclusive
+            ).all()
 
         # Query cash reports with separate income and expense queries
         cash_income_reports = CashReport.query.filter(
@@ -159,6 +171,13 @@ def export_reports():
                 daily_totals[date] = init_daily_total()
             daily_totals[date]['Gojek_Net'] += float(report.nett_amount or 0)
             daily_totals[date]['Gojek_Gross'] += float(report.amount or 0)
+        
+        for report in uv_reports:
+            date = report.order_date.date()
+            if date not in daily_totals:
+                daily_totals[date] = init_daily_total()
+            daily_totals[date]['UV'] += float(report.nominal or 0) - 5000
+            print(date, daily_totals[date]['UV'])
 
         # Initialize variables for GrabFood and GrabOVO
         grabfood_gross_total = 0
@@ -188,7 +207,7 @@ def export_reports():
                 daily_totals[date]['Grab_Commission'] = daily_totals[date]['Grab_Net'] * 1/74
             else:
                 daily_totals[date]['Grab_Commission'] = 0
-
+        
         for report in shopee_reports:
             if report.order_status != "Cancelled":
                 date = report.order_create_time.date()
@@ -209,6 +228,7 @@ def export_reports():
                 daily_totals[date] = init_daily_total()
             daily_totals[date]['Tiktok_Net'] += float(report.net_amount or 0)
             daily_totals[date]['Tiktok_Gross'] += float(report.gross_amount or 0)
+        
         # Handle cash reports separately for income and expense
 
         # Accumulate cash income and expense as floats first
@@ -325,7 +345,8 @@ def export_reports():
                 totals['ShopeePay_Net'],
                 totals['ShopeePay_Mutation'],
                 totals['ShopeePay_Difference'],
-                totals['Tiktok_Net'],   
+                totals['Tiktok_Net'],
+                totals['UV'],   
                 cash_income,
                 cash_expense,
                 sisa_cash,
@@ -354,6 +375,7 @@ def export_reports():
             'ShopeePay_Difference': sum(day['ShopeePay_Difference'] for day in daily_totals.values() if day['ShopeePay_Difference'] is not None),
             'Tiktok_Net': sum(day['Tiktok_Net'] for day in daily_totals.values()),
             'Tiktok_Gross': sum(day['Tiktok_Gross'] for day in daily_totals.values()),
+            'UV': sum(day['UV'] for day in daily_totals.values()),
             'Cash_Income': int(round(cash_income)),
             'Cash_Expense': int(round(cash_expense)),
             'Cash_Difference': int(round(cash_income - cash_expense))
@@ -374,6 +396,7 @@ def export_reports():
             grand_totals['ShopeePay_Mutation'],
             grand_totals['ShopeePay_Difference'],
             grand_totals['Tiktok_Net'],
+            grand_totals['UV'],
             grand_totals['Cash_Income'],
             grand_totals['Cash_Expense'],
             grand_totals['Cash_Difference']
@@ -390,6 +413,8 @@ def export_reports():
         header_font = Font(bold=True)
         header_fill = PatternFill(start_color='CCCCCC', end_color='CCCCCC', fill_type='solid')
         center_align = Alignment(horizontal='center')
+        difference_fill = PatternFill(start_color='F4CCCC', end_color='F4CCCC', fill_type='solid') # Light red
+
 
 
         # Define headers before using them
@@ -399,7 +424,7 @@ def export_reports():
                 'Gojek Net', 'Gojek Mutation', 'Gojek Difference',
                 'Grab Net (ac)',
                 'Shopee Net', 'Shopee Mutation', 'Shopee Difference',
-                'ShopeePay Net', 'ShopeePay Mutation', 'ShopeePay Difference', 'Tiktok Net'
+                'ShopeePay Net', 'ShopeePay Mutation', 'ShopeePay Difference', 'Tiktok Net', 'UV',
             ]
             extra_headers = ['Cash Income (Admin)', 'Cash Expense (Admin)', 'Sisa Cash (Admin)', 'Minusan (Mutasi)']
             # For non-admin, add Grab Net before Grab Net (after commission)
@@ -429,6 +454,7 @@ def export_reports():
             'ShopeePay Mutation': lambda totals, date, minusan_total: totals['ShopeePay_Mutation'],
             'ShopeePay Difference': lambda totals, date, minusan_total: totals['ShopeePay_Difference'],
             'Tiktok Net': lambda totals, date, minusan_total: totals['Tiktok_Net'],
+            'UV': lambda totals, date, minusan_total: totals['UV'],
             'Cash Income (Admin)': lambda totals, date, minusan_total: totals['Cash_Income'],
             'Cash Expense (Admin)': lambda totals, date, minusan_total: totals['Cash_Expense'],
             'Sisa Cash (Admin)': lambda totals, date, minusan_total: totals['Cash_Income'] - totals['Cash_Expense'],
@@ -441,6 +467,8 @@ def export_reports():
         shopee_fill = PatternFill(start_color='FF7A00', end_color='FF7A00', fill_type='solid') # Light pink
         tiktok_fill = PatternFill(start_color='F227F5', end_color='F227F5', fill_type='solid')
         blue_fill = PatternFill(start_color='27A3F5', end_color='27A3F5', fill_type='solid')
+        teal_fill = PatternFill(start_color='35F0F0', end_color='35F0F0', fill_type='solid')
+
         center_align = Alignment(horizontal='center', vertical='center')
         thin_border = Border(
             left=Side(style='thin'),
@@ -463,8 +491,8 @@ def export_reports():
         closing_sheet['E2'] = outlet.store_id_shopee
         closing_sheet['E2'].alignment = center_align
         closing_row = 3
-        platform_columns = ['Gojek_Mutation', 'Grab_Net', 'Shopee_Net', 'ShopeePay_Net', 'Tiktok_Net']
-        platform_names = ['Gojek', 'Grab', 'ShopeeFood', 'ShopeePay', 'Tiktok']
+        platform_columns = ['Gojek_Mutation', 'Grab_Net', 'Shopee_Net', 'ShopeePay_Net', 'Tiktok_Net', 'UV']
+        platform_names = ['Gojek', 'Grab', 'ShopeeFood', 'ShopeePay', 'Tiktok', 'Ultra Voucher']
         closing_headers = ['Tanggal'] + platform_columns
 
         # Merge 'Tanggal' header for two rows
@@ -526,12 +554,33 @@ def export_reports():
             closing_row += 1
         
         # Add grand total section with a gap of two columns to the right of the closing table
+        from app.models.manual_entry import ManualEntry
+        from sqlalchemy.orm import aliased
+        from app.models.income_category import IncomeCategory
+        from app.models.expense_category import ExpenseCategory
+        IncomeCat = aliased(IncomeCategory)
+        ExpenseCat = aliased(ExpenseCategory)
+        manual_entries = (
+            ManualEntry.query
+            .filter(
+                ManualEntry.outlet_code == outlet_code,
+                ManualEntry.start_date <= end_date,
+                ManualEntry.end_date >= start_date,
+                ~ManualEntry.description.ilike('%minus%')
+            )
+            .outerjoin(IncomeCat, (ManualEntry.category_id == IncomeCat.id) & (ManualEntry.entry_type == 'income'))
+            .outerjoin(ExpenseCat, (ManualEntry.category_id == ExpenseCat.id) & (ManualEntry.entry_type == 'expense'))
+            .add_entity(IncomeCat)
+            .add_entity(ExpenseCat)
+            .all()
+        )
+
         grand_total_col_start = closing_sheet.max_column + 3  # 2-column gap
         grand_total_row_start = 3  # Place at the top, aligned with header
         closing_sheet.cell(row=grand_total_row_start, column=grand_total_col_start, value=outlet.outlet_name_gojek).font = header_font
         closing_sheet.cell(row=grand_total_row_start, column=grand_total_col_start).alignment = center_align
         closing_sheet.cell(row=grand_total_row_start, column=grand_total_col_start).fill = blue_fill
-        closing_sheet.cell(row=grand_total_row_start + 1, column=grand_total_col_start, value=f'{start_date.strftime("%Y-%m-%d")} to {end_date.strftime("%Y-%m-%d")}').font = header_font
+        closing_sheet.cell(row=grand_total_row_start + 1, column=grand_total_col_start, value=f'{start_date.strftime("%Y-%m-%d")} to {end_date.strftime("%Y-%m-%d")}' ).font = header_font
         closing_sheet.cell(row=grand_total_row_start + 1, column=grand_total_col_start).alignment = center_align
         closing_sheet.cell(row=grand_total_row_start + 1, column=grand_total_col_start).fill = blue_fill
         # Fallback for mutation columns if value is None, 0, '', or False
@@ -545,46 +594,93 @@ def export_reports():
         closing_sheet.cell(
             row=grand_total_row_start + 1,
             column=grand_total_col_start + 1,
-            value=
+            value=(
                 get_grand_total_with_fallback('Gojek_Mutation')
                 + get_grand_total_with_fallback('Grab_Net')
                 + get_grand_total_with_fallback('Shopee_Net')
                 + get_grand_total_with_fallback('ShopeePay_Net')
                 + get_grand_total_with_fallback('Tiktok_Net')
-                - (get_grand_total_with_fallback('Grab_Net') * 1/74)
+                + sum(float(entry.amount) for entry in manual_entries if getattr(entry, 'entry_type', None) == 'income')
+                + get_grand_total_with_fallback('UV')
+            )
         ).font = header_font
         closing_sheet.cell(row=grand_total_row_start + 1, column=grand_total_col_start + 1).alignment = center_align
         closing_sheet.cell(row=grand_total_row_start + 1, column=grand_total_col_start + 1).number_format = '#,##0'
         closing_sheet.cell(row=grand_total_row_start + 1, column=grand_total_col_start + 1).fill = grab_fill
         closing_sheet.cell(row=grand_total_row_start, column=grand_total_col_start + 1).fill = grab_fill
 
-        final_i = 0
-        # List each platform and its grand total value
-        for i, header in enumerate(platform_columns, 1):
-            label_cell = closing_sheet.cell(row=grand_total_row_start + 1 + i, column=grand_total_col_start, value=platform_names[i-1])
-            label_cell.alignment = center_align
-            # Fallback for mutation columns if value is None, 0, '', or False
-            def get_grand_total_with_fallback(header):
-                value = grand_totals.get(header, None)
-                if header.endswith('_Mutation') and (not value):
-                    net_key = header.replace('_Mutation', '_Net')
-                    value = grand_totals.get(net_key, 0)
-                return value
-            value_cell = closing_sheet.cell(
-                row=grand_total_row_start + 1 + i,
-                column=grand_total_col_start + 1,
-                value=get_grand_total_with_fallback(header)
+        closing_sheet.cell(
+            row=grand_total_row_start + 1,
+            column=grand_total_col_start + 2,
+            value=(
+                sum(float(entry.amount) for entry in manual_entries if getattr(entry, 'entry_type', None) == 'expense')
+                +(get_grand_total_with_fallback('Grab_Net') * 1/74)
             )
-            value_cell.number_format = '#,##0'
-            value_cell.alignment = center_align
-            value_cell.font = header_font
-            final_i = i + 1
-        management_cell_label = closing_sheet.cell(row=grand_total_row_start + final_i + 1, column=grand_total_col_start, value="Grab Manag 1%")
-        management_cell_label.alignment = center_align
-        management_cell_value = closing_sheet.cell(row=grand_total_row_start + final_i + 1, column=grand_total_col_start + 1, value=-grand_totals['Grab_Net'] * 1/74)
-        management_cell_value.number_format = '#,##0'
-        management_cell_value.alignment = center_align
-        management_cell_value.font = header_font
+        ).font = header_font
+        closing_sheet.cell(row=grand_total_row_start + 1, column=grand_total_col_start + 2).alignment = center_align
+        closing_sheet.cell(row=grand_total_row_start + 1, column=grand_total_col_start + 2).number_format = '#,##0'
+        closing_sheet.cell(row=grand_total_row_start + 1, column=grand_total_col_start + 2).fill = difference_fill
+        closing_sheet.cell(row=grand_total_row_start, column=grand_total_col_start + 2).fill = difference_fill
+
+   
+            # List each platform and its grand total value, and insert Grab Management 1% directly below Grab
+        final_i = 0
+        for i, header in enumerate(platform_columns, 1):
+                label_row = grand_total_row_start + 1 + final_i + 1
+                label_cell = closing_sheet.cell(row=label_row, column=grand_total_col_start, value=platform_names[i-1])
+                label_cell.alignment = center_align
+                # Fallback for mutation columns if value is None, 0, '', or False
+                def get_grand_total_with_fallback(header):
+                    value = grand_totals.get(header, None)
+                    if header.endswith('_Mutation') and (not value):
+                        net_key = header.replace('_Mutation', '_Net')
+                        value = grand_totals.get(net_key, 0)
+                    return value
+                value_cell = closing_sheet.cell(
+                    row=label_row,
+                    column=grand_total_col_start + 1,
+                    value=get_grand_total_with_fallback(header)
+                )
+                value_cell.number_format = '#,##0'
+                value_cell.alignment = center_align
+                value_cell.font = header_font
+                final_i += 1
+                # Insert Grab Management 1% cell directly after Grab
+                if platform_names[i-1] == 'Grab':
+                    grab_mgmt_row = label_row + 1
+                    management_cell_label = closing_sheet.cell(row=grab_mgmt_row, column=grand_total_col_start, value="Grab Manag 1%")
+                    management_cell_label.alignment = center_align
+                    management_cell_value = closing_sheet.cell(row=grab_mgmt_row, column=grand_total_col_start + 2, value=grand_totals['Grab_Net'] * 1/74)
+                    management_cell_value.number_format = '#,##0'
+                    management_cell_value.alignment = center_align
+                    management_cell_value.font = header_font
+                    final_i += 1
+
+        final_row = 0
+        # Sort manual_entries so income entries come first, then expense entries
+        manual_entries_sorted = sorted(manual_entries, key=lambda tup: 0 if tup[0].entry_type == 'income' else 1)
+        for idx, (entry, income_cat, expense_cat) in enumerate(manual_entries_sorted, 1):
+            row = grand_total_row_start + final_i + 1 + idx
+            # Show entry_type and category name
+            if entry.entry_type == 'income':
+                cat_name = income_cat.name if income_cat and hasattr(income_cat, 'name') else ''
+            else:
+                cat_name = expense_cat.name if expense_cat and hasattr(expense_cat, 'name') else ''
+            desc_text = f"{cat_name}: {entry.description}"
+            desc_cell = closing_sheet.cell(row=row, column=grand_total_col_start, value=desc_text)
+            desc_cell.alignment = center_align
+            # desc_cell.font = header_font
+            if entry.entry_type == 'income':
+                income_cell = closing_sheet.cell(row=row, column=grand_total_col_start + 1, value=float(entry.amount))
+                income_cell.number_format = '#,##0'
+                income_cell.alignment = center_align
+                income_cell.font = header_font
+            else:
+                expense_cell = closing_sheet.cell(row=row, column=grand_total_col_start + 2, value=float(entry.amount))
+                expense_cell.number_format = '#,##0'
+                expense_cell.alignment = center_align
+                expense_cell.font = header_font
+            final_row = row
 
         for col in range(1, closing_sheet.max_column + 1):
             max_length = 0
@@ -599,7 +695,7 @@ def export_reports():
             for cell in row:
                 cell.border = thin_border
         
-        for row in closing_sheet.iter_rows(min_row=3, max_row=10, min_col=9, max_col=closing_sheet.max_column):
+        for row in closing_sheet.iter_rows(min_row=3, max_row=final_row, min_col=9, max_col=closing_sheet.max_column):
             for cell in row:
                 cell.border = thin_border
         
@@ -643,6 +739,7 @@ def export_reports():
             'ShopeePay Net': shopeepay_fill,
             'ShopeePay Mutation': shopeepay_fill, 'ShopeePay Difference': difference_fill,
             'Tiktok Net': PatternFill(start_color='FFB6C1', end_color='FFB6C1', fill_type='solid'),  # Light pink for TikTok
+            'UV': PatternFill(start_color='35F0F0', end_color='35F0F0', fill_type='solid'),
             'Cash Income': cash_fill, 'Cash Expense': cash_fill, 'Sisa Cash (Admin)': cash_fill
         }
 
@@ -652,7 +749,7 @@ def export_reports():
                 'Gojek Net', 'Gojek Mutation', 'Gojek Difference',
                 'Grab Net (ac)',
                 'Shopee Net', 'Shopee Mutation', 'Shopee Difference',
-                'ShopeePay Net', 'ShopeePay Mutation', 'ShopeePay Difference', 'Tiktok Net'
+                'ShopeePay Net', 'ShopeePay Mutation', 'ShopeePay Difference', 'Tiktok Net', 'UV'
             ]
             extra_headers = ['Cash Income (Admin)', 'Cash Expense (Admin)', 'Sisa Cash (Admin)', 'Minusan (Mutasi)']
             # For non-admin, add Grab Net before Grab Net (after commission)
@@ -692,6 +789,7 @@ def export_reports():
             'ShopeePay Mutation': lambda totals, date, minusan_total: totals['ShopeePay_Mutation'],
             'ShopeePay Difference': lambda totals, date, minusan_total: totals['ShopeePay_Difference'],
             'Tiktok Net': lambda totals, date, minusan_total: totals['Tiktok_Net'],
+            'UV': lambda totals, date, minusan_total: totals['UV'],
             'Cash Income (Admin)': lambda totals, date, minusan_total: totals['Cash_Income'],
             'Cash Expense (Admin)': lambda totals, date, minusan_total: totals['Cash_Expense'],
             'Sisa Cash (Admin)': lambda totals, date, minusan_total: totals['Cash_Income'] - totals['Cash_Expense'],
@@ -715,8 +813,8 @@ def export_reports():
                     cell.number_format = '#,##0'
 
                 # Apply color for Difference columns (Gojek, Shopee)
-                # Columns: 4 (Gojek Difference), 10 (Shopee Difference)
-                if col in [4, 10, 13]:
+                # Columns: 4 (Gojek Difference), 9 (Shopee Difference)
+                if col in [4, 9]:
                     if value is not None:
                         if value > 0:
                             cell.fill = PatternFill(start_color='C6EFCE', end_color='C6EFCE', fill_type='solid')  # Light green
@@ -746,6 +844,7 @@ def export_reports():
             'ShopeePay Mutation': lambda grand_totals: grand_totals['ShopeePay_Mutation'],
             'ShopeePay Difference': lambda grand_totals: grand_totals['ShopeePay_Difference'],
             'Tiktok Net': lambda grand_totals: grand_totals['Tiktok_Net'],
+            'UV': lambda grand_totals: grand_totals['UV'],
             'Cash Income (Admin)': lambda grand_totals: grand_totals['Cash_Income'],
             'Cash Expense (Admin)': lambda grand_totals: grand_totals['Cash_Expense'],
             'Sisa Cash (Admin)': lambda grand_totals: grand_totals['Cash_Difference'],
@@ -758,6 +857,7 @@ def export_reports():
                 for header in headers[1:]
             ]
         ]
+
         for col, value in enumerate(grand_total_data, 1):
             cell = daily_sheet.cell(row=grand_total_row, column=col)
             cell.value = value
@@ -765,6 +865,12 @@ def export_reports():
             cell.fill = yellow_fill
             cell.alignment = Alignment(horizontal='center', vertical='center') 
             cell.number_format = '#,##0'
+
+        # Set fixed smaller column width for daily_sheet
+        for col in range(1, daily_sheet.max_column + 1):
+            column_letter = get_column_letter(col)
+            # Set a reasonable minimum width (Excel may ignore very small values)
+            daily_sheet.column_dimensions[column_letter].width = 8
 
                 
         #Pukis Sheet Formatting
@@ -911,33 +1017,24 @@ def export_reports():
             ('Grab (Total)', grabfood_gross_total + grabovo_gross_total, grabfood_net_total + grabovo_net_total, None),
             ('Shopee', 'Shopee_Gross', 'Shopee_Net', 'Shopee_Mutation'),
             ('ShopeePay', 'ShopeePay_Gross', 'ShopeePay_Net', 'ShopeePay_Mutation'),
-            ('Tiktok', 'Tiktok_Gross', 'Tiktok_Net', None)  # Tiktok does not have mutation data
+            ('Tiktok', 'Tiktok_Gross', 'Tiktok_Net', None),  # Tiktok does not have mutation data
+            ('UV', 'UV', None, None),
         ]
         
         for platform_data in platforms:
-            if isinstance(platform_data[1], (int, float)):  # For GrabFood and GrabOVO
+            if platform_data[0] == 'UV':
+                # For UV, only show gross value, set net and difference to 0
+                platform = platform_data[0]
+                net = grand_totals['UV']
+                row_data = [platform, 0, net, 0]
+            elif isinstance(platform_data[1], (int, float)):
                 platform, gross, net, _ = platform_data
-                row_data = [
-                    platform,
-                    gross,
-                    net,
-                    gross - net
-                ]
+                row_data = [platform, gross, net, gross - net]
             else:
                 platform, gross_key, net_key, mutation_key = platform_data
                 gross = grand_totals[gross_key]
-                # Use mutation total if available, else use net total
-                # if mutation_key and grand_totals.get(mutation_key) is not None and grand_totals.get(mutation_key) != 0:
-                #     net = grand_totals[mutation_key]
-                # else:
                 net = grand_totals[net_key]
-                row_data = [
-                    platform,
-                    gross,
-                    net,
-                    gross - net
-                ]
-            
+                row_data = [platform, gross, net, gross - net]
             for col, value in enumerate(row_data, 1):
                 cell = summary_sheet.cell(row=current_row, column=col)
                 cell.value = value
@@ -1075,7 +1172,7 @@ def export_reports():
             grand_totals['Gojek_Net'] +
             grand_totals['Grab_Net'] +
             grand_totals['Shopee_Net'] +
-            grand_totals['ShopeePay_Net'] + grand_totals['Tiktok_Net']
+            grand_totals['ShopeePay_Net'] + grand_totals['Tiktok_Net'] + grand_totals['UV']
         )
         
         # Calculate commission first (moved from below)
