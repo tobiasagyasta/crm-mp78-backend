@@ -1,3 +1,4 @@
+import re
 from flask import Blueprint, request, jsonify, send_file
 from decimal import Decimal
 from flask_cors import cross_origin
@@ -657,8 +658,37 @@ def export_reports():
                     final_i += 1
 
         final_row = 0
-        # Sort manual_entries so income entries come first, then expense entries
-        manual_entries_sorted = sorted(manual_entries, key=lambda tup: 0 if tup[0].entry_type == 'income' else 1)
+        # Sort manual_entries by date parsed from Indonesian month names in description (dd-mmm or dd-mmm-yy)
+
+        MONTH_MAP = {
+            'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4, 'Mei': 5, 'Jun': 6,
+            'Jul': 7, 'Aug': 8, 'Sep': 9, 'Oct': 10, 'Nov': 11, 'Des': 12
+        }
+        def parse_indonesian_date(description):
+            # Match formats like '5-Jan', '2-Feb', '11-Agu', '18-Aug-25', etc.
+            match = re.search(r'(\d{1,2})[-\s]?([A-Za-z]+)(?:-(\d{2,4}))?', description)
+            if match:
+                day = int(match.group(1))
+                month_str = match.group(2).capitalize()
+                month = MONTH_MAP.get(month_str)
+                if month:
+                    year_str = match.group(3)
+                    if year_str:
+                        year = int(year_str)
+                        if year < 100:
+                            year += 2000
+                    else:
+                        year = datetime.now().year
+                    try:
+                        return datetime(year, month, day)
+                    except Exception:
+                        return datetime.min
+            return datetime.min
+
+        manual_entries_sorted = sorted(
+            manual_entries,
+            key=lambda tup: parse_indonesian_date(tup[0].description)
+        )
         for idx, (entry, income_cat, expense_cat) in enumerate(manual_entries_sorted, 1):
             row = grand_total_row_start + final_i + 1 + idx
             # Show entry_type and category name
@@ -1098,7 +1128,6 @@ def export_reports():
         current_row += 1
 
         # Sort manual entries by date parsed from Indonesian month names in description
-        import re
         MONTH_MAP = {
             'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4, 'Mei': 5, 'Jun': 6,
             'Jul': 7, 'Aug': 8, 'Sep': 9, 'Oct': 10, 'Nov': 11, 'Des': 12
