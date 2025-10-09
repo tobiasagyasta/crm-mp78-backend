@@ -48,6 +48,15 @@ from sqlalchemy import func
 from datetime import datetime
 from sqlalchemy.exc import IntegrityError
 from app.models.outlet import Outlet
+import io
+from datetime import datetime
+
+import openpyxl
+from flask import Blueprint, jsonify, request, send_file
+from openpyxl.workbook import Workbook
+
+from app.services.excel_export.sheets.monthly_income_sheet import MonthlyIncomeSheet
+from app.services.reporting_service import generate_monthly_net_income_data
 from app.utils.report_generator import generate_daily_report
 
 # config = pdfkit.configuration(wkhtmltopdf='C:/Program Files/wkhtmltopdf/bin/wkhtmltopdf.exe')
@@ -2057,3 +2066,44 @@ def get_top_outlets_pdf():
     pdf_bytes.seek(0)
     return send_file(pdf_bytes, mimetype='application/pdf', as_attachment=True, download_name= f'Top_Outlets_{brand_name_out}_{start_date.strftime("%Y%m%d")}_{end_date.strftime("%Y%m%d")}.pdf')
 
+
+@reports_bp.route("/monthly-income", methods=["POST"])
+def monthly_income_report():
+    """
+    Generates and returns an Excel report of monthly net income for a given brand.
+    """
+    json_data = request.get_json()
+    if not json_data:
+        return jsonify({"error": "Invalid JSON"}), 400
+
+    brand_name = json_data.get("brand_name")
+    if not brand_name:
+        return jsonify({"error": "brand_name is required"}), 400
+
+    year = json_data.get("year", datetime.now().year)
+
+    try:
+        data = generate_monthly_net_income_data(brand_name, year)
+        if not data:
+            return jsonify({"error": "No data found for the given criteria"}), 404
+
+        workbook = openpyxl.Workbook()
+        # Remove the default sheet created by openpyxl
+        if "Sheet" in workbook.sheetnames:
+            workbook.remove(workbook["Sheet"])
+
+        sheet = MonthlyIncomeSheet(workbook, data)
+        sheet.generate()
+
+        output = io.BytesIO()
+        workbook.save(output)
+        output.seek(0)
+
+        return send_file(
+            output,
+            as_attachment=True,
+            download_name=f"monthly_income_{brand_name}_{year}.xlsx",
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
