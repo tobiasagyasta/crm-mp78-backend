@@ -17,6 +17,7 @@ from app.models.outlet_count_pkb import OutletCountPKB
 from app.models.ultra_voucher import VoucherReport
 from app.extensions import db
 import sys
+from app.services.consolidation_service import update_daily_total_for_outlet
 
 from datetime import datetime
 
@@ -479,8 +480,9 @@ def upload_report_gojek():
     try:
         total_reports = 0
         skipped_reports = 0
-        store_id_map = {}  # To collect store IDs
-        
+        store_id_map = {}
+        affected_outlets = set()
+
         for file in files:
             file_contents = file.read().decode('utf-8')
             csv_file = StringIO(file_contents)
@@ -493,16 +495,14 @@ def upload_report_gojek():
                 if merchant_name and merchant_id:
                     store_id_map[merchant_name] = merchant_id
 
-                # Get outlet code from store ID first, then fallback to name
                 outlet = None
                 if merchant_id:
                     outlet = Outlet.query.filter_by(store_id_gojek=merchant_id).first()
                 if not outlet and merchant_name:
                     outlet = Outlet.query.filter_by(outlet_name_gojek=merchant_name).first()
                 if not outlet:
-                    continue  # Skip if outlet not found by either ID or name
+                    continue
 
-                # Check if transaction already exists
                 order_no = row.get('Order No', '')
                 if order_no:
                     existing_report = GojekReport.query.filter_by(nomor_pesanan=order_no).first()
@@ -511,18 +511,15 @@ def upload_report_gojek():
                         continue
 
                 try:
-                    # Parse the date and time
                     date_str = row.get('Transaction Date', '')
                     time_str = row.get('Transaction time', '')
                     
                     try:
-                        # Parse MM/DD/YYYY format for date
                         transaction_date = datetime.strptime(date_str, '%m/%d/%Y').date()
                     except ValueError:
                         print(f"Error parsing date: {date_str}")
                         continue
                     
-                    # Parse ISO format timestamp for time
                     try:
                         transaction_time = datetime.fromisoformat(time_str.replace('Z', '+00:00')).time()
                     except ValueError:
@@ -554,35 +551,24 @@ def upload_report_gojek():
                         currency=row.get('Currency', 'IDR')
                     )
                     reports.append(report)
+                    affected_outlets.add((outlet.outlet_code, transaction_date))
                     total_reports += 1
                 except (ValueError, TypeError) as e:
                     print(f"Error processing row: {e}")
                     continue
 
-            # Bulk save reports for this file
             if reports:
-                try:
-                    db.session.bulk_save_objects(reports)
-                    db.session.commit()
-                except IntegrityError:
-                    db.session.rollback()
-                    # Handle reports one by one if bulk insert fails
-                    for report in reports:
-                        try:
-                            db.session.add(report)
-                            db.session.commit()
-                        except IntegrityError:
-                            db.session.rollback()
-                            skipped_reports += 1
-                        except Exception as e:
-                            db.session.rollback()
-                            print(f"Error saving report: {str(e)}")
+                db.session.bulk_save_objects(reports)
 
-        # Update store IDs in batches
+        for outlet_id, date in affected_outlets:
+            update_daily_total_for_outlet(outlet_id, date, 'gojek')
+
+        db.session.commit()
+
         updated_count = update_store_ids_batch(store_id_map, 'gojek')
         
         return jsonify({
-            'msg': 'Reports uploaded successfully',
+            'msg': 'Reports uploaded and consolidated successfully',
             'total_records': total_reports,
             'skipped_records': skipped_reports,
             'store_ids_updated': updated_count
@@ -604,8 +590,9 @@ def upload_report_shopeepay():
     try:
         total_reports = 0
         skipped_reports = 0
-        store_id_map = {}  # To collect store IDs
-        
+        store_id_map = {}
+        affected_outlets = set()
+
         for file in files:
             file_contents = file.read().decode('utf-8')
             csv_file = StringIO(file_contents)
@@ -618,16 +605,14 @@ def upload_report_shopeepay():
                 if store_name and entity_id:
                     store_id_map[store_name] = entity_id
 
-                # Get outlet code from entity ID first, then fallback to name
                 outlet = None
                 if entity_id:
                     outlet = Outlet.query.filter_by(store_id_shopee=entity_id).first()
                 if not outlet and store_name:
                     outlet = Outlet.query.filter_by(outlet_name_grab=store_name).first()
                 if not outlet:
-                    continue  # Skip if outlet not found by either ID or name
+                    continue
 
-                # Check if transaction already exists
                 transaction_id = row.get('Transaction ID', '')
                 if transaction_id:
                     existing_report = ShopeepayReport.query.filter_by(transaction_id=transaction_id).first()
@@ -636,7 +621,6 @@ def upload_report_shopeepay():
                         continue
 
                 try:
-                    # Parse dates with the correct format
                     create_time = datetime.strptime(row.get('Create Time', ''), '%Y-%m-%d %H:%M:%S')
                     update_time = None
                     if row.get('Update Time'):
@@ -683,35 +667,24 @@ def upload_report_shopeepay():
                         fee_handling=safe_float(row.get('Fee (Handling)'))
                     )
                     reports.append(report)
+                    affected_outlets.add((outlet.outlet_code, create_time.date()))
                     total_reports += 1
                 except (ValueError, TypeError) as e:
                     print(f"Error processing row: {e}")
                     continue
 
-            # Bulk save reports for this file
             if reports:
-                try:
-                    db.session.bulk_save_objects(reports)
-                    db.session.commit()
-                except IntegrityError:
-                    db.session.rollback()
-                    # Handle reports one by one if bulk insert fails
-                    for report in reports:
-                        try:
-                            db.session.add(report)
-                            db.session.commit()
-                        except IntegrityError:
-                            db.session.rollback()
-                            skipped_reports += 1
-                except Exception as e:
-                            db.session.rollback()
-                            print(f"Error saving report - Store: {report.store_name}, Order ID: {report.order_id}, Error: {str(e)}")
+                db.session.bulk_save_objects(reports)
 
-        # Update store IDs in batches
+        for outlet_id, date in affected_outlets:
+            update_daily_total_for_outlet(outlet_id, date, 'shopeepay')
+
+        db.session.commit()
+
         updated_count = update_store_ids_batch(store_id_map, 'shopeepay')
         
         return jsonify({
-            'msg': 'Reports uploaded successfully',
+            'msg': 'Reports uploaded and consolidated successfully',
             'total_records': total_reports,
             'skipped_records': skipped_reports,
             'store_ids_updated': updated_count
@@ -938,10 +911,10 @@ def upload_report_grab():
     try:
         total_reports = 0
         skipped_reports = 0
-        store_id_map = {}  # To collect store IDs
-        
+        store_id_map = {}
+        affected_outlets = set()
+
         for file in files:
-            # Process CSV and collect store IDs
             file_contents = file.read().decode('utf-8')
             csv_file = StringIO(file_contents)
             reader = csv.DictReader(csv_file)
@@ -959,9 +932,8 @@ def upload_report_grab():
                 if not outlet and store_name:
                     outlet = Outlet.query.filter_by(outlet_name_grab=store_name).first()
                 if not outlet:
-                    continue  # Skip if outlet not found by either ID or name
+                    continue
 
-                # Check if transaction already exists
                 transaction_id = row.get('ID transaksi', '')
                 if transaction_id:
                     existing_report = GrabFoodReport.query.filter_by(id_transaksi=transaction_id).first()
@@ -970,20 +942,16 @@ def upload_report_grab():
                         continue
 
                 try:
-                    # Create GrabFoodReport instance
-                    # Parse the date with the correct format
                     date_str = row.get('Tanggal dibuat', '')
                     try:
                         tanggal_dibuat = datetime.strptime(date_str, '%d %b %Y %I:%M %p')
                     except ValueError:
-                        # Try alternate format if first attempt fails
                         tanggal_dibuat = datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S')
 
                     def safe_float(value):
                         if not value:
                             return 0
                         try:
-                            # Remove commas and convert to float
                             return float(str(value).replace(',', ''))
                         except (ValueError, TypeError):
                             return 0
@@ -991,8 +959,6 @@ def upload_report_grab():
                     report = GrabFoodReport(
                         brand_name=outlet.brand,
                         outlet_code=outlet.outlet_code,
-                        # nama_merchant=row.get('Nama merchant', ''),
-                        # id_merchant=row.get('ID merchant', ''),
                         nama_toko=store_name,
                         id_toko=store_id,
                         tanggal_dibuat=tanggal_dibuat,
@@ -1001,42 +967,30 @@ def upload_report_grab():
                         subkategori=row.get('Subkategori', ''),
                         status=row.get('Status', ''),
                         id_transaksi=row.get('ID transaksi', ''),
-                        # poin_diberikan=safe_float(row.get('Poin diberikan')),
                         komisi_grabkitchen=safe_float(row.get('Komisi GrabKitchen')),
                         total=safe_float(row.get('Total')),
                         amount=safe_float(row.get('Amount')),
                         penjualan_bersih=safe_float(row.get('Penjualan bersih'))
                     )
                     reports.append(report)
+                    affected_outlets.add((outlet.outlet_code, tanggal_dibuat.date()))
                     total_reports += 1
                 except (ValueError, TypeError) as e:
                     print(f"Error processing row: {e}")
                     continue
 
-            # Bulk save reports for this file
             if reports:
-                try:
-                    db.session.bulk_save_objects(reports)
-                    db.session.commit()
-                except IntegrityError:
-                    db.session.rollback()
-                    # Handle reports one by one if bulk insert fails
-                    for report in reports:
-                        try:
-                            db.session.add(report)
-                            db.session.commit()
-                        except IntegrityError:
-                            db.session.rollback()
-                            skipped_reports += 1
-                        except Exception as e:
-                            db.session.rollback()
-                            print(f"Error saving report: {str(e)}")
+                db.session.bulk_save_objects(reports)
 
-        # Update store IDs in batches
+        for outlet_id, date in affected_outlets:
+            update_daily_total_for_outlet(outlet_id, date, 'grab')
+
+        db.session.commit()
+
         updated_count = update_store_ids_batch(store_id_map, 'grab')
         
         return jsonify({
-            'msg': 'Reports uploaded successfully',
+            'msg': 'Reports uploaded and consolidated successfully',
             'total_records': total_reports,
             'skipped_records': skipped_reports,
             'store_ids_updated': updated_count
@@ -1059,17 +1013,14 @@ def upload_report_shopee():
     try:
         total_reports = 0
         skipped_reports = 0
-        store_id_map = {}  # To collect store IDs
-        
+        store_id_map = {}
+        affected_outlets = set()
+
         for file in files:
             file_contents = file.read().decode('utf-8')
             csv_file = StringIO(file_contents)
             reader = csv.DictReader(csv_file)
             
-            # Debug: Print column names
-            print(f"Raw fieldnames: {reader.fieldnames}", file=sys.stderr, flush=True)
-            
-            # Clean column names by stripping spaces
             reader.fieldnames = [field.strip() for field in reader.fieldnames]
             
             reports = []
@@ -1079,17 +1030,14 @@ def upload_report_shopee():
                 if store_name and store_id:
                     store_id_map[store_name] = store_id
 
-                # Get outlet code from store name
-                # Get outlet code from store ID first, then fallback to name
                 outlet = None
                 if store_id:
                     outlet = Outlet.query.filter_by(store_id_shopee=store_id).first()
                 if not outlet and store_name:
                     outlet = Outlet.query.filter_by(outlet_name_grab=store_name).first()
                 if not outlet:
-                    continue  # Skip if outlet not found by either ID or name
+                    continue
 
-                # Check if order already exists
                 order_id = row.get('Order ID', '')
                 if order_id:
                     existing_report = ShopeeReport.query.filter_by(order_id=order_id).first()
@@ -1098,7 +1046,6 @@ def upload_report_shopee():
                         continue
 
                 try:
-                    # Parse dates with the correct format (dd/MM/yyyy HH:mm:ss)
                     create_time = datetime.strptime(row.get('Order Create Time', ''), '%d/%m/%Y %H:%M:%S')
                     complete_time = None
                     if row.get('Order Complete/Cancel Time'):
@@ -1129,35 +1076,24 @@ def upload_report_shopee():
                         order_type=row.get('Order Type', '')
                     )
                     reports.append(report)
+                    affected_outlets.add((outlet.outlet_code, create_time.date()))
                     total_reports += 1
                 except (ValueError, TypeError) as e:
                     print(f"Error processing row: {e}")
                     continue
 
-            # Bulk save reports for this file
             if reports:
-                try:
-                    db.session.bulk_save_objects(reports)
-                    db.session.commit()
-                except IntegrityError:
-                    db.session.rollback()
-                    # Handle reports one by one if bulk insert fails
-                    for report in reports:
-                        try:
-                            db.session.add(report)
-                            db.session.commit()
-                        except IntegrityError:
-                            db.session.rollback()
-                            skipped_reports += 1
-                        except Exception as e:
-                            db.session.rollback()
-                            print(f"Error saving report: {str(e)}")
+                db.session.bulk_save_objects(reports)
 
-        # Update store IDs in batches
+        for outlet_id, date in affected_outlets:
+            update_daily_total_for_outlet(outlet_id, date, 'shopee')
+
+        db.session.commit()
+
         updated_count = update_store_ids_batch(store_id_map, 'shopee')
         
         return jsonify({
-            'msg': 'Reports uploaded successfully',
+            'msg': 'Reports uploaded and consolidated successfully',
             'total_records': total_reports,
             'skipped_records': skipped_reports,
             'store_ids_updated': updated_count
