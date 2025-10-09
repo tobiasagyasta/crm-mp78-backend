@@ -1,44 +1,59 @@
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from app.models import db
 from app.models.daily_merchant_total import DailyMerchantTotal
 from app.models.outlet import Outlet
 
 
+def _parse_opening_day(closing_date_str: str) -> int | None:
+    """Parses an opening day from a string like '25-24'."""
+    if not closing_date_str or '-' not in closing_date_str:
+        return None
+    try:
+        start_str = closing_date_str.split('-')[0]
+        start_day = int(start_str)
+        if 1 <= start_day <= 31:
+            return start_day
+    except (ValueError, TypeError, IndexError):
+        return None
+    return None
+
+
 def generate_monthly_net_income_data(brand_name: str, year: int) -> dict:
     """
-    Generates aggregated monthly net income data for all active outlets of a specific brand.
-
-    Args:
-        brand_name: The name of the brand to generate the report for.
-        year: The year to generate the report for.
-
-    Returns:
-        A dictionary containing the processed data.
+    Generates aggregated monthly net income data for all active outlets of a specific brand,
+    handling custom financial month ranges.
     """
     outlets = Outlet.query.filter_by(brand=brand_name, status='Active').all()
     if not outlets:
         return {}
 
     outlet_ids = [outlet.id for outlet in outlets]
-    start_date = datetime(year - 1, 12, 1)
-    end_date = datetime(year, 12, 31)
+
+    # To get all transactions for the financial year `year`, we need to query
+    # calendar dates from the beginning of `year` up to the end of January of `year + 1`.
+    # This ensures we capture transactions that belong to the December financial month,
+    # which can extend into January of the next calendar year.
+    start_date = datetime(year, 1, 1)
+    end_date = datetime(year + 1, 1, 31)
 
     daily_totals = (
         db.session.query(DailyMerchantTotal)
         .filter(
             DailyMerchantTotal.outlet_id.in_(outlet_ids),
-            DailyMerchantTotal.transaction_date >= start_date,
-            DailyMerchantTotal.transaction_date <= end_date,
+            DailyMerchantTotal.date >= start_date,
+            DailyMerchantTotal.date <= end_date,
         )
         .all()
     )
 
     data = {}
     for outlet in outlets:
+        opening_day = _parse_opening_day(outlet.closing_date)
+        closing_day_display = outlet.closing_date if opening_day else 'Calendar'
         data[outlet.outlet_code] = {
             'name': outlet.name,
-            'closing_day': outlet.closing_date if outlet.closing_date else 'Calendar',
+            'closing_day': closing_day_display,
             'monthly_totals': {i: 0 for i in range(1, 13)},
         }
 
@@ -47,21 +62,23 @@ def generate_monthly_net_income_data(brand_name: str, year: int) -> dict:
         if not outlet:
             continue
 
-        transaction_date = daily_total.transaction_date
-        closing_day = outlet.closing_date
+        transaction_date = daily_total.date
+        opening_day = _parse_opening_day(outlet.closing_date)
 
-        financial_month = transaction_date.month
         financial_year = transaction_date.year
+        financial_month = transaction_date.month
 
-        if closing_day and 1 <= closing_day <= 31:
-            if transaction_date.day > closing_day:
-                # Move to the first day of the current month, add 32 days to guarantee we are in the next month,
-                # then get the first day of that next month.
-                next_month_date = (transaction_date.replace(day=1) + timedelta(days=32)).replace(day=1)
-                financial_month = next_month_date.month
-                financial_year = next_month_date.year
+        if opening_day:
+            if transaction_date.day < opening_day:
+                # This transaction belongs to the financial period that started in the previous calendar month.
+                financial_month -= 1
+                if financial_month == 0:
+                    financial_month = 12
+                    financial_year -= 1
 
+        # Only include totals for the requested financial year.
         if financial_year == year:
-            data[outlet.outlet_code]['monthly_totals'][financial_month] += daily_total.total_net
+            if 1 <= financial_month <= 12:
+                data[outlet.outlet_code]['monthly_totals'][financial_month] += daily_total.total_net
 
     return data
