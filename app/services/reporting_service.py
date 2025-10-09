@@ -1,7 +1,7 @@
 from datetime import datetime
 
-from app.models import db
-from app.models.daily_merchant_total import DailyMerchantTotal
+from app.extensions import db
+from app.models.daily_merchant_totals import DailyMerchantTotal
 from app.models.outlet import Outlet
 
 
@@ -28,7 +28,7 @@ def generate_monthly_net_income_data(brand_name: str, year: int) -> dict:
     if not outlets:
         return {}
 
-    outlet_ids = [outlet.id for outlet in outlets]
+    outlet_ids = [outlet.outlet_code for outlet in outlets]
 
     # To get all transactions for the financial year `year`, we need to query
     # calendar dates from the beginning of `year` up to the end of January of `year + 1`.
@@ -40,25 +40,28 @@ def generate_monthly_net_income_data(brand_name: str, year: int) -> dict:
     daily_totals = (
         db.session.query(DailyMerchantTotal)
         .filter(
-            DailyMerchantTotal.outlet_id.in_(outlet_ids),
+            # outlet_id column is varchar in DB, so compare with strings
+            DailyMerchantTotal.outlet_id.in_([str(i) for i in outlet_ids]),
             DailyMerchantTotal.date >= start_date,
             DailyMerchantTotal.date <= end_date,
         )
         .all()
     )
 
+
+
     data = {}
     for outlet in outlets:
         opening_day = _parse_opening_day(outlet.closing_date)
         closing_day_display = outlet.closing_date if opening_day else 'Calendar'
         data[outlet.outlet_code] = {
-            'name': outlet.name,
+            'name': outlet.outlet_name_gojek,
             'closing_day': closing_day_display,
             'monthly_totals': {i: 0 for i in range(1, 13)},
         }
 
     for daily_total in daily_totals:
-        outlet = next((o for o in outlets if o.id == daily_total.outlet_id), None)
+        outlet = next((o for o in outlets if o.outlet_code == daily_total.outlet_id), None)
         if not outlet:
             continue
 
