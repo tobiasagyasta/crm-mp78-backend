@@ -2068,12 +2068,15 @@ def get_top_outlets_pdf():
     return send_file(pdf_bytes, mimetype='application/pdf', as_attachment=True, download_name= f'Top_Outlets_{brand_name_out}_{start_date.strftime("%Y%m%d")}_{end_date.strftime("%Y%m%d")}.pdf')
 
 
-@reports_bp.route("/monthly-income", methods=["POST"])
+@reports_bp.route("/monthly-income", methods=["POST", "OPTIONS"])
 @cross_origin(expose_headers=["Content-Disposition"])
 def monthly_income_report():
     """
     Generates and returns an Excel report of monthly net income for a given brand.
     """
+
+    if request.method == 'OPTIONS':
+        return jsonify({'status': 'OK'}), 200
     json_data = request.get_json()
     if not json_data:
         return jsonify({"error": "Invalid JSON"}), 400
