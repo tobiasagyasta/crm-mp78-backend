@@ -20,6 +20,7 @@ import sys
 from app.services.consolidation_service import update_daily_total_for_outlet
 
 from datetime import datetime
+from flask_cors import cross_origin
 
 def parse_date(date_str, default_year=None):
     date_str = date_str.strip()
@@ -1528,7 +1529,7 @@ def upload_report_pkb():
             # Distribute AVANGER rows
             for av_type, av_data in avanger_totals.items():
                 # If av_data contains multiple rows, process each
-                av_rows = av_data.get('rows', [{'total': av_data['total'], 'date': av_data['date'], 'description': av_data.get('description', '')}])
+                av_rows = av_data.get('rows', [{'total': av_data['total'], 'date': av_data['date'], 'description': avanger_info.get('description', '')}])
                 for row in av_rows:
                     total = row['total']
                     date = row['date']
@@ -2068,6 +2069,7 @@ def get_top_outlets_pdf():
 
 
 @reports_bp.route("/monthly-income", methods=["POST"])
+@cross_origin(expose_headers=["Content-Disposition"])
 def monthly_income_report():
     """
     Generates and returns an Excel report of monthly net income for a given brand.
@@ -2099,11 +2101,15 @@ def monthly_income_report():
         workbook.save(output)
         output.seek(0)
 
-        return send_file(
+        response = send_file(
             output,
             as_attachment=True,
-            download_name=f"monthly_income_{brand_name}_{year}.xlsx",
+            download_name=f"Monthly_income_{brand_name}_{year}.xlsx",
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
+        # ensure the browser can see Content-Disposition and set a safe referrer policy
+        response.headers['Access-Control-Expose-Headers'] = 'Content-Disposition'
+        response.headers['Referrer-Policy'] = 'no-referrer-when-downgrade'
+        return response
     except Exception as e:
         return jsonify({"error": str(e)}), 500
