@@ -1157,7 +1157,7 @@ def upload_cash_report():
             date_str = row[0].strip()
             keterangan1 = row[2].strip()
             details = row[3].strip()
-            total_str = row[4].strip().replace('.', '').replace(',', '.')
+            total_str = row[4].strip().replace('.', '').replace(',', '')
             if not date_str or not keterangan1 or not total_str:
                 debug_skipped.append({
                     'row_number': idx + 2,
