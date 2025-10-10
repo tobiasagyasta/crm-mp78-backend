@@ -37,7 +37,7 @@ def create_app():
     # Configure CORS globally with all necessary settings
     CORS(app, resources={
         r"/*": {
-            "origins": origins,
+            "origins": "*",
             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
             "allow_headers": ["Content-Type", "Authorization"],
             "expose_headers": ["Content-Disposition", "Content-Type"],

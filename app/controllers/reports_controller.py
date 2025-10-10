@@ -2068,11 +2068,15 @@ def get_top_outlets_pdf():
     return send_file(pdf_bytes, mimetype='application/pdf', as_attachment=True, download_name= f'Top_Outlets_{brand_name_out}_{start_date.strftime("%Y%m%d")}_{end_date.strftime("%Y%m%d")}.pdf')
 
 
-@reports_bp.route("/monthly-income", methods=["POST"])
+@reports_bp.route("/monthly-income", methods=["POST", "OPTIONS"])
+@cross_origin(expose_headers=["Content-Disposition"])
 def monthly_income_report():
     """
     Generates and returns an Excel report of monthly net income for a given brand.
     """
+
+    if request.method == 'OPTIONS':
+        return jsonify({'status': 'OK'}), 200
     json_data = request.get_json()
     if not json_data:
         return jsonify({"error": "Invalid JSON"}), 400
@@ -2106,7 +2110,9 @@ def monthly_income_report():
             download_name=f"Monthly_income_{brand_name}_{year}.xlsx",
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
-
+        # ensure the browser can see Content-Disposition and set a safe referrer policy
+        response.headers['Access-Control-Expose-Headers'] = 'Content-Disposition'
+        response.headers['Referrer-Policy'] = 'no-referrer-when-downgrade'
         return response
     except Exception as e:
         return jsonify({"error": str(e)}), 500
