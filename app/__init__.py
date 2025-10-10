@@ -28,10 +28,16 @@ def create_app():
     jwt.init_app(app)
     s3.init_app(app)
 
+    origins = [
+        "https://crm-mp78-frontend.vercel.app",  # Your production Vercel URL
+        "http://localhost:3000"                  # Your local development URL
+    ]
+
+
     # Configure CORS globally with all necessary settings
     CORS(app, resources={
         r"/*": {
-            "origins": "*",
+            "origins": origins,
             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
             "allow_headers": ["Content-Type", "Authorization"],
             "expose_headers": ["Content-Disposition", "Content-Type"],
