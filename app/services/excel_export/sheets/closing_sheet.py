@@ -28,16 +28,16 @@ class ClosingSheet(BaseSheet):
         self.ws['A1'].font = HEADER_FONT
         self.ws['B2'] = outlet.store_id_gojek
         self.ws['B2'].alignment = CENTER_ALIGN
-        self.ws['C2'] = outlet.store_id_grab
-        self.ws['C2'].alignment = CENTER_ALIGN
-        self.ws['D2'] = outlet.store_id_shopee
+        self.ws['D2'] = outlet.store_id_grab
         self.ws['D2'].alignment = CENTER_ALIGN
         self.ws['E2'] = outlet.store_id_shopee
         self.ws['E2'].alignment = CENTER_ALIGN
+        self.ws['F2'] = outlet.store_id_shopee
+        self.ws['F2'].alignment = CENTER_ALIGN
 
         closing_row = 3
-        platform_columns = ['Gojek_Mutation', 'Grab_Net', 'Shopee_Net', 'ShopeePay_Net', 'Tiktok_Net', 'UV']
-        platform_names = ['Gojek', 'Grab', 'ShopeeFood', 'ShopeePay', 'Tiktok', 'Ultra Voucher']
+        platform_columns = ['Gojek_Mutation','Gojek_QRIS', 'Grab_Net', 'Shopee_Net', 'ShopeePay_Net', 'Tiktok_Net', 'UV']
+        platform_names = ['GoFood', 'GO-PAY QRIS', 'Grab', 'ShopeeFood', 'ShopeePay', 'Tiktok', 'Ultra Voucher']
 
         # Merged 'Tanggal' header
         self.ws.merge_cells(start_row=closing_row, start_column=1, end_row=closing_row + 1, end_column=1)
@@ -49,7 +49,11 @@ class ClosingSheet(BaseSheet):
         # Platform totals in the first row of the header
         for col, header in enumerate(platform_columns, 2):
             cell = self.ws.cell(row=closing_row, column=col)
-            value = grand_totals.get(header)
+            if header == 'Gojek_Mutation':
+                # Updated logic for GoFood platform totals
+                value = grand_totals.get('Gojek_Net', 0) - grand_totals.get('Gojek_QRIS', 0)
+            else:
+                value = grand_totals.get(header)
             if header.endswith('_Mutation') and not value:
                 net_key = header.replace('_Mutation', '_Net')
                 value = grand_totals.get(net_key, 0)
@@ -65,7 +69,7 @@ class ClosingSheet(BaseSheet):
             cell.value = name
             cell.font = HEADER_FONT
             cell.alignment = CENTER_ALIGN
-            if name == 'Gojek': cell.fill = GOJEK_FILL
+            if name in ['GoFood', 'GO-PAY QRIS']: cell.fill = GOJEK_FILL
             elif name == 'Grab': cell.fill = GRAB_FILL
             elif name in ['ShopeeFood', 'ShopeePay']: cell.fill = SHOPEE_FILL
             elif name == 'Tiktok': cell.fill = TIKTOK_FILL
@@ -76,7 +80,11 @@ class ClosingSheet(BaseSheet):
         for date in all_dates:
             row_data = [date]
             for header in platform_columns:
-                value = daily_totals[date].get(header)
+                if header == 'Gojek_Mutation':
+                    # Comprehensive transformation for GoFood platform
+                    value = daily_totals[date].get('Gojek_Net', 0) - daily_totals[date].get('Gojek_QRIS', 0)
+                else:
+                    value = daily_totals[date].get(header)
                 if header.endswith('_Mutation') and not value:
                     net_key = header.replace('_Mutation', '_Net')
                     value = daily_totals[date].get(net_key, 0)
@@ -193,7 +201,7 @@ class ClosingSheet(BaseSheet):
 
     def _apply_styles(self):
         # Apply borders to the main table
-        for row in self.ws.iter_rows(min_row=1, max_row=self.ws.max_row, min_col=1, max_col=7):
+        for row in self.ws.iter_rows(min_row=1, max_row=self.ws.max_row, min_col=1, max_col=8):
             for cell in row:
                 cell.border = THIN_BORDER
         # Apply borders to the grand total section

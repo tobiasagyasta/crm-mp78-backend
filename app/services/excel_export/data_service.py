@@ -104,7 +104,7 @@ def get_report_data(outlet_code: str, start_date: datetime, end_date: datetime) 
 
 def _init_daily_total():
     return {
-        'Gojek_Gross': 0, 'Gojek_Net': 0, 'Grab_Gross': 0, 'Grab_Net': 0,
+        'Gojek_QRIS' : 0,'Gojek_Gross': 0, 'Gojek_Net': 0, 'Grab_Gross': 0, 'Grab_Net': 0,
         'ShopeePay_Gross': 0, 'ShopeePay_Net': 0, 'Shopee_Gross': 0, 'Shopee_Net': 0,
         'Tiktok_Gross': 0, 'Tiktok_Net': 0, 'Cash_Income': 0, 'Cash_Expense': 0,
         'Gojek_Mutation': None, 'Gojek_Difference': 0, 'Grab_Difference': 0,
@@ -117,6 +117,10 @@ def _aggregate_gojek(daily_totals, reports):
         date = report.transaction_date
         daily_totals[date]['Gojek_Net'] += float(report.nett_amount or 0)
         daily_totals[date]['Gojek_Gross'] += float(report.amount or 0)
+
+        # Add Gojek_QRIS logic
+        if report.payment_type == 'QRIS':
+            daily_totals[date]['Gojek_QRIS'] += float(report.nett_amount or 0)
 
 def _aggregate_uv(daily_totals, reports):
     for report in reports:
