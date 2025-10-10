@@ -1,6 +1,6 @@
 from app.services.excel_export.base_sheet import BaseSheet
 from app.services.excel_export.utils.excel_utils import (
-    HEADER_FONT, YELLOW_FILL, CENTER_ALIGN, GOJEK_FILL, GRAB_FILL, SHOPEE_FILL,
+    HEADER_FONT, YELLOW_FILL, CENTER_ALIGN, GOJEK_FILL, GRAB_FILL, SHOPEE_FILL,GREY_FILL,
     TIKTOK_FILL, BLUE_FILL, DIFFERENCE_FILL, THIN_BORDER, auto_fit_columns, LEFT_ALIGN, RIGHT_ALIGN
 )
 from datetime import datetime
@@ -36,8 +36,9 @@ class ClosingSheet(BaseSheet):
         self.ws['F2'].alignment = CENTER_ALIGN
 
         closing_row = 3
-        platform_columns = ['Gojek_Mutation','Gojek_QRIS', 'Grab_Net', 'Shopee_Net', 'ShopeePay_Net', 'Tiktok_Net', 'UV']
-        platform_names = ['GoFood', 'GO-PAY QRIS', 'Grab', 'ShopeeFood', 'ShopeePay', 'Tiktok', 'Ultra Voucher']
+        # Updated platform columns to include GrabOVO
+        platform_columns = ['Gojek_Mutation', 'Gojek_QRIS', 'Grab_Net', 'GrabOVO_Net', 'Shopee_Net', 'ShopeePay_Net', 'Tiktok_Net', 'UV']
+        platform_names = ['GoFood', 'GO-PAY QRIS', 'Grab', 'Grab(OVO)', 'ShopeeFood', 'ShopeePay', 'Tiktok', 'Ultra Voucher']
 
         # Merged 'Tanggal' header
         self.ws.merge_cells(start_row=closing_row, start_column=1, end_row=closing_row + 1, end_column=1)
@@ -52,6 +53,8 @@ class ClosingSheet(BaseSheet):
             if header == 'Gojek_Mutation':
                 # Updated logic for GoFood platform totals
                 value = grand_totals.get('Gojek_Net', 0) - grand_totals.get('Gojek_QRIS', 0)
+            elif header == 'Grab_Net':
+                value = grand_totals.get('Grab_Net', 0) - grand_totals.get('GrabOVO_Net', 0)
             else:
                 value = grand_totals.get(header)
             if header.endswith('_Mutation') and not value:
@@ -70,7 +73,7 @@ class ClosingSheet(BaseSheet):
             cell.font = HEADER_FONT
             cell.alignment = CENTER_ALIGN
             if name in ['GoFood', 'GO-PAY QRIS']: cell.fill = GOJEK_FILL
-            elif name == 'Grab': cell.fill = GRAB_FILL
+            elif name in ['Grab', 'Grab(OVO)']: cell.fill = GRAB_FILL
             elif name in ['ShopeeFood', 'ShopeePay']: cell.fill = SHOPEE_FILL
             elif name == 'Tiktok': cell.fill = TIKTOK_FILL
 
@@ -149,6 +152,13 @@ class ClosingSheet(BaseSheet):
         self.ws.cell(row=row_start + 1, column=col_start + 2).number_format = '#,##0'
         self.ws.cell(row=row_start + 1, column=col_start + 2).fill = DIFFERENCE_FILL
         self.ws.cell(row=row_start, column=col_start + 2).fill = DIFFERENCE_FILL
+
+        total_all = total_income - total_expense
+        self.ws.cell(row=row_start + 1, column=col_start + 3, value=total_all).font = HEADER_FONT
+        self.ws.cell(row=row_start + 1, column=col_start + 3).alignment = RIGHT_ALIGN
+        self.ws.cell(row=row_start + 1, column=col_start + 3).number_format = '#,##0'
+        self.ws.cell(row=row_start + 1, column=col_start + 3).fill = GREY_FILL
+        self.ws.cell(row=row_start, column=col_start + 3).fill = GREY_FILL
 
         final_i = 0
         for i, header in enumerate(platform_columns, 1):

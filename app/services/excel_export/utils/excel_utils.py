@@ -26,6 +26,7 @@ COMMISSION_FILL = PatternFill(start_color='C6CCB2', end_color='C6CCB2', fill_typ
 SHOPEEPAY_FILL = PatternFill(start_color='E31F26', end_color='E31F26', fill_type='solid')
 MUTATION_FILL = PatternFill(start_color='FFF2CC', end_color='FFF2CC', fill_type='solid')
 DIFFERENCE_FILL = PatternFill(start_color='F4CCCC', end_color='F4CCCC', fill_type='solid')
+GREY_FILL = PatternFill(start_color='D9D9D9', end_color='D9D9D9', fill_type='solid')
 DATE_FILL = PatternFill(start_color='C9F0FF', end_color='C9F0FF', fill_type='solid')
 SISA_FILL = PatternFill(start_color='C6EFCE', end_color='C6EFCE', fill_type='solid')
 DATA_FILL = PatternFill(start_color='FFFFFF', end_color='FFFFFF', fill_type='solid')

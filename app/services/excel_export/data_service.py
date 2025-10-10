@@ -104,7 +104,7 @@ def get_report_data(outlet_code: str, start_date: datetime, end_date: datetime) 
 
 def _init_daily_total():
     return {
-        'Gojek_QRIS' : 0,'Gojek_Gross': 0, 'Gojek_Net': 0, 'Grab_Gross': 0, 'Grab_Net': 0,
+        'Gojek_QRIS' : 0,'Gojek_Gross': 0, 'Gojek_Net': 0, 'Grab_Gross': 0, 'Grab_Net': 0, 'GrabOVO_Gross': 0, 'GrabOVO_Net': 0,
         'ShopeePay_Gross': 0, 'ShopeePay_Net': 0, 'Shopee_Gross': 0, 'Shopee_Net': 0,
         'Tiktok_Gross': 0, 'Tiktok_Net': 0, 'Cash_Income': 0, 'Cash_Expense': 0,
         'Gojek_Mutation': None, 'Gojek_Difference': 0, 'Grab_Difference': 0,
@@ -140,6 +140,8 @@ def _aggregate_grab(daily_totals, reports, brand):
             if report.jenis == 'OVO':
                 grabovo_gross_total += float(report.amount or 0)
                 grabovo_net_total += float(report.total or 0)
+                daily_totals[date]['GrabOVO_Net'] += float(report.total or 0)
+                daily_totals[date]['GrabOVO_Gross'] += float(report.amount or 0)
             elif report.jenis == 'GrabFood':
                 grabfood_gross_total += float(report.amount or 0)
                 grabfood_net_total += float(report.total or 0)
