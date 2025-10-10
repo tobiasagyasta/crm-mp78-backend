@@ -2074,9 +2074,6 @@ def monthly_income_report():
     """
     Generates and returns an Excel report of monthly net income for a given brand.
     """
-
-    if request.method == 'OPTIONS':
-        return jsonify({'status': 'OK'}), 200
     json_data = request.get_json()
     if not json_data:
         return jsonify({"error": "Invalid JSON"}), 400
