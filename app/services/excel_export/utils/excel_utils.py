@@ -35,6 +35,7 @@ DATA_FILL = PatternFill(start_color='FFFFFF', end_color='FFFFFF', fill_type='sol
 # ======================================================================================
 CENTER_ALIGN = Alignment(horizontal='center', vertical='center')
 RIGHT_ALIGN = Alignment(horizontal='right')
+LEFT_ALIGN = Alignment(horizontal="left")
 
 # ======================================================================================
 # BORDER STYLES

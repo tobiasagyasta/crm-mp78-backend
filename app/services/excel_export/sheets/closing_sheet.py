@@ -1,7 +1,7 @@
 from app.services.excel_export.base_sheet import BaseSheet
 from app.services.excel_export.utils.excel_utils import (
     HEADER_FONT, YELLOW_FILL, CENTER_ALIGN, GOJEK_FILL, GRAB_FILL, SHOPEE_FILL,
-    TIKTOK_FILL, BLUE_FILL, DIFFERENCE_FILL, THIN_BORDER, auto_fit_columns
+    TIKTOK_FILL, BLUE_FILL, DIFFERENCE_FILL, THIN_BORDER, auto_fit_columns, LEFT_ALIGN, RIGHT_ALIGN
 )
 from datetime import datetime
 import re
@@ -55,7 +55,7 @@ class ClosingSheet(BaseSheet):
                 value = grand_totals.get(net_key, 0)
             cell.value = value
             cell.font = HEADER_FONT
-            cell.alignment = CENTER_ALIGN
+            cell.alignment = RIGHT_ALIGN
             cell.number_format = '#,##0'
             cell.fill = YELLOW_FILL
 
@@ -84,7 +84,7 @@ class ClosingSheet(BaseSheet):
 
             for col, value in enumerate(row_data, 1):
                 cell = self.ws.cell(row=closing_row, column=col, value=value)
-                cell.alignment = CENTER_ALIGN
+                cell.alignment = RIGHT_ALIGN
                 if col == 1:
                     cell.number_format = 'yyyy-mm-dd'
                 else:
@@ -127,7 +127,7 @@ class ClosingSheet(BaseSheet):
             self._get_grand_total_with_fallback('UV')
         )
         self.ws.cell(row=row_start + 1, column=col_start + 1, value=total_income).font = HEADER_FONT
-        self.ws.cell(row=row_start + 1, column=col_start + 1).alignment = CENTER_ALIGN
+        self.ws.cell(row=row_start + 1, column=col_start + 1).alignment = RIGHT_ALIGN
         self.ws.cell(row=row_start + 1, column=col_start + 1).number_format = '#,##0'
         self.ws.cell(row=row_start + 1, column=col_start + 1).fill = GRAB_FILL
         self.ws.cell(row=row_start, column=col_start + 1).fill = GRAB_FILL
@@ -137,7 +137,7 @@ class ClosingSheet(BaseSheet):
             (self._get_grand_total_with_fallback('Grab_Net') * 1/74)
         )
         self.ws.cell(row=row_start + 1, column=col_start + 2, value=total_expense).font = HEADER_FONT
-        self.ws.cell(row=row_start + 1, column=col_start + 2).alignment = CENTER_ALIGN
+        self.ws.cell(row=row_start + 1, column=col_start + 2).alignment = RIGHT_ALIGN
         self.ws.cell(row=row_start + 1, column=col_start + 2).number_format = '#,##0'
         self.ws.cell(row=row_start + 1, column=col_start + 2).fill = DIFFERENCE_FILL
         self.ws.cell(row=row_start, column=col_start + 2).fill = DIFFERENCE_FILL
@@ -145,18 +145,18 @@ class ClosingSheet(BaseSheet):
         final_i = 0
         for i, header in enumerate(platform_columns, 1):
             label_row = row_start + 1 + final_i + 1
-            self.ws.cell(row=label_row, column=col_start, value=platform_names[i-1]).alignment = CENTER_ALIGN
+            self.ws.cell(row=label_row, column=col_start, value=platform_names[i-1]).alignment = LEFT_ALIGN
             value_cell = self.ws.cell(row=label_row, column=col_start + 1, value=self._get_grand_total_with_fallback(header))
             value_cell.number_format = '#,##0'
-            value_cell.alignment = CENTER_ALIGN
+            value_cell.alignment = RIGHT_ALIGN
             value_cell.font = HEADER_FONT
             final_i += 1
             if platform_names[i-1] == 'Grab':
                 grab_mgmt_row = label_row + 1
-                self.ws.cell(row=grab_mgmt_row, column=col_start, value="Grab Manag 1%").alignment = CENTER_ALIGN
+                self.ws.cell(row=grab_mgmt_row, column=col_start, value="Grab Manag 1%").alignment = LEFT_ALIGN
                 management_cell_value = self.ws.cell(row=grab_mgmt_row, column=col_start + 2, value=self.data['grand_totals']['Grab_Net'] * 1/74)
                 management_cell_value.number_format = '#,##0'
-                management_cell_value.alignment = CENTER_ALIGN
+                management_cell_value.alignment = RIGHT_ALIGN
                 management_cell_value.font = HEADER_FONT
                 final_i += 1
 
@@ -181,14 +181,14 @@ class ClosingSheet(BaseSheet):
             row = row_start + final_i + 1 + idx
             cat_name = (income_cat.name if income_cat else '') if entry.entry_type == 'income' else (expense_cat.name if expense_cat else '')
             desc_text = f"{cat_name}: {entry.description}"
-            self.ws.cell(row=row, column=col_start, value=desc_text).alignment = CENTER_ALIGN
+            self.ws.cell(row=row, column=col_start, value=desc_text).alignment = LEFT_ALIGN
 
             if entry.entry_type == 'income':
                 cell = self.ws.cell(row=row, column=col_start + 1, value=float(entry.amount))
             else:
                 cell = self.ws.cell(row=row, column=col_start + 2, value=float(entry.amount))
             cell.number_format = '#,##0'
-            cell.alignment = CENTER_ALIGN
+            cell.alignment = RIGHT_ALIGN
             cell.font = HEADER_FONT
 
     def _apply_styles(self):
