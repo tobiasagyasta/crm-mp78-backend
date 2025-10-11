@@ -195,9 +195,7 @@ class SummarySheet(BaseSheet):
                 amount_cell.font = HEADER_FONT
                 cell.fill = YELLOW_FILL
                 amount_cell.fill = YELLOW_FILL
-            elif label == 'Grab Management':
-                cell.font = BOLD_RED_FONT
-                amount_cell.font = BOLD_RED_FONT
+            
             current_row += 1
 
     def _write_commission_summary(self):

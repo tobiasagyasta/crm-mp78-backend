@@ -30,10 +30,10 @@ class ClosingSheet(BaseSheet):
         self.ws['B2'].alignment = CENTER_ALIGN
         self.ws['D2'] = outlet.store_id_grab
         self.ws['D2'].alignment = CENTER_ALIGN
-        self.ws['E2'] = outlet.store_id_shopee
-        self.ws['E2'].alignment = CENTER_ALIGN
         self.ws['F2'] = outlet.store_id_shopee
         self.ws['F2'].alignment = CENTER_ALIGN
+        self.ws['G2'] = outlet.store_id_shopee
+        self.ws['G2'].alignment = CENTER_ALIGN
 
         closing_row = 3
         # Updated platform columns to include GrabOVO
@@ -164,18 +164,18 @@ class ClosingSheet(BaseSheet):
         for i, header in enumerate(platform_columns, 1):
             label_row = row_start + 1 + final_i + 1
             self.ws.cell(row=label_row, column=col_start, value=platform_names[i-1]).alignment = LEFT_ALIGN
+            self.ws.cell(row=label_row, column=col_start, value=platform_names[i-1]).font = HEADER_FONT
             value_cell = self.ws.cell(row=label_row, column=col_start + 1, value=self._get_grand_total_with_fallback(header))
             value_cell.number_format = '#,##0'
             value_cell.alignment = RIGHT_ALIGN
-            value_cell.font = HEADER_FONT
             final_i += 1
             if platform_names[i-1] == 'Grab':
                 grab_mgmt_row = label_row + 1
                 self.ws.cell(row=grab_mgmt_row, column=col_start, value="Grab Manag 1%").alignment = LEFT_ALIGN
+                self.ws.cell(row=grab_mgmt_row, column=col_start, value="Grab Manag 1%").font = HEADER_FONT
                 management_cell_value = self.ws.cell(row=grab_mgmt_row, column=col_start + 2, value=self.data['grand_totals']['Grab_Net'] * 1/74)
                 management_cell_value.number_format = '#,##0'
                 management_cell_value.alignment = RIGHT_ALIGN
-                management_cell_value.font = HEADER_FONT
                 final_i += 1
 
         MONTH_MAP = {
@@ -200,6 +200,8 @@ class ClosingSheet(BaseSheet):
             cat_name = (income_cat.name if income_cat else '') if entry.entry_type == 'income' else (expense_cat.name if expense_cat else '')
             desc_text = f"{cat_name}: {entry.description}"
             self.ws.cell(row=row, column=col_start, value=desc_text).alignment = LEFT_ALIGN
+            self.ws.cell(row=row, column=col_start, value=desc_text).font = HEADER_FONT
+
 
             if entry.entry_type == 'income':
                 cell = self.ws.cell(row=row, column=col_start + 1, value=float(entry.amount))
@@ -207,7 +209,6 @@ class ClosingSheet(BaseSheet):
                 cell = self.ws.cell(row=row, column=col_start + 2, value=float(entry.amount))
             cell.number_format = '#,##0'
             cell.alignment = RIGHT_ALIGN
-            cell.font = HEADER_FONT
 
     def _apply_styles(self):
         # Apply borders to the main table

@@ -136,7 +136,7 @@ class DailySheet(BaseSheet):
             'Gojek Mutation': lambda: grand_totals.get('Gojek_Mutation', 0),
             'Gojek Difference': lambda: grand_totals.get('Gojek_Difference', 0),
             'Grab Net': lambda: grand_totals.get('Grab_Net', 0),
-            'Grab Net (ac)': lambda: grand_totals.get('Grab_Commission', 0),
+            'Grab Net (ac)': lambda: grand_totals.get('Grab_Net', 0) - grand_totals.get('Grab_Commission', 0),
             'Shopee Net': lambda: grand_totals.get('Shopee_Net', 0),
             'Shopee Mutation': lambda: grand_totals.get('Shopee_Mutation', 0),
             'Shopee Difference': lambda: grand_totals.get('Shopee_Difference', 0),
