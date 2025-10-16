@@ -513,12 +513,11 @@ def upload_report_gojek():
                 if not outlet:
                     continue
 
-                order_no = row.get('Order No', '')
-                if order_no:
-                    existing_report = GojekReport.query.filter_by(nomor_pesanan=order_no).first()
-                    if existing_report:
-                        skipped_reports += 1
-                        continue
+                # Read raw ids (strip quotes/spaces)
+                order_no_raw = (row.get('Order ID', '') or '').strip()
+                order_no = order_no_raw.strip("'") if order_no_raw else ''
+                transaction_id_raw = (row.get('Transaction ID', '') or '').strip()
+                transaction_id_check = transaction_id_raw.strip("'") if transaction_id_raw else ''
 
                 try:
                     date_str = row.get('Transaction Date', '')
@@ -529,12 +528,40 @@ def upload_report_gojek():
                     except ValueError:
                         print(f"Error parsing date: {date_str}")
                         continue
-                    
+
                     try:
                         transaction_time = datetime.fromisoformat(time_str.replace('Z', '+00:00')).time()
                     except ValueError:
                         transaction_time = None
-                    
+
+                    # Duplicate checks: prefer transaction_id, then order_id, then fallback by date+merchant_id+amount
+                    existing_report = None
+                    if transaction_id_check:
+                        existing_report = GojekReport.query.filter_by(transaction_id=transaction_id_check).first()
+
+                    if not existing_report and order_no:
+                        existing_report = GojekReport.query.filter_by(order_id=order_no).first()
+
+                    if not existing_report:
+                        # Fallback: compare by date + merchant_id + amount (if available)
+                        def safe_float(v):
+                            try:
+                                return float(str(v).replace(',', '').replace("'", ''))
+                            except Exception:
+                                return None
+
+                        parsed_amount = safe_float(row.get('Amount', 0) or 0)
+                        if parsed_amount is not None and merchant_id:
+                            existing_report = GojekReport.query.filter(
+                                GojekReport.transaction_date == transaction_date,
+                                GojekReport.merchant_id == merchant_id,
+                                (GojekReport.amount == parsed_amount) | (GojekReport.nett_amount == parsed_amount)
+                            ).first()
+
+                    if existing_report:
+                        skipped_reports += 1
+                        continue
+
                     report = GojekReport(
                         brand_name=outlet.brand,
                         outlet_code=outlet.outlet_code,
