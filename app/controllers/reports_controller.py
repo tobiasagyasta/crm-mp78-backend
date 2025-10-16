@@ -59,6 +59,8 @@ from openpyxl.workbook import Workbook
 from app.services.excel_export.sheets.monthly_income_sheet import MonthlyIncomeSheet
 from app.services.reporting_service import generate_monthly_net_income_data
 from app.utils.report_generator import generate_daily_report
+from app.services.excel_export.data_service import get_kas_transactions
+from app.services.excel_export.sheets.kas_sheet import KasSheet
 
 # config = pdfkit.configuration(wkhtmltopdf='C:/Program Files/wkhtmltopdf/bin/wkhtmltopdf.exe')
 reports_bp = Blueprint('reports', __name__, url_prefix='/reports')
@@ -2141,5 +2143,50 @@ def monthly_income_report():
         response.headers['Access-Control-Expose-Headers'] = 'Content-Disposition'
         response.headers['Referrer-Policy'] = 'no-referrer-when-downgrade'
         return response
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@reports_bp.route('/kas', methods=['GET'])
+def get_kas_report():
+    """
+    Generates and returns an Excel report of kas transactions.
+    """
+    start_date_param = request.args.get('start_date')
+    end_date_param = request.args.get('end_date')
+    report_type = request.args.get('type', 'Harian')
+
+    if not start_date_param or not end_date_param:
+        return jsonify({"error": "start_date and end_date are required"}), 400
+
+    try:
+        start_date = datetime.strptime(start_date_param, '%Y-%m-%d')
+        end_date = datetime.strptime(end_date_param, '%Y-%m-%d')
+
+        transactions = get_kas_transactions(start_date, end_date)
+
+        workbook = openpyxl.Workbook()
+        if "Sheet" in workbook.sheetnames:
+            workbook.remove(workbook["Sheet"])
+
+        data = {
+            'transactions': transactions,
+            'start_date': start_date,
+            'end_date': end_date,
+            'type': report_type
+        }
+
+        sheet = KasSheet(workbook, data)
+        sheet.generate()
+
+        output = io.BytesIO()
+        workbook.save(output)
+        output.seek(0)
+
+        return send_file(
+            output,
+            as_attachment=True,
+            download_name=f"Kas_{report_type}_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}.xlsx",
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
     except Exception as e:
         return jsonify({"error": str(e)}), 500

@@ -233,3 +233,17 @@ def _calculate_grand_totals(daily_totals):
     grand_totals['Cash_Difference'] = grand_totals['Cash_Income'] - grand_totals['Cash_Expense']
 
     return dict(grand_totals)
+
+def get_kas_transactions(start_date: datetime, end_date: datetime) -> list:
+    """
+    Fetches mock kas transactions for the Excel report.
+    """
+    from app.models.kas_transaction import KasTransaction
+    from datetime import date
+
+    return [
+        KasTransaction(tanggal=date(2025, 1, 1), keterangan='Masuk', tipe='Masuk', jumlah=100000.00),
+        KasTransaction(tanggal=date(2025, 1, 2), keterangan='Keluar', tipe='Keluar', jumlah=50000.00),
+        KasTransaction(tanggal=date(2025, 1, 3), keterangan='Masuk', tipe='Masuk', jumlah=100000.00),
+        KasTransaction(tanggal=date(2025, 1, 4), keterangan='Keluar', tipe='Keluar', jumlah=30000.00),
+    ]
