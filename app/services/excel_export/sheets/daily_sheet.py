@@ -29,15 +29,15 @@ class DailySheet(BaseSheet):
         outlet_brand = self.data['outlet'].brand
 
         base_headers = [
-            'Date', 'Gojek Net', 'Gojek Mutation', 'Gojek Difference',
-            'Grab Net (ac)', 'Shopee Net', 'Shopee Mutation', 'Shopee Difference',
+            'Date', 'GoFood', 'GO-PAY QRIS', 'Gojek Net', 'Gojek Mutation', 'Gojek Difference',
+            'GrabFood', 'GrabOVO', 'Grab Net (ac)', 'Shopee Net', 'Shopee Mutation', 'Shopee Difference',
             'ShopeePay Net', 'ShopeePay Mutation', 'ShopeePay Difference',
             'Tiktok Net', 'UV'
         ]
         extra_headers = ['Cash Income (Admin)', 'Cash Expense (Admin)', 'Sisa Cash (Admin)', 'Minusan (Mutasi)']
 
         if user_role == "management" and outlet_brand != "Pukis & Martabak Kota Baru":
-            base_headers.insert(4, 'Grab Net')
+            base_headers.insert(8, 'Grab Net')
 
         if outlet_brand == "Pukis & Martabak Kota Baru":
             base_headers.insert(4, 'Grab Net')
@@ -50,8 +50,8 @@ class DailySheet(BaseSheet):
     def _write_headers(self):
         headers = self._get_headers()
         header_colors = {
-            'Date': DATE_FILL, 'Gojek Net': GOJEK_FILL, 'Gojek Mutation': GOJEK_FILL,
-            'Gojek Difference': DIFFERENCE_FILL, 'Grab Net': GRAB_FILL, 'Grab Net (ac)': GRAB_FILL,
+            'Date': DATE_FILL, 'GoFood': GOJEK_FILL, 'GO-PAY QRIS': GOJEK_FILL, 'Gojek Net': GOJEK_FILL, 'Gojek Mutation': GOJEK_FILL,
+            'Gojek Difference': DIFFERENCE_FILL, 'GrabFood': GRAB_FILL, 'GrabOVO': GRAB_FILL, 'Grab Net': GRAB_FILL, 'Grab Net (ac)': GRAB_FILL,
             'Shopee Net': SHOPEE_FILL, 'Shopee Mutation': SHOPEE_FILL, 'Shopee Difference': DIFFERENCE_FILL,
             'ShopeePay Net': SHOPEEPAY_FILL, 'ShopeePay Mutation': SHOPEEPAY_FILL, 'ShopeePay Difference': DIFFERENCE_FILL,
             'Tiktok Net': TIKTOK_FILL, 'UV': PatternFill(start_color='35F0F0', end_color='35F0F0', fill_type='solid'),
@@ -75,9 +75,13 @@ class DailySheet(BaseSheet):
 
         header_value_map = {
             'Date': lambda totals, date, minusan_total: date,
+            'GoFood': lambda totals, date, minusan_total: (totals.get('Gojek_Net', 0) - totals.get('Gojek_QRIS', 0)),
+            'GO-PAY QRIS': lambda totals, date, minusan_total: totals.get('Gojek_QRIS', 0),
             'Gojek Net': lambda totals, date, minusan_total: totals.get('Gojek_Net', 0),
             'Gojek Mutation': lambda totals, date, minusan_total: totals.get('Gojek_Mutation', 0),
             'Gojek Difference': lambda totals, date, minusan_total: totals.get('Gojek_Difference', 0),
+            'GrabFood': lambda totals, date, minusan_total: (totals.get('Grab_Net', 0) - totals.get('GrabOVO_Net', 0)),
+            'GrabOVO': lambda totals, date, minusan_total: totals.get('GrabOVO_Net', 0),
             'Grab Net': lambda totals, date, minusan_total: totals.get('Grab_Net', 0),
             'Grab Net (ac)': lambda totals, date, minusan_total: totals.get('Grab_Commission', 0),
             'Shopee Net': lambda totals, date, minusan_total: totals.get('Shopee_Net', 0),
@@ -132,9 +136,13 @@ class DailySheet(BaseSheet):
 
         grand_total_value_map = {
             'Date': lambda: 'Grand Total',
+            'GoFood': lambda: grand_totals.get('Gojek_Net', 0) - grand_totals.get('Gojek_QRIS', 0),
+            'GO-PAY QRIS': lambda: grand_totals.get('Gojek_QRIS', 0),
             'Gojek Net': lambda: grand_totals.get('Gojek_Net', 0),
             'Gojek Mutation': lambda: grand_totals.get('Gojek_Mutation', 0),
             'Gojek Difference': lambda: grand_totals.get('Gojek_Difference', 0),
+            'GrabFood': lambda: grand_totals.get('Grab_Net', 0) - grand_totals.get('GrabOVO_Net', 0),
+            'GrabOVO': lambda: grand_totals.get('GrabOVO_Net', 0),
             'Grab Net': lambda: grand_totals.get('Grab_Net', 0),
             'Grab Net (ac)': lambda: grand_totals.get('Grab_Net', 0) - grand_totals.get('Grab_Commission', 0),
             'Shopee Net': lambda: grand_totals.get('Shopee_Net', 0),
