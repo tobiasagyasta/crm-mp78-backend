@@ -234,16 +234,52 @@ def _calculate_grand_totals(daily_totals):
 
     return dict(grand_totals)
 
+from app.models.kas_transaction import KasTransaction
+from app.extensions import db
+
 def get_kas_transactions(start_date: datetime, end_date: datetime) -> list:
     """
-    Fetches mock kas transactions for the Excel report.
+    Fetches kas transactions from the database for the Excel report.
     """
-    from app.models.kas_transaction import KasTransaction
-    from datetime import date
+    return KasTransaction.query.filter(
+        KasTransaction.tanggal >= start_date,
+        KasTransaction.tanggal <= end_date
+    ).all()
 
-    return [
-        KasTransaction(tanggal=date(2025, 1, 1), keterangan='Masuk', tipe='Masuk', jumlah=100000.00),
-        KasTransaction(tanggal=date(2025, 1, 2), keterangan='Keluar', tipe='Keluar', jumlah=50000.00),
-        KasTransaction(tanggal=date(2025, 1, 3), keterangan='Masuk', tipe='Masuk', jumlah=100000.00),
-        KasTransaction(tanggal=date(2025, 1, 4), keterangan='Keluar', tipe='Keluar', jumlah=30000.00),
-    ]
+def create_kas_transaction(data: dict) -> KasTransaction:
+    """
+    Creates a new kas transaction and saves it to the database.
+    """
+    new_transaction = KasTransaction(
+        tanggal=datetime.strptime(data['tanggal'], '%Y-%m-%d').date(),
+        keterangan=data['keterangan'],
+        tipe=data['tipe'],
+        jumlah=data['jumlah']
+    )
+    db.session.add(new_transaction)
+    db.session.commit()
+    return new_transaction
+
+def update_kas_transaction(transaction_id: int, data: dict) -> KasTransaction:
+    """
+    Updates an existing kas transaction in the database.
+    """
+    transaction = KasTransaction.query.get_or_404(transaction_id)
+    if 'tanggal' in data:
+        transaction.tanggal = datetime.strptime(data['tanggal'], '%Y-%m-%d').date()
+    if 'keterangan' in data:
+        transaction.keterangan = data['keterangan']
+    if 'tipe' in data:
+        transaction.tipe = data['tipe']
+    if 'jumlah' in data:
+        transaction.jumlah = data['jumlah']
+    db.session.commit()
+    return transaction
+
+def delete_kas_transaction(transaction_id: int) -> None:
+    """
+    Deletes a kas transaction from the database.
+    """
+    transaction = KasTransaction.query.get_or_404(transaction_id)
+    db.session.delete(transaction)
+    db.session.commit()

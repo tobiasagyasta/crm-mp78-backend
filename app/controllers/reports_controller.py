@@ -59,8 +59,12 @@ from openpyxl.workbook import Workbook
 from app.services.excel_export.sheets.monthly_income_sheet import MonthlyIncomeSheet
 from app.services.reporting_service import generate_monthly_net_income_data
 from app.utils.report_generator import generate_daily_report
-from app.services.excel_export.data_service import get_kas_transactions
+from app.services.excel_export.data_service import (
+    get_kas_transactions, create_kas_transaction,
+    update_kas_transaction, delete_kas_transaction
+)
 from app.services.excel_export.sheets.kas_sheet import KasSheet
+from app.models.kas_transaction import KasTransaction
 
 # config = pdfkit.configuration(wkhtmltopdf='C:/Program Files/wkhtmltopdf/bin/wkhtmltopdf.exe')
 reports_bp = Blueprint('reports', __name__, url_prefix='/reports')
@@ -2146,7 +2150,7 @@ def monthly_income_report():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@reports_bp.route('/kas', methods=['GET'])
+@reports_bp.route('/kas/report', methods=['GET'])
 def get_kas_report():
     """
     Generates and returns an Excel report of kas transactions.
@@ -2188,5 +2192,64 @@ def get_kas_report():
             download_name=f"Kas_{report_type}_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}.xlsx",
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@reports_bp.route('/kas', methods=['POST'])
+def add_kas_transaction():
+    """
+    Adds a new kas transaction.
+    """
+    data = request.get_json()
+    if not data or not all(k in data for k in ['tanggal', 'keterangan', 'tipe', 'jumlah']):
+        return jsonify({"error": "Missing data"}), 400
+    try:
+        new_transaction = create_kas_transaction(data)
+        return jsonify(new_transaction.to_dict()), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@reports_bp.route('/kas/<int:transaction_id>', methods=['PATCH'])
+def edit_kas_transaction(transaction_id):
+    """
+    Updates a kas transaction.
+    """
+    data = request.get_json()
+    try:
+        updated_transaction = update_kas_transaction(transaction_id, data)
+        return jsonify(updated_transaction.to_dict()), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@reports_bp.route('/kas/<int:transaction_id>', methods=['DELETE'])
+def remove_kas_transaction(transaction_id):
+    """
+    Deletes a kas transaction.
+    """
+    try:
+        delete_kas_transaction(transaction_id)
+        return jsonify({"message": "Transaction deleted"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@reports_bp.route('/kas', methods=['GET'])
+def get_all_kas_transactions():
+    """
+    Retrieves all kas transactions.
+    """
+    try:
+        transactions = KasTransaction.query.all()
+        return jsonify([t.to_dict() for t in transactions]), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@reports_bp.route('/kas/<int:transaction_id>', methods=['GET'])
+def get_kas_transaction_by_id(transaction_id):
+    """
+    Retrieves a single kas transaction by its ID.
+    """
+    try:
+        transaction = KasTransaction.query.get_or_404(transaction_id)
+        return jsonify(transaction.to_dict()), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
