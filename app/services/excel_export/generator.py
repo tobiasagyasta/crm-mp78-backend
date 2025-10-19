@@ -5,6 +5,7 @@ from app.services.excel_export.sheets.daily_sheet import DailySheet
 from app.services.excel_export.sheets.summary_sheet import SummarySheet
 from app.services.excel_export.sheets.closing_sheet import ClosingSheet
 from app.services.excel_export.sheets.pukis_sheet import PukisSheet
+from app.services.excel_export.sheets.pukis_closing_sheet import PukisClosingSheet
 
 class ExcelReportGenerator:
     def __init__(self, outlet_code: str, start_date, end_date, user_role: str):
@@ -26,12 +27,14 @@ class ExcelReportGenerator:
         sheet_generators = [
             DailySheet,
             SummarySheet,
-            ClosingSheet,
         ]
 
-        # Conditionally add the Pukis sheet
+        # Conditionally add the Pukis sheet and closing sheet
         if report_data['outlet'].brand == "Pukis & Martabak Kota Baru":
+            sheet_generators.append(PukisClosingSheet)
             sheet_generators.append(PukisSheet)
+        else:
+            sheet_generators.append(ClosingSheet)
 
         # Generate each sheet
         for sheet_class in sheet_generators:
