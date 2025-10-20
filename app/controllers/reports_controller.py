@@ -59,6 +59,12 @@ from openpyxl.workbook import Workbook
 from app.services.excel_export.sheets.monthly_income_sheet import MonthlyIncomeSheet
 from app.services.reporting_service import generate_monthly_net_income_data
 from app.utils.report_generator import generate_daily_report
+# from app.services.excel_export.data_service import (
+#     get_kas_transactions, create_kas_transaction,
+#     update_kas_transaction, delete_kas_transaction
+# )
+# from app.services.excel_export.sheets.kas_sheet import KasSheet
+# from app.models.kas_transaction import KasTransaction
 
 # config = pdfkit.configuration(wkhtmltopdf='C:/Program Files/wkhtmltopdf/bin/wkhtmltopdf.exe')
 reports_bp = Blueprint('reports', __name__, url_prefix='/reports')
@@ -1556,11 +1562,20 @@ def upload_report_pkb():
             # Distribute AVANGER rows
             for av_type, av_data in avanger_totals.items():
                 # If av_data contains multiple rows, process each
-                av_rows = av_data.get('rows', [{'total': av_data['total'], 'date': av_data['date'], 'description': avanger_info.get('description', '')}])
+                if 'rows' in av_data:
+                    av_rows = av_data['rows']
+                else:
+                    # Create a single row with default values if no rows exist
+                    av_rows = [{'total': av_data.get('total', 0), 
+                              'date': av_data.get('date'),
+                              'description': av_type}]  # Use av_type as default description
+                
                 for row in av_rows:
-                    total = row['total']
-                    date = row['date']
-                    description = row.get('description', '')
+                    total = row.get('total', 0)
+                    date = row.get('date')
+                    # Use av_type as base description if none provided in row
+                    description = row.get('description', av_type)
+                    
                     outlet_count_obj = OutletCountPKB.query.filter(
                         OutletCountPKB.start_date <= (date or datetime.now().date()),
                         OutletCountPKB.end_date >= (date or datetime.now().date())
@@ -2143,3 +2158,107 @@ def monthly_income_report():
         return response
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+# @reports_bp.route('/kas/report', methods=['GET'])
+# def get_kas_report():
+#     """
+#     Generates and returns an Excel report of kas transactions.
+#     """
+#     start_date_param = request.args.get('start_date')
+#     end_date_param = request.args.get('end_date')
+#     report_type = request.args.get('type', 'Harian')
+
+#     if not start_date_param or not end_date_param:
+#         return jsonify({"error": "start_date and end_date are required"}), 400
+
+#     try:
+#         start_date = datetime.strptime(start_date_param, '%Y-%m-%d')
+#         end_date = datetime.strptime(end_date_param, '%Y-%m-%d')
+
+#         transactions = get_kas_transactions(start_date, end_date)
+
+#         workbook = openpyxl.Workbook()
+#         if "Sheet" in workbook.sheetnames:
+#             workbook.remove(workbook["Sheet"])
+
+#         data = {
+#             'transactions': transactions,
+#             'start_date': start_date,
+#             'end_date': end_date,
+#             'type': report_type
+#         }
+
+#         sheet = KasSheet(workbook, data)
+#         sheet.generate()
+
+#         output = io.BytesIO()
+#         workbook.save(output)
+#         output.seek(0)
+
+#         return send_file(
+#             output,
+#             as_attachment=True,
+#             download_name=f"Kas_{report_type}_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}.xlsx",
+#             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+#         )
+#     except Exception as e:
+#         return jsonify({"error": str(e)}), 500
+
+# @reports_bp.route('/kas', methods=['POST'])
+# def add_kas_transaction():
+#     """
+#     Adds a new kas transaction.
+#     """
+#     data = request.get_json()
+#     if not data or not all(k in data for k in ['tanggal', 'keterangan', 'tipe', 'jumlah']):
+#         return jsonify({"error": "Missing data"}), 400
+#     try:
+#         new_transaction = create_kas_transaction(data)
+#         return jsonify(new_transaction.to_dict()), 201
+#     except Exception as e:
+#         return jsonify({"error": str(e)}), 500
+
+# @reports_bp.route('/kas/<int:transaction_id>', methods=['PATCH'])
+# def edit_kas_transaction(transaction_id):
+#     """
+#     Updates a kas transaction.
+#     """
+#     data = request.get_json()
+#     try:
+#         updated_transaction = update_kas_transaction(transaction_id, data)
+#         return jsonify(updated_transaction.to_dict()), 200
+#     except Exception as e:
+#         return jsonify({"error": str(e)}), 500
+
+# @reports_bp.route('/kas/<int:transaction_id>', methods=['DELETE'])
+# def remove_kas_transaction(transaction_id):
+#     """
+#     Deletes a kas transaction.
+#     """
+#     try:
+#         delete_kas_transaction(transaction_id)
+#         return jsonify({"message": "Transaction deleted"}), 200
+#     except Exception as e:
+#         return jsonify({"error": str(e)}), 500
+
+# @reports_bp.route('/kas', methods=['GET'])
+# def get_all_kas_transactions():
+#     """
+#     Retrieves all kas transactions.
+#     """
+#     try:
+#         transactions = KasTransaction.query.all()
+#         return jsonify([t.to_dict() for t in transactions]), 200
+#     except Exception as e:
+#         return jsonify({"error": str(e)}), 500
+
+# @reports_bp.route('/kas/<int:transaction_id>', methods=['GET'])
+# def get_kas_transaction_by_id(transaction_id):
+#     """
+#     Retrieves a single kas transaction by its ID.
+#     """
+#     try:
+#         transaction = KasTransaction.query.get_or_404(transaction_id)
+#         return jsonify(transaction.to_dict()), 200
+#     except Exception as e:
+#         return jsonify({"error": str(e)}), 500
