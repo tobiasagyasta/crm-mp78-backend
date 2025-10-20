@@ -11,6 +11,7 @@ class PukisClosingSheet(BaseSheet):
     def generate(self):
         self._write_header()
         self._write_data()
+        self._write_expenses_table()
         self._apply_styles()
         auto_fit_columns(self.ws)
 
@@ -137,6 +138,96 @@ class PukisClosingSheet(BaseSheet):
         ]
         self.ws.append(total_row)
         self.ws.append(["GRAND TOTAL", None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None])
+
+    def _write_expenses_table(self):
+        manual_entries = self.data.get('manual_entries', [])
+
+        # Aggregate expenses by category
+        aggregated_expenses = {}
+        for entry, income_cat, expense_cat in manual_entries:
+            if entry.entry_type == 'expense' and entry.category_id != 9:
+                category_name = expense_cat.name if expense_cat else 'Uncategorized'
+                if category_name not in aggregated_expenses:
+                    aggregated_expenses[category_name] = 0
+                aggregated_expenses[category_name] += entry.amount
+
+        if not aggregated_expenses:
+            return
+
+        # Add a blank row for spacing
+        self.ws.append([])
+        start_row = self.ws.max_row + 1
+
+        # Header
+        # Merging A and B for the main title, then C for the value title
+        header_a = self.ws.cell(row=start_row, column=1, value='PENGELUARAN')
+        header_a.font = HEADER_FONT
+        header_a.fill = YELLOW_FILL
+        header_a.alignment = CENTER_ALIGN
+
+        header_b = self.ws.cell(row=start_row, column=2)
+        header_b.fill = YELLOW_FILL # Also fill the second cell to make the merge seamless
+
+        self.ws.merge_cells(start_row=start_row, start_column=1, end_row=start_row, end_column=2)
+
+        header_c = self.ws.cell(row=start_row, column=3, value='TOTAL')
+        header_c.font = HEADER_FONT
+        header_c.fill = YELLOW_FILL
+        header_c.alignment = CENTER_ALIGN
+
+        # Sub-header for categories
+        sub_header_row = start_row + 1
+        keterangan_header = self.ws.cell(row=sub_header_row, column=2, value='KETERANGAN')
+        keterangan_header.font = HEADER_FONT
+        keterangan_header.fill = YELLOW_FILL
+        keterangan_header.alignment = CENTER_ALIGN
+
+        # Data
+        current_row = sub_header_row + 1
+        total_expenses = 0
+
+        # Manually define the order of categories
+        category_order = [
+            "Adm kantor", "Adm gudang", "Gaji karyawan", "Social media",
+            "Tagihan gudang", "Seragam", "Tutup loyang", "Sewa"
+        ]
+
+        # Create a list of tuples for sorting
+        expenses_to_sort = list(aggregated_expenses.items())
+
+        sorted_expenses = sorted(expenses_to_sort, key=lambda item: category_order.index(item[0]) if item[0] in category_order else len(category_order))
+
+        for category, amount in sorted_expenses:
+            self.ws.cell(row=current_row, column=2).value = category
+            amount_cell = self.ws.cell(row=current_row, column=3)
+            amount_cell.value = amount
+            amount_cell.number_format = '#,##0'
+            amount_cell.alignment = RIGHT_ALIGN
+            total_expenses += amount
+            current_row += 1
+
+        # Footer
+        footer_row_val = 'PENGELUARAN DILUAR LAPORAN HARIAN'
+        footer_cell_a = self.ws.cell(row=current_row, column=1, value=footer_row_val)
+        footer_cell_a.font = HEADER_FONT
+        footer_cell_a.fill = YELLOW_FILL
+
+        footer_cell_b = self.ws.cell(row=current_row, column=2) # Empty cell for merging
+        footer_cell_b.fill = YELLOW_FILL
+
+        self.ws.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=2)
+
+        total_cell = self.ws.cell(row=current_row, column=3)
+        total_cell.value = total_expenses
+        total_cell.number_format = '#,##0'
+        total_cell.alignment = RIGHT_ALIGN
+        total_cell.font = HEADER_FONT
+        total_cell.fill = YELLOW_FILL
+
+        # Apply borders to the new table
+        for row in self.ws.iter_rows(min_row=start_row, max_row=current_row, min_col=1, max_col=3):
+            for cell in row:
+                cell.border = THIN_BORDER
 
     def _apply_styles(self):
         for row in self.ws.iter_rows(min_row=4, max_row=self.ws.max_row, min_col=1, max_col=self.ws.max_column):
