@@ -2,6 +2,9 @@ from app.extensions import db
 from datetime import datetime
 from app.models.outlet import Outlet
 import re
+import csv
+import io
+from decimal import Decimal, InvalidOperation
 
 class BankMutation(db.Model):
     __tablename__ = 'bank_mutations'
@@ -20,174 +23,137 @@ class BankMutation(db.Model):
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)    
 
-    def parse_pkb_transaction(self):
+    @staticmethod
+    def parse_pkb_report(report_content):
         """
-        Parse transaction text specifically for PKB platform.
-        Format must contain a valid platform code like 'PDG-085'.
-        Ignores entries that do not match the required format.
+        Parses the entire content of a PKB bank mutation report.
+
+        Args:
+            report_content (str): The raw string content of the report CSV.
+
+        Returns:
+            dict: A structured dictionary containing account_info, transactions, and summary.
         """
-        if not self.transaksi:
-            return
-
-        text = self.transaksi.strip()
-
-        type_match = re.search(r'TRSF E-BANKING (CR|DB)', text)
-        if type_match:
-            type_result = type_match.group(1)
-        # Match codes like PDG085
-        code_match = re.search(r'([A-Za-z]{3})[-_\s]?(\d{3})', text)
-        if not code_match:
-            return  # Skip parsing if no valid PKB platform code
+        account_info = {}
+        transactions = []
+        summary = {}
         
-        normalized_code = f"{code_match.group(1).upper()}-{code_match.group(2)}"
-        # print(f"[PKB LOG] Normalized code: {normalized_code}")
-        # Safe to proceed
-        self.platform_name = "PKB"
-        self.platform_code = normalized_code
+        lines = report_content.strip().split('\n')
+        reader = csv.reader(lines)
 
-        # Extract amount (first float-looking number with at least 4 digits before the decimal)
-        amount_match = re.search(r'\b\d{4,}\.\d{2}\b', text)
-        if amount_match:
-            # print(f"[PKB LOG] Found amount: {amount_match.group()}")
-            self.transaction_amount = float(amount_match.group())
+        header_found = False
+        transactions_started = False
 
-        # Set generic transaction_type if needed
-        self.transaction_type = type_result
-        self.transaction_id = None
+        for row in reader:
+            if not row or not any(field.strip() for field in row):
+                continue
 
-        # Extract transaction description (everything after platform code)
-        after_code = text.split(self.platform_code, 1)[-1].strip()
-        self.transaksi = after_code  # override with cleaned-up description
+            # Clean up row data
+            row = [item.strip() for item in row]
+            line_str = ",".join(row)
+
+            # Detect transaction header
+            if row == ["Tanggal Transaksi", "Keterangan", "Cabang", "Jumlah", "Saldo"]:
+                header_found = True
+                transactions_started = True
+                continue
+
+            # Parse account info before the transaction header
+            if not header_found and ":" in line_str:
+                parts = line_str.split(':', 1)
+                key = parts[0].strip()
+                value = parts[1].strip().split(',')[0]
+                if "No. rekening" in key:
+                    account_info['account_number'] = value
+                elif "Nama" in key:
+                    account_info['account_name'] = value
+                elif "Periode" in key:
+                    account_info['period'] = value
+                elif "Kode Mata Uang" in key:
+                    account_info['currency'] = value
+
+            # Detect end of transactions (summary section)
+            if transactions_started and (line_str.startswith("Saldo Awal") or line_str.startswith("Mutasi Debet")):
+                transactions_started = False
+
+            # Parse transaction rows
+            if transactions_started and len(row) == 5:
+                # Basic check to avoid parsing the header again or invalid lines
+                if row[0] != "Tanggal Transaksi":
+                    parsed_row = BankMutation._parse_pkb_transaction_row(row)
+                    if parsed_row:
+                        transactions.append(parsed_row)
+
+            # Parse summary footer
+            if not transactions_started and header_found and ":" in line_str:
+                parts = line_str.split(':', 1)
+                key = parts[0].strip()
+                value_part = parts[1].strip()
+                # Use regex to find the first currency-like value in the string
+                currency_match = re.search(r'[\d,]+\.\d{2}', value_part)
+                if currency_match:
+                    value = currency_match.group(0)
+                    if "Saldo Awal" in key:
+                        summary['initial_balance'] = BankMutation._parse_currency(value)
+                    elif "Mutasi Debet" in key:
+                        summary['debit_mutation'] = BankMutation._parse_currency(value)
+                    elif "Mutasi Kredit" in key:
+                        summary['credit_mutation'] = BankMutation._parse_currency(value)
+                    elif "Saldo Akhir" in key:
+                        summary['final_balance'] = BankMutation._parse_currency(value)
+
+        return {
+            "account_info": account_info,
+            "transactions": transactions,
+            "summary": summary,
+        }
+
     @staticmethod
-    def parse_pkb_sosmed_row(row):
+    def _parse_pkb_transaction_row(row):
         """
-        Parse a PKB CSV row for 'SOSMED GLOBAL (ALL)'.
-        If found, return a dict with 'tanggal' (date) and 'amount' (float). Otherwise, return None.
+        Parses a single transaction row from a PKB report.
         """
         try:
-            # Check for SOSMED GLOBAL (ALL) first, and only match (AREA) if (ALL) is not present
-            if len(row) > 3:
-                sosmed_text = row[1]
-                if "SOSMED GLOBAL (ALL)" in sosmed_text:
-                    print(f"[PKB LOG] Found 'SOSMED GLOBAL (ALL)' in row: {row}")
-                    try:
-                        tanggal = datetime.strptime(row[0].strip().replace("'", ""), '%d/%m/%Y').date()
-                    except Exception as e:
-                        print(f"[PKB SOSMED Parse Error] Invalid date: {row[0]} | Error: {str(e)}")
-                        return None
-                    amount_str = row[3].replace(',', '').replace('"', '').replace('DB', '').replace('CR', '').strip()
-                    try:
-                        amount = float(amount_str)
-                    except Exception as e:
-                        print(f"[PKB SOSMED Parse Error] Invalid amount: {row[3]} | Error: {str(e)}")
-                        return None
-                    if amount > 0:
-                        return {'tanggal': tanggal, 'amount': amount, 'type': 'ALL'}
-                elif re.search(r'SOSMED GLOBAL \(([^)]+)\)', sosmed_text):
-                    area_match = re.search(r'SOSMED GLOBAL \(([^)]+)\)', sosmed_text)
-                    area = area_match.group(1).strip().upper()
-                    print(f"[PKB LOG] Found 'SOSMED GLOBAL ({area})' in row: {row}")
-                    try:
-                        tanggal = datetime.strptime(row[0].strip().replace("'", ""), '%d/%m/%Y').date()
-                    except Exception as e:
-                        print(f"[PKB SOSMED Parse Error] Invalid date: {row[0]} | Error: {str(e)}")
-                        return None
-                    amount_str = row[3].replace(',', '').replace('"', '').replace('DB', '').replace('CR', '').strip()
-                    try:
-                        amount = float(amount_str)
-                    except Exception as e:
-                        print(f"[PKB SOSMED Parse Error] Invalid amount: {row[3]} | Error: {str(e)}")
-                        return None
-                    if amount > 0:
-                        return {'tanggal': tanggal, 'amount': amount, 'type': 'AREA', 'area': area}
-            return None
-        except Exception as e:
-            print(f"[PKB Parse Error] Row: {row} | Error: {str(e)}")
-            return None
-    @staticmethod
-    def parse_pkb_dana_row(row):
-        """
-        Parse a PKB CSV row for 'DANA' transfer and extract phone number (starts with 8), date, and amount.
-        Returns dict with 'tanggal', 'amount', 'phone' if found, else None.
-        """
-        try:
-            # Check if 'DANA' is in column 1
-            if len(row) > 3 and 'DANA' in row[1]:
-                # Extract phone number (starts with 8, usually after DANA)
-                # Match phone number after DANA, starting with 0 or 8
-                match = re.search(r'DANA.*?(0?8\d{7,15})', row[1])
-                if not match:
-                    print(f"[PKB DANA Parse Error] No phone found in row: {row}")
-                    return None
-                phone = match.group(1)
-                # If phone starts with 8, prepend 0
-                if phone.startswith('8'):
-                    phone = '0' + phone
-                # Get date from column 0
-                try:
-                    tanggal = datetime.strptime(row[0].strip().replace("'", ""), '%d/%m/%Y').date()
-                except Exception as e:
-                    print(f"[PKB DANA Parse Error] Invalid date: {row[0]} | Error: {str(e)}")
-                    return None
-                # Get type from column 3 (DB or CR)
-                type_match = None
-                if 'DB' in row[3]:
-                    type_match = 'DB'
-                elif 'CR' in row[3]:
-                    type_match = 'CR'
-                # Get amount from column 3, remove commas, quotes, and 'DB'/'CR'
-                amount_str = row[3].replace(',', '').replace('"', '').replace('DB', '').replace('CR', '').strip()
-                try:
-                    amount = float(amount_str)
-                except Exception as e:
-                    print(f"[PKB DANA Parse Error] Invalid amount: {row[3]} | Error: {str(e)}")
-                    return None
-                if amount > 0:
-                    result = {'tanggal': tanggal, 'amount': amount, 'phone': phone}
-                    if type_match:
-                        result['type'] = type_match
-                    return result
-            return None
-        except Exception as e:
-            print(f"[PKB DANA Parse Error] Row: {row} | Error: {str(e)}")
+            tanggal = datetime.strptime(row[0], '%d/%m/%Y').date()
+            keterangan = row[1]
+            amount_str = row[3]
+            transaction_type = 'DB' if 'DB' in amount_str else 'CR'
+            transaction_amount = BankMutation._parse_currency(amount_str)
+
+            match = re.search(r'\s([A-Z]{3}-\d{3})\s', keterangan)
+            platform_code = match.group(1) if match else None
+
+            transaction_id = f"{tanggal.strftime('%Y%m%d')}-{platform_code or 'NA'}-{int(transaction_amount)}-{transaction_type}"
+
+            return {
+                'tanggal': tanggal,
+                'transaksi': keterangan,
+                'transaction_type': transaction_type,
+                'transaction_amount': transaction_amount,
+                'platform_name': 'PKB',
+                'platform_code': platform_code,
+                'transaction_id': transaction_id
+            }
+
+        except (ValueError, IndexError, InvalidOperation) as e:
+            # print(f"[PKB Parse Error] Skipping malformed row: {row} | Error: {e}")
             return None
 
     @staticmethod
-    def parse_pkb_avanger_row(row):
+    def _parse_currency(value_str):
         """
-        Parse a PKB CSV row for 'UM AVANGER' or 'GAJI AVANGER'.
-        If found, return a dict with 'tanggal' and 'amount'. Otherwise, return None.
+        Helper to convert a currency string like "135,000.00 CR" to a float.
         """
+        if not isinstance(value_str, str):
+            return 0.0
+        # Remove all non-numeric characters except the decimal point
+        cleaned_str = re.sub(r'[^\d.]', '', value_str)
+        if not cleaned_str:
+            return 0.0
         try:
-            if len(row) > 3 and ("UM AVANGER" in row[1] or "GAJI AVANGER" in row[1]):
-                print(f"[PKB LOG] Found AVANGER in row: {row}")
-                avanger_type = "UM AVANGER" if "UM AVANGER" in row[1] else "GAJI AVANGER"
-                # Get date from column 0
-                try:
-                    tanggal = datetime.strptime(row[0].strip().replace("'", ""), '%d/%m/%Y').date()
-                except Exception as e:
-                    print(f"[PKB AVANGER Parse Error] Invalid date: {row[0]} | Error: {str(e)}")
-                    return None
-                # Get amount from column 3, remove commas, quotes, and 'DB'/'CR'
-                amount_str = row[3].replace(',', '').replace('"', '').replace('DB', '').replace('CR', '').strip()
-                try:
-                    amount = float(amount_str)
-                except Exception as e:
-                    print(f"[PKB AVANGER Parse Error] Invalid amount: {row[3]} | Error: {str(e)}")
-                    return None
-                # Extract description: from 'UM AVANGER' or 'GAJI AVANGER' up to the last number (date) in the string
-                desc_match = re.search(r'(UM AVANGER|GAJI AVANGER).*?(\d{1,2}\s*-\s*\d{1,2}\s*[A-Z]{3}\s*\d{2})', row[1])
-                if desc_match:
-                    description = desc_match.group(0).strip()
-                else:
-                    # fallback: just use avanger_type
-                    description = avanger_type
-                if amount > 0:
-                    return {'tanggal': tanggal, 'amount': amount, 'type': avanger_type, 'description': description}
-            return None
-        except Exception as e:
-            print(f"[PKB AVANGER Parse Error] Row: {row} | Error: {str(e)}")
-            return None
+            return float(cleaned_str)
+        except (ValueError, InvalidOperation):
+            return 0.0
 
     @staticmethod
     def parse_gojek_row(row):
