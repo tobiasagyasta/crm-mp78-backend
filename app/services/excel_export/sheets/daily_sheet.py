@@ -45,7 +45,7 @@ class DailySheet(BaseSheet):
                 base_headers.remove('Grab Net (ac)')
             base_headers += extra_headers
         if outlet_brand == "Es Ce Hun Tiau & Bongko Wendy":
-            base_headers.insert(8, 'Grab Net (ac)')
+            base_headers.insert(9, 'Grab Net (ac)')
             if 'Grab Net' in base_headers:
                 base_headers.remove('Grab Net')
         return base_headers
