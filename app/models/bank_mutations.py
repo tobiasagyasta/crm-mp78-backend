@@ -120,8 +120,14 @@ class BankMutation(db.Model):
             transaction_type = 'DB' if 'DB' in amount_str else 'CR'
             transaction_amount = BankMutation._parse_currency(amount_str)
 
-            match = re.search(r'\s([A-Z]{3}-\d{3})\s', keterangan)
-            platform_code = match.group(1) if match else None
+            # Match platform codes in formats: 'ABC-123', 'ABC 123', or 'ABC123' (case-insensitive)
+            match = re.search(r"([A-Za-z]{3})[-\s]?(\d{3})", keterangan, re.IGNORECASE)
+            if match:
+                letters = match.group(1).upper()
+                digits = match.group(2)
+                platform_code = f"{letters}-{digits}"
+            else:
+                platform_code = None
 
             transaction_id = f"{tanggal.strftime('%Y%m%d')}-{platform_code or 'NA'}-{int(transaction_amount)}-{transaction_type}"
 
