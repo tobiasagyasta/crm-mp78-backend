@@ -29,12 +29,16 @@ class PukisClosingSheet(BaseSheet):
         self.ws['A2'].alignment = CENTER_ALIGN
         self.ws['A2'].font = HEADER_FONT
 
-        header1 = ["TANGGAL", "PENERIMAAN", None, None, None, None, None, "PUKIS JUMBO TERJUAL", "PUKIS KLASIK TERJUAL", "PUKIS FREE", "PUKIS SISA", "TGL TF REK BARU", "NOMINAL TF", "SELISIH", "KETERANGAN", "NOTE"]
+        header1 = ["TANGGAL", "PENERIMAAN", None, None, None, None, None,None, "PUKIS JUMBO TERJUAL", "PUKIS KLASIK TERJUAL", "PUKIS FREE", "PUKIS SISA", "TGL TF REK BARU", "NOMINAL TF", "SELISIH", "KETERANGAN", "NOTE"]
         self.ws.append(header1)
         self.ws.merge_cells(start_row=4, start_column=2, end_row=4, end_column=8)
 
         header2 = [None, "CASH", "GOJEK", "GRAB", "SHOPEE FOOD", "SHOPEE PAY", "QRIS", "TRF"]
         self.ws.append(header2)
+        for cell in self.ws[3]:
+            cell.font = HEADER_FONT
+            cell.alignment = CENTER_ALIGN
+            cell.fill = YELLOW_FILL
 
         for cell in self.ws[4]:
             cell.font = HEADER_FONT
@@ -51,27 +55,45 @@ class PukisClosingSheet(BaseSheet):
         all_dates = self.data['all_dates']
         daily_totals = self.data['daily_totals']
         pukis_reports = self.data['pukis_reports']
-        pukis_by_date = {p.tanggal.date(): p for p in pukis_reports}
+        
+        # Group pukis reports by date
+        pukis_by_date = {}
+        for report in pukis_reports:
+            date = report.tanggal.date()
+            if date not in pukis_by_date:
+                pukis_by_date[date] = []
+            pukis_by_date[date].append(report)
 
         for date in all_dates:
-            pukis_data = pukis_by_date.get(date)
-            sisa = 0
-            if pukis_data:
-                terjual = (pukis_data.jumbo_terjual or 0) + (pukis_data.reguler_terjual or 0)
-                sisa = (pukis_data.produksi or 0) - (terjual + (pukis_data.retur or 0) + (pukis_data.free or 0))
+            date_reports = pukis_by_date.get(date, [])
+            
+            # Calculate totals for this date
+            jumbo_terjual = sum(float(r.amount or 0) for r in date_reports 
+                              if r.pukis_inventory_type == 'terjual' and r.pukis_product_type == 'jumbo')
+            reguler_terjual = sum(float(r.amount or 0) for r in date_reports 
+                                if r.pukis_inventory_type == 'terjual' and r.pukis_product_type == 'klasik')
+            free = sum(float(r.amount or 0) for r in date_reports 
+                      if r.pukis_inventory_type == 'free')
+            produksi = sum(float(r.amount or 0) for r in date_reports 
+                         if r.pukis_inventory_type == 'produksi')
+            retur = sum(float(r.amount or 0) for r in date_reports 
+                       if r.pukis_inventory_type == 'retur')
+            
+            # Calculate sisa
+            sisa = produksi - (jumbo_terjual + reguler_terjual + retur + free)
 
             row_data = [
                 date.strftime("%d-%b-%y"),
-                daily_totals[date]['Cash_Income'],
+                daily_totals[date]['Cash_Income'] - daily_totals[date]['Cash_Expense'],
                 daily_totals[date]['Gojek_Net'],
                 daily_totals[date]['Grab_Net'],
                 daily_totals[date]['Shopee_Net'],
                 daily_totals[date]['ShopeePay_Net'],
                 0,  # QRIS
                 0,  # TRF
-                pukis_data.jumbo_terjual if pukis_data else 0,
-                pukis_data.reguler_terjual if pukis_data else 0,
-                pukis_data.free if pukis_data else 0,
+                jumbo_terjual,
+                reguler_terjual,
+                free,
                 sisa,
                 None,
                 None,
@@ -83,24 +105,34 @@ class PukisClosingSheet(BaseSheet):
 
         # Add total row
         grand_totals = self.data['grand_totals']
-        total_pukis_jumbo = sum(p.jumbo_terjual for p in pukis_reports if p.jumbo_terjual)
-        total_pukis_klasik = sum(p.reguler_terjual for p in pukis_reports if p.reguler_terjual)
-        total_pukis_free = sum(p.free for p in pukis_reports if p.free)
-        total_pukis_sisa = sum((p.produksi or 0) - ((p.jumbo_terjual or 0) + (p.reguler_terjual or 0) + (p.retur or 0) + (p.free or 0)) for p in pukis_reports)
+        
+        # Calculate grand totals for pukis
+        total_jumbo_terjual = sum(float(r.amount or 0) for r in pukis_reports 
+                                 if r.pukis_inventory_type == 'terjual' and r.pukis_product_type == 'jumbo')
+        total_reguler_terjual = sum(float(r.amount or 0) for r in pukis_reports 
+                                   if r.pukis_inventory_type == 'terjual' and r.pukis_product_type == 'klasik')
+        total_free = sum(float(r.amount or 0) for r in pukis_reports 
+                        if r.pukis_inventory_type == 'free')
+        total_produksi = sum(float(r.amount or 0) for r in pukis_reports 
+                            if r.pukis_inventory_type == 'produksi')
+        total_retur = sum(float(r.amount or 0) for r in pukis_reports 
+                         if r.pukis_inventory_type == 'retur')
+        
+        total_sisa = total_produksi - (total_jumbo_terjual + total_reguler_terjual + total_retur + total_free)
 
         total_row = [
             "TOTAL",
-            grand_totals.get('Cash_Income', 0),
+            grand_totals.get('Cash_Income', 0) - grand_totals.get('Cash_Expense', 0),
             grand_totals.get('Gojek_Net', 0),
             grand_totals.get('Grab_Net', 0),
             grand_totals.get('Shopee_Net', 0),
             grand_totals.get('ShopeePay_Net', 0),
             0,
             0,
-            total_pukis_jumbo,
-            total_pukis_klasik,
-            total_pukis_free,
-            total_pukis_sisa,
+            total_jumbo_terjual,
+            total_reguler_terjual,
+            total_free,
+            total_sisa,
             None, None, None, None, None
         ]
         self.ws.append(total_row)
