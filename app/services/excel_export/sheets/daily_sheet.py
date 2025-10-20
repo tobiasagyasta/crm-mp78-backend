@@ -39,7 +39,7 @@ class DailySheet(BaseSheet):
         if user_role == "management" and outlet_brand not in ["Pukis & Martabak Kota Baru", "Es Ce Hun Tiau & Bongko Wendy"]:
             base_headers.insert(8, 'Grab Net')
 
-        if outlet_brand == "Pukis & Martabak Kota Baru":
+        if outlet_brand == "Pukis & Martabak Kota Baru" or outlet_brand == "Es Ce Hun Tiau & Bongko Wendy":
             base_headers.insert(4, 'Grab Net')
             if 'Grab Net (ac)' in base_headers:
                 base_headers.remove('Grab Net (ac)')
