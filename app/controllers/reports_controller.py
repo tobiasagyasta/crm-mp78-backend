@@ -1331,6 +1331,7 @@ def upload_report_pkb():
 
             # Delegate parsing to the BankMutation model
             parsed_data = BankMutation.parse_pkb_report(report_content)
+            # print(f"DEBUG Parsed Data: {parsed_data}")  # Debug log
 
             # Process the parsed transaction data
             for transaction_data in parsed_data.get('transactions', []):
@@ -1340,7 +1341,8 @@ def upload_report_pkb():
                 exists = BankMutation.query.filter_by(
                     tanggal=transaction_data.get('tanggal'),
                     transaction_amount=transaction_data.get('transaction_amount'),
-                    platform_code=transaction_data.get('platform_code')
+                    platform_code=transaction_data.get('platform_code'),
+                    transaksi=transaction_data.get('transaksi')
                 ).first()
                 
                 if not exists:
