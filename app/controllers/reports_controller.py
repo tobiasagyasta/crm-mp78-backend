@@ -1304,6 +1304,10 @@ def upload_cash_report():
 
 @reports_bp.route('/upload/pkb', methods=['POST'])
 def upload_report_pkb():
+    """
+    Handles the upload of a PKB bank mutation report.
+    This function delegates the parsing of the report to the BankMutation model.
+    """
     files = request.files.getlist('file')
     rekening_number = request.form.get('rekening_number')
 
@@ -1319,306 +1323,46 @@ def upload_report_pkb():
         skipped_mutations = 0
 
         for file in files:
-            file_contents = file.read().decode('utf-8')
-            csv_file = StringIO(file_contents)
-            reader = csv.reader(csv_file)
+            if not file.filename.endswith('.csv'):
+                continue
 
-            # Skip header
-            next(reader, None)
+            # Decode the file content as UTF-8 and handle potential BOM
+            report_content = file.read().decode('utf-8-sig')
 
+            # Delegate parsing to the BankMutation model
+            parsed_data = BankMutation.parse_pkb_report(report_content)
+            # print(f"DEBUG Parsed Data: {parsed_data}")  # Debug log
 
-            mutations = []
-            sosmed_total = 0
-            sosmed_date = None
-            sosmed_area = None
-            sosmed_type = None
-            sosmed_all = {'total': 0, 'date': None}
-            sosmed_area_dict = {}
-            avanger_totals = {
-                'UM AVANGER': {'total': 0, 'date': None},
-                'GAJI AVANGER': {'total': 0, 'date': None}
-            }
+            # Process the parsed transaction data
+            for transaction_data in parsed_data.get('transactions', []):
+                transaction_data['rekening_number'] = rekening_number
 
-            for row in reader:
-                try:
-                    if len(row) < 2:
-                        continue  # Not enough columns
-
-                    # Parse date from column 0
-                    try:
-                        tanggal = datetime.strptime(row[0].strip(), '%d/%m/%Y').date()
-                    except ValueError:
-                        skipped_mutations += 1
-                        continue
-
-                    transaksi_text = row[1].strip()
-                    if not transaksi_text:
-                        skipped_mutations += 1
-                        continue
-
-                    mutation = BankMutation(
-                        rekening_number=rekening_number,
-                        tanggal=tanggal,
-                        transaksi=transaksi_text,
-                    )
-                    mutation.parse_pkb_transaction()
-                    sosmed_info = mutation.parse_pkb_sosmed_row(row)
-                    dana_info = mutation.parse_pkb_dana_row(row)
-                    avanger_info = mutation.parse_pkb_avanger_row(row)
-
-                    # print("Sosmed:",sosmed_info)
-                    if sosmed_info:
-                        sosmed_type_val = sosmed_info.get('type', 'ALL')
-                        if sosmed_type_val == 'ALL':
-                            if 'rows' not in sosmed_all:
-                                sosmed_all['rows'] = []
-                            sosmed_all['rows'].append({'total': sosmed_info['amount'], 'date': sosmed_info['tanggal']})
-                        elif sosmed_type_val == 'AREA' and sosmed_info.get('area'):
-                            area = sosmed_info.get('area')
-                            if area not in sosmed_area_dict:
-                                sosmed_area_dict[area] = {'rows': []}
-                            sosmed_area_dict[area]['rows'].append({'total': sosmed_info['amount'], 'date': sosmed_info['tanggal']})
-                        # Do NOT add AREA to ALL
-                        continue  # Do not process this row as a mutation
-                    # Process DANA row: match phone to Outlet.pic_phone and create manual entry
-                    if dana_info:
-                        outlet = Outlet.query.filter(
-                            Outlet.pic_phone.any(dana_info['phone'])
-                        ).first()
-                        if not outlet:
-                            print("Outlet not found for phone:", dana_info['phone'])
-                        if outlet:
-                            entry_type = None
-                            category = None
-                            if dana_info.get('type') == 'CR':
-                                entry_type = 'income'
-                                category = IncomeCategory.query.filter_by(name='DANA Transfer').first()
-                            elif dana_info.get('type') == 'DB':
-                                entry_type = 'expense'
-                                category = ExpenseCategory.query.filter_by(name='DANA Transfer').first()
-                            # Fallback: if category is still None, create or get a generic one
-                            if not category:
-                                if entry_type == 'income':
-                                    category = IncomeCategory.query.first()
-                                else:
-                                    category = ExpenseCategory.query.first()
-                            if not category:
-                                print("No valid category found for DANA Transfer entry.")
-                                continue
-                            existing_entry = ManualEntry.query.filter(
-                                ManualEntry.outlet_code == outlet.outlet_code,
-                                ManualEntry.category_id == category.id,
-                                ManualEntry.start_date == dana_info['tanggal'],
-                                ManualEntry.end_date == dana_info['tanggal'],
-                                ManualEntry.entry_type == entry_type,
-                                func.abs(ManualEntry.amount - dana_info['amount']) < 0.01
-                            ).first()
-                            if not existing_entry:
-                                manual_entry = ManualEntry(
-                                    outlet_code=outlet.outlet_code,
-                                    brand_name=outlet.brand,
-                                    entry_type=entry_type,
-                                    amount=dana_info['amount'],
-                                    description=f"DANA Transfer at {dana_info['tanggal'].strftime('%d %b %Y')}",
-                                    start_date=dana_info['tanggal'],
-                                    end_date=dana_info['tanggal'],
-                                    category_id=category.id
-                                )
-                                db.session.add(manual_entry)
-                                db.session.commit()
-                        continue  # Do not process this row as a mutation
-                    # Process AVANGER row: accumulate totals for UM/GAJI AVANGER
-                    if avanger_info:
-                        av_type = avanger_info['type']
-                        if 'rows' not in avanger_totals[av_type]:
-                            avanger_totals[av_type]['rows'] = []
-                        avanger_totals[av_type]['rows'].append({'total': avanger_info['amount'], 'date': avanger_info['tanggal'], 'description': avanger_info['description']})
-                        continue  # Do not process this row as a mutation
-                    # Only save valid PKB mutations
-                    if mutation.platform_name == "PKB" and mutation.platform_code:
-                        exists = BankMutation.query.filter_by(
-                            tanggal=mutation.tanggal,
-                            transaction_amount=mutation.transaction_amount,
-                            platform_code=mutation.platform_code,
-                        ).first()
-                        if exists:
-                            skipped_mutations += 1
-                            continue
-
-                        mutations.append(mutation)
-                        total_mutations += 1
-
-                except Exception as e:
-                    print(f"Error parsing row: {e}")
-                    skipped_mutations += 1
-                    continue
-
-            # Save to DB
-            if mutations:
-                try:
-                    db.session.bulk_save_objects(mutations)
-                    db.session.commit()
-                except IntegrityError:
-                    db.session.rollback()
-                    for mutation in mutations:
-                        try:
-                            db.session.add(mutation)
-                            db.session.commit()
-                        except Exception as e:
-                            db.session.rollback()
-                            print(f"Error saving mutation: {e}")
-                            skipped_mutations += 1
-
-            # After processing all rows, distribute SOSMED GLOBAL (ALL)
-
-            outlets = Outlet.query.filter_by(
-                brand='Pukis & Martabak Kota Baru',
-                status='Active',
-                is_global=True
-            ).filter(Outlet.pkb_code.isnot(None)).all()
-
-            # Process all SOSMED GLOBAL (ALL) rows
-            sosmed_all_rows = []
-            if 'rows' in sosmed_all:
-                sosmed_all_rows = sosmed_all['rows']
-            elif sosmed_all['total'] > 0 and sosmed_all['date']:
-                sosmed_all_rows = [{'total': sosmed_all['total'], 'date': sosmed_all['date']}]
-                print(sosmed_all_rows)
-
-            for row in sosmed_all_rows:
-                total = row['total']
-                date = row['date']
-                outlet_count_obj = OutletCountPKB.query.filter(
-                    OutletCountPKB.start_date <= (date or datetime.now().date()),
-                    OutletCountPKB.end_date >= (date or datetime.now().date())
+                # Check for duplicates
+                exists = BankMutation.query.filter_by(
+                    tanggal=transaction_data.get('tanggal'),
+                    transaction_amount=transaction_data.get('transaction_amount'),
+                    platform_code=transaction_data.get('platform_code'),
+                    transaksi=transaction_data.get('transaksi')
                 ).first()
-                n = outlet_count_obj.outlet_count if outlet_count_obj else 0
-                per_outlet_amount = total / n if n > 0 else 0
-                # print(f"Outlet count: {n}, per outlet amount: {per_outlet_amount}")
-                category = ExpenseCategory.query.filter_by(name='Sosmed Global').first()
-                for outlet in outlets:
-                    existing_entry = ManualEntry.query.filter(
-                        ManualEntry.outlet_code == outlet.outlet_code,
-                        ManualEntry.category_id == (category.id if category else None),
-                        ManualEntry.start_date == (date or datetime.now().date()),
-                        ManualEntry.end_date == (date or datetime.now().date()),
-                        ManualEntry.description == 'SOSMED GLOBAL (ALL) PKB',
-                        ManualEntry.entry_type == 'expense',
-                        func.abs(ManualEntry.amount - per_outlet_amount) < 0.01
-                    ).first()
-                    if existing_entry:
-                        continue  # Skip duplicate
-                    manual_entry = ManualEntry(
-                        outlet_code=outlet.outlet_code,
-                        brand_name=outlet.brand,
-                        entry_type='expense',
-                        amount=per_outlet_amount,
-                        description='SOSMED GLOBAL (ALL) PKB',
-                        start_date=date or datetime.now().date(),
-                        end_date=date or datetime.now().date(),
-                        category_id=category.id if category else None
-                    )
-                    db.session.add(manual_entry)
-            db.session.commit()
-
-            # Distribute SOSMED GLOBAL (AREA)
-            for area, area_data in sosmed_area_dict.items():
-                # If area_data contains multiple rows, process each
-                area_rows = area_data.get('rows', [{'total': area_data['total'], 'date': area_data['date']}])
-                for row in area_rows:
-                    total = row['total']
-                    date = row['date']
-                    outlet_count_obj = OutletCountPKB.query.filter(
-                        OutletCountPKB.start_date <= (date or datetime.now().date()),
-                        OutletCountPKB.end_date >= (date or datetime.now().date())
-                    ).first()
-                    n = outlet_count_obj.outlet_count if outlet_count_obj else 0
-                    per_outlet_amount = total / n if n > 0 else 0
-                    category = ExpenseCategory.query.filter_by(name='Sosmed Global').first()
-                    for outlet in outlets:
-                        existing_entry = ManualEntry.query.filter(
-                            ManualEntry.outlet_code == outlet.outlet_code,
-                            ManualEntry.category_id == (category.id if category else None),
-                            ManualEntry.start_date == (date or datetime.now().date()),
-                            ManualEntry.end_date == (date or datetime.now().date()),
-                            ManualEntry.description == f'SOSMED GLOBAL ({area}) PKB',
-                            ManualEntry.entry_type == 'expense',
-                            func.abs(ManualEntry.amount - per_outlet_amount) < 0.01
-                        ).first()
-                        if existing_entry:
-                            continue  # Skip duplicate
-                        manual_entry = ManualEntry(
-                            outlet_code=outlet.outlet_code,
-                            brand_name=outlet.brand,
-                            entry_type='expense',
-                            amount=per_outlet_amount,
-                            description=f'SOSMED GLOBAL ({area}) PKB',
-                            start_date=date or datetime.now().date(),
-                            end_date=date or datetime.now().date(),
-                            category_id=category.id if category else None
-                        )
-                        db.session.add(manual_entry)
-                db.session.commit()
-            # Distribute AVANGER rows
-            for av_type, av_data in avanger_totals.items():
-                # If av_data contains multiple rows, process each
-                if 'rows' in av_data:
-                    av_rows = av_data['rows']
-                else:
-                    # Create a single row with default values if no rows exist
-                    av_rows = [{'total': av_data.get('total', 0), 
-                              'date': av_data.get('date'),
-                              'description': av_type}]  # Use av_type as default description
                 
-                for row in av_rows:
-                    total = row.get('total', 0)
-                    date = row.get('date')
-                    # Use av_type as base description if none provided in row
-                    description = row.get('description', av_type)
-                    
-                    outlet_count_obj = OutletCountPKB.query.filter(
-                        OutletCountPKB.start_date <= (date or datetime.now().date()),
-                        OutletCountPKB.end_date >= (date or datetime.now().date())
-                    ).first()
-                    n = outlet_count_obj.outlet_count if outlet_count_obj else 0
-                    if total > 0 and n > 0:
-                        per_outlet_amount = total / n
-                        print(f"Outlet count: {n}, per outlet amount: {per_outlet_amount}")
-                        category = ExpenseCategory.query.filter_by(name="Avanger").first()
-                        for outlet in outlets:
-                            existing_entry = ManualEntry.query.filter(
-                                ManualEntry.outlet_code == outlet.outlet_code,
-                                ManualEntry.category_id == (category.id if category else None),
-                                ManualEntry.start_date == (date or datetime.now().date()),
-                                ManualEntry.end_date == (date or datetime.now().date()),
-                                ManualEntry.entry_type == 'expense',
-                                func.abs(ManualEntry.amount - per_outlet_amount) < 0.01
-                            ).first()
-                            if existing_entry:
-                                continue  # Skip duplicate
-                            manual_entry = ManualEntry(
-                                outlet_code=outlet.outlet_code,
-                                brand_name=outlet.brand,
-                                entry_type='expense',
-                                amount=per_outlet_amount,
-                                description= f"{description} PKB",
-                                start_date=date or datetime.now().date(),
-                                end_date=date or datetime.now().date(),
-                                category_id=category.id if category else None
-                            )
-                            db.session.add(manual_entry)
-                db.session.commit()
-                            
+                if not exists:
+                    new_mutation = BankMutation(**transaction_data)
+                    db.session.add(new_mutation)
+                    total_mutations += 1
+                else:
+                    skipped_mutations += 1
+
+        db.session.commit()
 
         return jsonify({
-            'msg': 'PKB mutations uploaded successfully',
+            'msg': 'PKB report uploaded and processed successfully',
             'total_records': total_mutations,
             'skipped_records': skipped_mutations
         }), 201
 
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': f'Error processing file: {str(e)}'}), 500
 
 
 @reports_bp.route('/commission-totals', methods=['GET'])

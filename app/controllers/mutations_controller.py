@@ -11,6 +11,8 @@ from app.models.outlet import Outlet
 from datetime import datetime, timedelta
 from sqlalchemy import func, cast, Date, distinct
 from app.utils.transaction_matcher import TransactionMatcher
+from app.models.income_category import IncomeCategory
+from app.models.expense_category import ExpenseCategory
 mutations_bp = Blueprint('mutations', __name__)
 
 def create_standardized_match(platform_data, platform_name):
@@ -468,6 +470,12 @@ def convert_mutation_to_manual_entry():
 
         manual_entries = []
         unmapped_pkb_codes = set()
+        outlets_map = {o.pkb_code: o.outlet_code for o in Outlet.query.all()}
+        categories_map = {
+            'income': next((c.id for c in IncomeCategory.query.filter_by(name='PKB').all()), None),
+            'expense': next((c.id for c in ExpenseCategory.query.filter_by(name='PKB').all()), None)
+        }
+
         for mutation in mutations:
             # Skip if mutation.tanggal is None or not a date/datetime
             if not mutation.tanggal or not hasattr(mutation.tanggal, 'strftime'):
@@ -475,42 +483,38 @@ def convert_mutation_to_manual_entry():
                 continue
 
             # Find the outlet with matching pkb_code
-            outlet = Outlet.query.filter_by(pkb_code=mutation.platform_code).first()
-            if not outlet:
+            outlet_code = outlets_map.get(mutation.platform_code)
+            if not outlet_code:
                 unmapped_pkb_codes.add(mutation.platform_code)
                 continue  # or handle as needed (e.g., log, skip, etc.)
 
+            # Determine entry type first
+            entry_type = 'income' if mutation.transaction_type == 'CR' else 'expense'
+            
             # Check for existing manual entry to avoid duplicates
             exists = ManualEntry.query.filter_by(
-                outlet_code=outlet.outlet_code,
+                outlet_code=outlet_code,
                 amount=abs(mutation.transaction_amount) if mutation.transaction_amount is not None else 0,
                 start_date=mutation.tanggal,
                 end_date=mutation.tanggal,
                 description=mutation.transaksi or '',
-                # category_id=9,
-                entry_type='expense' or 'income',
-                brand_name='Pukis & Martabak Kota Baru'
+                entry_type=entry_type,
+                brand_name='Pukis & Martabak Kota Baru',
+                category_id=categories_map[entry_type]
             ).first()
             if exists:
                 number_of_skips += 1
                 continue  # Skip if already exists
 
-            entry_type = 'income' if mutation.transaction_type == 'CR' else 'expense'
-            if entry_type == 'income':
-                from app.models.income_category import IncomeCategory
-                category = IncomeCategory.query.filter_by(name='PKB').first()
-            else:
-                from app.models.expense_category import ExpenseCategory
-                category = ExpenseCategory.query.filter_by(name='PKB').first()
             manual_entry = ManualEntry(
-                outlet_code=outlet.outlet_code,  # Use the mapped outlet_code
+                outlet_code=outlet_code,  # Use the mapped outlet_code
                 brand_name='Pukis & Martabak Kota Baru',
                 entry_type=entry_type,
                 amount=abs(mutation.transaction_amount) if mutation.transaction_amount is not None else 0,
                 description=mutation.transaksi or '',
                 start_date=mutation.tanggal,
                 end_date=mutation.tanggal,
-                category_id=category.id if category else None
+                category_id=categories_map[entry_type]
             )
             db.session.add(manual_entry)
           
