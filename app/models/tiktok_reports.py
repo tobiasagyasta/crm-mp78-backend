@@ -1,6 +1,7 @@
 from app.extensions import db
 from app.models.outlet import Outlet
 from datetime import datetime
+from sqlalchemy import func
 
 class TiktokReport(db.Model):
     __tablename__ = 'tiktok_reports'
@@ -31,7 +32,15 @@ class TiktokReport(db.Model):
         """
         try:
             store_name = row[9].strip()
-            outlet = Outlet.query.filter_by(outlet_name_gojek=store_name).first()
+            outlet = (Outlet.query
+                      .filter(Outlet.outlet_name_gojek.isnot(None))
+                      .order_by(func.similarity(Outlet.outlet_name_gojek, store_name).desc())).first()
+            if outlet and outlet.outlet_name_gojek:
+                sim = db.session.query(func.similarity(Outlet.outlet_name_gojek, store_name)) \
+                        .filter(Outlet.id == outlet.id) \
+                        .scalar()
+                if sim < 0.6:
+                    outlet = None
             brand_name = outlet.brand if outlet else None
             outlet_code = outlet.outlet_code if outlet else None
 
