@@ -1,7 +1,6 @@
 from app.extensions import db
 from app.models.outlet import Outlet
 from datetime import datetime
-from sqlalchemy import func
 
 class TiktokReport(db.Model):
     __tablename__ = 'tiktok_reports'
@@ -16,6 +15,13 @@ class TiktokReport(db.Model):
     gross_amount = db.Column(db.Numeric, nullable=True)
     net_amount = db.Column(db.Numeric, nullable=True)
 
+    @staticmethod
+    def _parse_amount(value: str) -> float:
+        if not value or str(value).strip() == "":
+            return 0.0
+        cleaned = str(value).replace('.', '').replace(',', '').strip()
+        return float(cleaned) if cleaned.isdigit() else 0.0
+
     def __repr__(self):
         return f"<TiktokReport {self.order_id}, {self.order_create_time}>"
     
@@ -23,31 +29,29 @@ class TiktokReport(db.Model):
     def parse_tiktok_row(row):
         """
         Parse a TikTok CSV row (list) into a dict suitable for TiktokReport.
-        - brand_name and outlet_code: looked up from Outlet where outlet_name_gojek == store_name (row[9])
+        - brand_name and outlet_code: looked up from Outlet via "Kode WEBSHOP dan Tiktok" (last column)
         - outlet_order_id: column 1 (index 1)
         - store_name: column 9 (index 9)
-        - order_time: column 5 (index 5, format yyyy-mm-dd)
+        - order_time: column 4 (index 4, format yyyy-mm-dd)
         - gross_amount: column 14 (index 14)
-        - net_amount: column 18 (index 18)
+        - net_amount: column 19 (index 19)
         """
         try:
-            store_name = row[9].strip()
-            outlet = (Outlet.query
-                      .filter(Outlet.outlet_name_gojek.isnot(None))
-                      .order_by(func.similarity(Outlet.outlet_name_gojek, store_name).desc())).first()
-            if outlet and outlet.outlet_name_gojek:
-                sim = db.session.query(func.similarity(Outlet.outlet_name_gojek, store_name)) \
-                        .filter(Outlet.id == outlet.id) \
-                        .scalar()
-                if sim < 0.6:
-                    outlet = None
+            tiktok_code = row[-1].strip()
+            outlet = None
+            if tiktok_code:
+                outlet = Outlet.query.filter_by(outlet_code_tiktok_webshop=tiktok_code).first()
+
             brand_name = outlet.brand if outlet else None
             outlet_code = outlet.outlet_code if outlet else None
 
+            store_name = row[9].strip()
             order_time_str = row[4].strip()
             order_time = datetime.strptime(order_time_str, '%Y-%m-%d')
-            gross_amount = float(row[14].replace('.', '').replace(',', '').strip())
-            net_amount = float(row[19].replace('.', '').replace(',', '').strip())
+            gross_amount = TiktokReport._parse_amount(row[14])
+            net_amount = TiktokReport._parse_amount(row[19])
+
+            print(row)
 
             return {
                 'brand_name': brand_name,
