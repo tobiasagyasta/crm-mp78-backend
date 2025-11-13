@@ -3,6 +3,7 @@ from app.config.config import Config
 from app.config.env import init_env
 from app.extensions import db, jwt, s3
 from app.controllers.auth_controller import auth_bp
+from app.controllers.admin_tools_controller import admin_tools_bp
 from app.controllers.protected_controller import protected_bp
 from app.controllers.partner_controller import partner_bp
 from app.controllers.outlet_controller import outlet_bp
@@ -64,6 +65,7 @@ def create_app():
     app.register_blueprint(mutations_bp)
     app.register_blueprint(test_bp)
     app.register_blueprint(bi_bp)
+    app.register_blueprint(admin_tools_bp)
     
     @app.route('/')
     def welcome():

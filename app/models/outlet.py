@@ -21,6 +21,7 @@ class Outlet(db.Model):
     store_id_gojek = db.Column(db.String(50), nullable=True, unique=True)
     store_id_grab = db.Column(db.String(50), nullable=True, unique=True)
     store_id_shopee = db.Column(db.String(50), nullable=True, unique=True)
+    outlet_code_tiktok_webshop = db.Column(db.String(100), nullable=True)
 
     #PKB
     pkb_code = db.Column(db.String(10), nullable=True, unique=True)
@@ -64,6 +65,7 @@ class Outlet(db.Model):
             "store_id_gojek": self.store_id_gojek,
             "store_id_grab": self.store_id_grab,
             "store_id_shopee": self.store_id_shopee,
+            "outlet_code_tiktok_webshop": self.outlet_code_tiktok_webshop,
             # Add admin credentials
             "gojek_admin_email": self.gojek_admin_email,
             "gojek_admin_password": self.gojek_admin_password,
