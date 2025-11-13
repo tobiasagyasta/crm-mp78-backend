@@ -765,8 +765,11 @@ def upload_report_tiktok():
                 if parsed:
                      # Duplicate check: adjust fields as needed for your business logic
                     exists = TiktokReport.query.filter_by(
+                        store_name=parsed['store_name'],
                         outlet_order_id=parsed['outlet_order_id'],
-                        order_time=parsed['order_time']
+                        order_time=parsed['order_time'],
+                        gross_amount=parsed['gross_amount'],
+                        net_amount=parsed['net_amount']
                     ).first()
                     if exists:
                         skipped_reports += 1
