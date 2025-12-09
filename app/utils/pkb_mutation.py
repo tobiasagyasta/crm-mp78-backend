@@ -28,7 +28,7 @@ def get_minus_manual_entries(outlet_code_param, start_date=None, end_date=None):
         return None
 
     entries = ManualEntry.query.filter(
-        ManualEntry.brand_name == 'Pukis & Martabak Kota Baru',
+        # ManualEntry.brand_name == 'Pukis & Martabak Kota Baru',
         ManualEntry.description.ilike('%minus%'),
         ManualEntry.outlet_code == outlet_code_param
     ).all()
