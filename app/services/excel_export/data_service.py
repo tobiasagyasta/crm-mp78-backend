@@ -78,7 +78,7 @@ def get_report_data(outlet_code: str, start_date: datetime, end_date: datetime) 
             ManualEntry.outlet_code == outlet_code,
             ManualEntry.start_date <= end_date,
             ManualEntry.end_date >= start_date,
-            ~ManualEntry.description.ilike('%minus%')
+            # ~ManualEntry.description.ilike('%minus%')
         )
         .outerjoin(IncomeCat, (ManualEntry.category_id == IncomeCat.id) & (ManualEntry.entry_type == 'income'))
         .outerjoin(ExpenseCat, (ManualEntry.category_id == ExpenseCat.id) & (ManualEntry.entry_type == 'expense'))
