@@ -202,7 +202,6 @@ class BankMutation(db.Model):
                 'transaksi': ",".join(row)
             }
         except Exception as e:
-            print(f"[Gojek Parse Error] Row: {row} | Error: {str(e)}")
             return None
     @staticmethod
     def parse_grab_row(row):
@@ -233,7 +232,6 @@ class BankMutation(db.Model):
                 'transaksi': ",".join(row)
             }
         except Exception as e:
-            print(f"[Grab Parse Error] Row: {row} | Error: {str(e)}")
             return None
     @staticmethod
     def parse_shopee_row(row):
@@ -274,7 +272,6 @@ class BankMutation(db.Model):
                 'transaksi': ",".join(row)
             }
         except Exception as e:
-            print(f"[Shopee Parse Error] Row: {row} | Error: {str(e)}")
             return None
 
     @staticmethod

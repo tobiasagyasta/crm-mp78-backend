@@ -118,7 +118,6 @@ def update_store_ids_batch(store_id_map, platform):
                         updated += 1
                 
             except Exception as e:
-                print(f"Error updating {store_name}: {str(e)}")
                 continue
         
         # Commit each batch
@@ -126,7 +125,6 @@ def update_store_ids_batch(store_id_map, platform):
             db.session.commit()
         except Exception as e:
             db.session.rollback()
-            print(f"Error committing batch: {str(e)}")
 
     return updated
 
@@ -185,7 +183,6 @@ def upload_report_shopee_adjustment():
                         order_create_time=adjustment_time
                     ).first()
                     if existing_report:
-                        print(f"SKIPPED: Duplicate adjustment for Wallet Adjustment ID '{refund_id}' and time '{adjustment_time}' | Row: {row}")
                         skipped_reports += 1
                         continue
 
@@ -210,7 +207,6 @@ def upload_report_shopee_adjustment():
                     reports.append(report)
                     total_reports += 1
                 except (ValueError, TypeError) as e:
-                    print(f"SKIPPED: Error processing row: {e} | Row: {row}")
                     skipped_reports += 1
                     continue
 
@@ -332,7 +328,6 @@ def upload_voucher_report():
                             skipped_reports += 1
                 except Exception as e:
                     db.session.rollback()
-                    print(f"A critical error occurred during DB commit: {e}")
 
 
         return jsonify({
@@ -532,7 +527,6 @@ def upload_report_gojek():
                     try:
                         transaction_date = datetime.strptime(date_str, '%m/%d/%Y').date()
                     except ValueError:
-                        print(f"Error parsing date: {date_str}")
                         continue
 
                     try:

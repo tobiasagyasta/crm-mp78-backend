@@ -69,5 +69,4 @@ class VoucherReport(db.Model):
                 'outlet_code': row.get('outlet_code', '').strip() or None # Use None if the code is an empty string
             }
         except Exception as e:
-            print(f"[Voucher Parse Error] Row: {row} | Error: {str(e)}")
             return None

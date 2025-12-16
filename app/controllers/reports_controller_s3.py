@@ -92,7 +92,6 @@ def upload_grab_report():
                 reports.append(report)
 
             except Exception as e:
-                print(f"Error processing row: {e}")
                 continue
 
         # Bulk save all reports

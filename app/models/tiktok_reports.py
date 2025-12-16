@@ -51,7 +51,6 @@ class TiktokReport(db.Model):
             gross_amount = TiktokReport._parse_amount(row[14])
             net_amount = TiktokReport._parse_amount(row[19])
 
-            print(row)
 
             return {
                 'brand_name': brand_name,
