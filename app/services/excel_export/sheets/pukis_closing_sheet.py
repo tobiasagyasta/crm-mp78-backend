@@ -73,6 +73,8 @@ class PukisClosingSheet(BaseSheet):
         self.daily_rows_start = self.ws.max_row + 1
         for date in all_dates:
             date_reports = pukis_by_date.get(date, [])
+            totals = daily_totals.get(date, {})
+            gojek_value = totals.get('Gojek_Mutation') or totals.get('Gojek_Net', 0)
             
             # Calculate totals for this date
             jumbo_terjual = sum(float(r.amount or 0) for r in date_reports 
@@ -92,7 +94,7 @@ class PukisClosingSheet(BaseSheet):
             row_data = [
                 date.strftime("%d-%b-%y"),
                 daily_totals[date]['Cash_Income'] - daily_totals[date]['Cash_Expense'],
-                daily_totals[date]['Gojek_Net'],
+                gojek_value,
                 daily_totals[date]['Grab_Net'],
                 daily_totals[date]['Shopee_Net'],
                 daily_totals[date]['Tiktok_Net'],
@@ -131,7 +133,7 @@ class PukisClosingSheet(BaseSheet):
         total_row = [
             "TOTAL",
             grand_totals.get('Cash_Income', 0) - grand_totals.get('Cash_Expense', 0),
-            grand_totals.get('Gojek_Net', 0),
+            grand_totals.get('Gojek_Mutation') or grand_totals.get('Gojek_Net', 0),
             grand_totals.get('Grab_Net', 0),
             grand_totals.get('Shopee_Net', 0),
             grand_totals.get('Tiktok_Net', 0),
