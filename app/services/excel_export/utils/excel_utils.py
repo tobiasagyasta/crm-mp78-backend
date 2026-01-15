@@ -7,6 +7,7 @@ from openpyxl.utils import get_column_letter
 HEADER_FONT = Font(bold=True)
 BOLD_RED_FONT = Font(bold=True, color='FF0000')
 
+
 # ======================================================================================
 # FILL STYLES
 # ======================================================================================
@@ -20,6 +21,8 @@ GRAB_FILL = PatternFill(start_color='98FB98', end_color='98FB98', fill_type='sol
 SHOPEE_FILL = PatternFill(start_color='FF7A00', end_color='FF7A00', fill_type='solid')
 TIKTOK_FILL = PatternFill(start_color='F227F5', end_color='F227F5', fill_type='solid')
 BLUE_FILL = PatternFill(start_color='27A3F5', end_color='27A3F5', fill_type='solid')
+BLUE_FILL = PatternFill(start_color='27A3F5', end_color='27A3F5', fill_type='solid')
+LIGHT_BLUE_FILL = PatternFill(start_color='CFF1FA', end_color='CFF1FA', fill_type='solid')
 TEAL_FILL = PatternFill(start_color='35F0F0', end_color='35F0F0', fill_type='solid')
 CASH_FILL = PatternFill(start_color='ADD8E6', end_color='ADD8E6', fill_type='solid')
 COMMISSION_FILL = PatternFill(start_color='C6CCB2', end_color='C6CCB2', fill_type='solid')

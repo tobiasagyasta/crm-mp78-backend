@@ -1,6 +1,7 @@
 from app.services.excel_export.base_sheet import BaseSheet
 from app.services.excel_export.utils.excel_utils import (
-    HEADER_FONT, YELLOW_FILL, CENTER_ALIGN, THIN_BORDER, auto_fit_columns, RIGHT_ALIGN
+    HEADER_FONT, YELLOW_FILL, CENTER_ALIGN, THIN_BORDER, auto_fit_columns, RIGHT_ALIGN,
+    CASH_FILL, GOJEK_FILL, GRAB_FILL, SHOPEE_FILL, TIKTOK_FILL, DATA_FILL, LIGHT_BLUE_FILL
 )
 from datetime import timedelta
 
@@ -34,23 +35,27 @@ class PukisClosingSheet(BaseSheet):
         self.ws.append(header1)
         self.ws.merge_cells(start_row=4, start_column=2, end_row=4, end_column=8)
 
-        header2 = [None, "CASH", "GOJEK", "GRAB", "SHOPEE FOOD", "SHOPEE PAY", "QRIS", "TRF"]
+        header2 = [None, "CASH", "GOJEK", "GRAB", "SHOPEE FOOD", "TIKTOK", "QPON", "TRF"]
         self.ws.append(header2)
+        header2_row = self.ws.max_row
         for cell in self.ws[3]:
             cell.font = HEADER_FONT
             cell.alignment = CENTER_ALIGN
             cell.fill = YELLOW_FILL
 
-        for cell in self.ws[4]:
+        header2_fills = {
+            "CASH": CASH_FILL,
+            "GOJEK": GOJEK_FILL,
+            "GRAB": GRAB_FILL,
+            "SHOPEE FOOD": SHOPEE_FILL,
+            "TIKTOK": TIKTOK_FILL,
+        }
+
+        for col in range(1, len(header2) + 1):
+            cell = self.ws.cell(row=header2_row, column=col)
             cell.font = HEADER_FONT
             cell.alignment = CENTER_ALIGN
-            cell.fill = YELLOW_FILL
-
-        for cell in self.ws[5]:
-            if cell.value:
-                cell.font = HEADER_FONT
-                cell.alignment = CENTER_ALIGN
-                cell.fill = YELLOW_FILL
+            cell.fill = header2_fills.get(cell.value, DATA_FILL)
 
     def _write_data(self):
         all_dates = self.data['all_dates']
@@ -65,6 +70,7 @@ class PukisClosingSheet(BaseSheet):
                 pukis_by_date[date] = []
             pukis_by_date[date].append(report)
 
+        self.daily_rows_start = self.ws.max_row + 1
         for date in all_dates:
             date_reports = pukis_by_date.get(date, [])
             
@@ -89,8 +95,8 @@ class PukisClosingSheet(BaseSheet):
                 daily_totals[date]['Gojek_Net'],
                 daily_totals[date]['Grab_Net'],
                 daily_totals[date]['Shopee_Net'],
-                daily_totals[date]['ShopeePay_Net'],
-                0,  # QRIS
+                daily_totals[date]['Tiktok_Net'],
+                0,  # QPON
                 0,  # TRF
                 jumbo_terjual,
                 reguler_terjual,
@@ -103,6 +109,7 @@ class PukisClosingSheet(BaseSheet):
                 None
             ]
             self.ws.append(row_data)
+        self.daily_rows_end = self.ws.max_row
 
         # Add total row
         grand_totals = self.data['grand_totals']
@@ -127,7 +134,7 @@ class PukisClosingSheet(BaseSheet):
             grand_totals.get('Gojek_Net', 0),
             grand_totals.get('Grab_Net', 0),
             grand_totals.get('Shopee_Net', 0),
-            grand_totals.get('ShopeePay_Net', 0),
+            grand_totals.get('Tiktok_Net', 0),
             0,
             0,
             total_jumbo_terjual,
@@ -137,7 +144,12 @@ class PukisClosingSheet(BaseSheet):
             None, None, None, None, None
         ]
         self.ws.append(total_row)
-        self.ws.append(["GRAND TOTAL", None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None])
+
+        for i in range (1,9):
+            self.ws.cell(row=self.ws.max_row, column=i).font = HEADER_FONT
+        
+        # self.ws.append(total_row)
+        # self.ws.append(["GRAND TOTAL", None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None])
 
     def _write_expenses_table(self):
         manual_entries = self.data.get('manual_entries', [])
@@ -156,7 +168,7 @@ class PukisClosingSheet(BaseSheet):
 
         # Add a blank row for spacing
         self.ws.append([])
-        start_row = self.ws.max_row + 1
+        start_row = self.ws.max_row + 3
 
         # Header
         # Merging A and B for the main title, then C for the value title
@@ -170,10 +182,11 @@ class PukisClosingSheet(BaseSheet):
 
         self.ws.merge_cells(start_row=start_row, start_column=1, end_row=start_row, end_column=2)
 
-        header_c = self.ws.cell(row=start_row, column=3, value='TOTAL')
-        header_c.font = HEADER_FONT
-        header_c.fill = YELLOW_FILL
-        header_c.alignment = CENTER_ALIGN
+        # header_c = self.ws.cell(row=start_row, column=3, value='TOTAL')
+        # header_c.font = HEADER_FONT
+        # header_c.fill = YELLOW_FILL
+        # header_c.alignment = CENTER_ALIGN
+        
 
         # Sub-header for categories
         sub_header_row = start_row + 1
@@ -207,13 +220,12 @@ class PukisClosingSheet(BaseSheet):
             current_row += 1
 
         # Footer
-        footer_row_val = 'PENGELUARAN DILUAR LAPORAN HARIAN'
+        footer_row_val = 'TOTAL'
         footer_cell_a = self.ws.cell(row=current_row, column=1, value=footer_row_val)
         footer_cell_a.font = HEADER_FONT
-        footer_cell_a.fill = YELLOW_FILL
-
+        # footer_cell_a.fill = LIGHT_BLUE_FILL
         footer_cell_b = self.ws.cell(row=current_row, column=2) # Empty cell for merging
-        footer_cell_b.fill = YELLOW_FILL
+        # footer_cell_b.fill = LIGHT_BLUE_FILL
 
         self.ws.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=2)
 
@@ -222,7 +234,7 @@ class PukisClosingSheet(BaseSheet):
         total_cell.number_format = '#,##0'
         total_cell.alignment = RIGHT_ALIGN
         total_cell.font = HEADER_FONT
-        total_cell.fill = YELLOW_FILL
+        # total_cell.fill = LIGHT_BLUE_FILL
 
         # Apply borders to the new table
         for row in self.ws.iter_rows(min_row=start_row, max_row=current_row, min_col=1, max_col=3):
@@ -230,9 +242,25 @@ class PukisClosingSheet(BaseSheet):
                 cell.border = THIN_BORDER
 
     def _apply_styles(self):
-        for row in self.ws.iter_rows(min_row=4, max_row=self.ws.max_row, min_col=1, max_col=self.ws.max_column):
+        for row in self.ws.iter_rows(min_row=3, max_row=self.ws.max_row, min_col=1, max_col=self.ws.max_column):
             for cell in row:
                 cell.border = THIN_BORDER
-                if cell.column > 1:
+                if hasattr(self, "daily_rows_start") and hasattr(self, "daily_rows_end"):
+                    if cell.row == self.daily_rows_end + 1:
+                        cell.fill = LIGHT_BLUE_FILL
+
+                if cell.row in (3, 4):
+                    if cell.value is not None:
+                        cell.alignment = CENTER_ALIGN
+                    continue
+
+                if cell.column == 1:
+                    if cell.value is not None:
+                        cell.alignment = CENTER_ALIGN
+                    continue
+
+                if isinstance(cell.value, (int, float)):
                     cell.number_format = '#,##0'
                     cell.alignment = RIGHT_ALIGN
+                elif cell.value is not None:
+                    cell.alignment = CENTER_ALIGN
