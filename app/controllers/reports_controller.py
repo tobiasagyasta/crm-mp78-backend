@@ -42,6 +42,27 @@ def parse_date(date_str, default_year=None):
         except ValueError:
             pass
     raise ValueError(f"Unknown date format: {date_str}")
+
+
+def parse_date_range(args):
+    start_date_param = args.get("start_date")
+    end_date_param = args.get("end_date")
+
+    if not start_date_param and not end_date_param:
+        return None, None, None
+    if not start_date_param or not end_date_param:
+        return None, None, "start_date and end_date are required together"
+
+    try:
+        start_date = datetime.strptime(start_date_param, "%Y-%m-%d").date()
+        end_date = datetime.strptime(end_date_param, "%Y-%m-%d").date()
+    except ValueError:
+        return None, None, "start_date and end_date must be in YYYY-MM-DD format"
+
+    if start_date > end_date:
+        return None, None, "start_date must be less than or equal to end_date"
+
+    return start_date, end_date, None
 # import pdfkit
 import csv
 from io import StringIO
@@ -1857,6 +1878,11 @@ def monthly_income_report():
     """
     Generates and returns an Excel report of monthly net income for a given brand.
     """
+    # Request examples:
+    # POST /reports/monthly-income?start_date=2025-12-01&end_date=2025-12-31 {"brand_name":"X"} -> 200
+    # POST /reports/monthly-income?start_date=2025-12-01 {"brand_name":"X"} -> 400
+    # POST /reports/monthly-income?start_date=2025-13-01&end_date=2025-12-31 {"brand_name":"X"} -> 400
+    # POST /reports/monthly-income?start_date=2025-12-31&end_date=2025-12-01 {"brand_name":"X"} -> 400
 
     if request.method == 'OPTIONS':
         return jsonify({'status': 'OK'}), 200
@@ -1869,9 +1895,17 @@ def monthly_income_report():
         return jsonify({"error": "brand_name is required"}), 400
 
     year = json_data.get("year", datetime.now().year)
+    start_date, end_date, date_range_error = parse_date_range(request.args)
+    if date_range_error:
+        return jsonify({"error": date_range_error}), 400
 
     try:
-        data = generate_monthly_net_income_data(brand_name, year)
+        data = generate_monthly_net_income_data(
+            brand_name,
+            year,
+            start_date=start_date,
+            end_date=end_date,
+        )
         if not data:
             return jsonify({"error": "No data found for the given criteria"}), 404
 
@@ -1887,10 +1921,17 @@ def monthly_income_report():
         workbook.save(output)
         output.seek(0)
 
+        if start_date and end_date:
+            download_name = (
+                f"Monthly_income_{brand_name}_{start_date.isoformat()}_to_{end_date.isoformat()}.xlsx"
+            )
+        else:
+            download_name = f"Monthly_income_{brand_name}_{year}.xlsx"
+
         response = send_file(
             output,
             as_attachment=True,
-            download_name=f"Monthly_income_{brand_name}_{year}.xlsx",
+            download_name=download_name,
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
         # ensure the browser can see Content-Disposition and set a safe referrer policy

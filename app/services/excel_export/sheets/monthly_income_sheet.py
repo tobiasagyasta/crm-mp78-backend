@@ -24,30 +24,99 @@ class MonthlyIncomeSheet(BaseSheet):
             self.wb.add_named_style(self.number_style)
 
     def _create_header(self):
-        headers = ['Outlet', 'Closing Day'] + [calendar.month_name[i] for i in range(1, 13)]
+        if isinstance(self.data, dict) and 'periods' in self.data:
+            periods = self.data['periods']
+            period_headers = [f"{calendar.month_name[month]} {year}" for year, month in periods]
+            headers = ['Outlet', 'Closing Day'] + period_headers + ['Total Per Outlet']
+        else:
+            headers = ['Outlet', 'Closing Day'] + [calendar.month_name[i] for i in range(1, 13)] + ['Total Per Outlet']
         self.ws.append(headers)
         for cell in self.ws[1]:
             cell.font = self.header_font
             cell.alignment = self.center_align
 
     def _populate_data(self):
-        for outlet_code, outlet_data in self.data.items():
-            row_data = [
-                outlet_data['name'],
-                outlet_data['closing_day'],
-            ]
+        if isinstance(self.data, dict) and 'periods' in self.data:
+            periods = self.data['periods']
+            outlets = self.data.get('outlets', {})
+            column_totals = {period: 0 for period in periods}
+            grand_total = 0
+            for outlet_code, outlet_data in outlets.items():
+                monthly_total = outlet_data.get(
+                    'total',
+                    sum(outlet_data['monthly_totals'].get(period, 0) for period in periods),
+                )
+                row_data = [
+                    outlet_data['name'],
+                    outlet_data['closing_day'],
+                ]
+                for period in periods:
+                    period_value = outlet_data['monthly_totals'].get(period, 0)
+                    column_totals[period] += period_value
+                    row_data.append(period_value)
+                row_data.append(monthly_total)
+
+                self.ws.append(row_data)
+
+                # Apply styles
+                self.ws.cell(row=self.ws.max_row, column=2).alignment = self.center_align
+                for col_num in range(3, 3 + len(periods) + 1):
+                    self.ws.cell(row=self.ws.max_row, column=col_num).style = 'number_style'
+                grand_total += monthly_total
+
+            total_row = ['Total Per Month', '']
+            for period in periods:
+                total_row.append(column_totals.get(period, 0))
+            total_row.append(grand_total)
+            self.ws.append(total_row)
+            for col_num in range(1, 3 + len(periods) + 1):
+                cell = self.ws.cell(row=self.ws.max_row, column=col_num)
+                cell.font = self.header_font
+                if col_num >= 3:
+                    cell.style = 'number_style'
+        else:
+            column_totals = {i: 0 for i in range(1, 13)}
+            grand_total = 0
+            for outlet_code, outlet_data in self.data.items():
+                monthly_total = outlet_data.get(
+                    'total',
+                    sum(outlet_data['monthly_totals'].get(i, 0) for i in range(1, 13)),
+                )
+                row_data = [
+                    outlet_data['name'],
+                    outlet_data['closing_day'],
+                ]
+                for i in range(1, 13):
+                    month_value = outlet_data['monthly_totals'].get(i, 0)
+                    column_totals[i] += month_value
+                    row_data.append(month_value)
+                row_data.append(monthly_total)
+
+                self.ws.append(row_data)
+
+                # Apply styles
+                self.ws.cell(row=self.ws.max_row, column=2).alignment = self.center_align
+                for col_num in range(3, 16):
+                    self.ws.cell(row=self.ws.max_row, column=col_num).style = 'number_style'
+                grand_total += monthly_total
+
+            total_row = ['Total Per Month', '']
             for i in range(1, 13):
-                row_data.append(outlet_data['monthly_totals'].get(i, 0))
-
-            self.ws.append(row_data)
-
-            # Apply styles
-            self.ws.cell(row=self.ws.max_row, column=2).alignment = self.center_align
-            for col_num in range(3, 15):
-                self.ws.cell(row=self.ws.max_row, column=col_num).style = 'number_style'
+                total_row.append(column_totals.get(i, 0))
+            total_row.append(grand_total)
+            self.ws.append(total_row)
+            for col_num in range(1, 16):
+                cell = self.ws.cell(row=self.ws.max_row, column=col_num)
+                cell.font = self.header_font
+                if col_num >= 3:
+                    cell.style = 'number_style'
 
     def _set_column_widths(self):
         self.ws.column_dimensions[get_column_letter(1)].width = 35
         self.ws.column_dimensions[get_column_letter(2)].width = 15
-        for i in range(3, 15):
+        if isinstance(self.data, dict) and 'periods' in self.data:
+            column_count = 3 + len(self.data['periods'])
+        else:
+            column_count = 15
+        for i in range(3, column_count + 1):
             self.ws.column_dimensions[get_column_letter(i)].width = 15
