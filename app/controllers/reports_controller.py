@@ -15,6 +15,7 @@ from app.models.pukis import Pukis
 from app.models.tiktok_reports import TiktokReport
 from app.models.outlet_count_pkb import OutletCountPKB
 from app.models.ultra_voucher import VoucherReport
+from app.models.webshop_report import WebshopReport
 from app.extensions import db
 import sys
 from app.services.consolidation_service import update_daily_total_for_outlet
@@ -1466,6 +1467,7 @@ def get_reports_totals():
         shopeepay_query = ShopeepayReport.query
         tiktok_query = TiktokReport.query
         qpon_query = QponReport.query
+        webshop_query = WebshopReport.query
         cash_query = CashReport.query
         manual_entries_query = ManualEntry.query
         # Return error if outlet_code is not provided
@@ -1479,6 +1481,7 @@ def get_reports_totals():
             shopeepay_query = shopeepay_query.filter(ShopeepayReport.outlet_code == outlet_code)
             tiktok_query = tiktok_query.filter(TiktokReport.outlet_code == outlet_code)
             qpon_query = qpon_query.filter(QponReport.outlet_code == outlet_code)
+            webshop_query = WebshopReport.query.filter(WebshopReport.outlet_code == outlet_code)
             cash_query = cash_query.filter(CashReport.outlet_code == outlet_code)
             manual_entries_query = manual_entries_query.filter(ManualEntry.outlet_code == outlet_code)
 
@@ -1490,7 +1493,12 @@ def get_reports_totals():
             shopeepay_query = shopeepay_query.filter(ShopeepayReport.brand_name == brand_name)
             tiktok_query = tiktok_query.filter(TiktokReport.brand_name == brand_name)
             qpon_query = qpon_query.filter(QponReport.brand_name == brand_name)
+            webshop_query = WebshopReport.query.filter(WebshopReport.brand_name == brand_name)
             manual_entries_query = manual_entries_query.filter(ManualEntry.brand_name == brand_name)
+
+        # Default cash queries (used when date filter is not provided)
+        cash_income_query = cash_query.filter(CashReport.type == 'income')
+        cash_expense_query = cash_query.filter(CashReport.type == 'expense')
 
         # Apply date filters if provided
         if start_date_param and end_date_param:
@@ -1524,7 +1532,10 @@ def get_reports_totals():
                 QponReport.bill_created_at >= start_date,
                 QponReport.bill_created_at <= end_date_inclusive
             )
-            
+            webshop_query = webshop_query.filter(
+                WebshopReport.created_at >= start_date,
+                WebshopReport.created_at <= end_date_inclusive
+            )
             # Use SQLAlchemy filtering for cash reports instead of post-filtering
             cash_income_query = cash_query.filter(
                 CashReport.type == 'income',
@@ -1558,6 +1569,7 @@ def get_reports_totals():
             float((getattr(report, 'net_amount', None) if getattr(report, 'net_amount', None) is not None else getattr(report, 'nett_amount', 0)) or 0)
             for report in qpon_query.all()
         )
+        webshop_total = sum(float(report.nett_value or 0) for report in webshop_query.all())
         
         # Calculate cash totals using the filtered queries
         cash_income = sum(float(report.total or 0) for report in cash_income_query.all())
@@ -1568,7 +1580,7 @@ def get_reports_totals():
         manual_entries_total = sum(float(entry.amount or 0) for entry in manual_entries_query.all())
 
         # Calculate running total
-        running_total = gojek_total + grab_total + shopee_total + shopeepay_total + tiktok_total + qpon_total + cash_net - manual_entries_total
+        running_total = gojek_total + grab_total + shopee_total + shopeepay_total + tiktok_total + qpon_total + webshop_total + cash_net - manual_entries_total
         response = {
             'outlet_code': outlet_code,
             'brand_name': brand_name,
@@ -1583,6 +1595,7 @@ def get_reports_totals():
                 'shopeepay': round(shopeepay_total, 2),
                 'tiktok': round(tiktok_total, 2),
                 'qpon': round(qpon_total, 2),
+                'webshop': round(webshop_total, 2),
                 'cash': {
                     'income': round(cash_income, 2),
                     'expense': round(cash_expense, 2),

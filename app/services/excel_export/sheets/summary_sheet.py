@@ -54,6 +54,7 @@ class SummarySheet(BaseSheet):
             ('ShopeePay', grand_totals['ShopeePay_Gross'], grand_totals['ShopeePay_Net']),
             ('Tiktok', grand_totals['Tiktok_Gross'], grand_totals['Tiktok_Net']),
             ('Qpon', grand_totals['Qpon_Gross'], grand_totals['Qpon_Net']),
+            ('Webshop', grand_totals['Webshop_Gross'], grand_totals['Webshop_Net']),
             ('UV', 0, grand_totals['UV']),
         ]
 
@@ -164,7 +165,8 @@ class SummarySheet(BaseSheet):
         online_net_total = (
             grand_totals['Gojek_Net'] + grand_totals['Grab_Net'] +
             grand_totals['Shopee_Net'] + grand_totals['ShopeePay_Net'] +
-            grand_totals['Tiktok_Net'] + grand_totals['Qpon_Net'] + grand_totals['UV']
+            grand_totals['Tiktok_Net'] + grand_totals['Qpon_Net'] +
+            grand_totals['Webshop_Net'] + grand_totals['UV']
         )
 
         management_commission = 0

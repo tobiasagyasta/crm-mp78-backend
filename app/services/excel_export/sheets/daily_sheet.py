@@ -15,7 +15,7 @@ class DailySheet(BaseSheet):
         self._write_headers()
         self._write_data()
         self._write_grand_total()
-        set_column_widths(self.ws, {'A': 12, 'B': 15, 'C': 15, 'D': 15, 'E': 15, 'F': 15, 'G': 15, 'H': 15, 'I': 15, 'J': 15, 'K': 15, 'L': 15, 'M': 15, 'N': 15, 'O': 15, 'P': 15, 'Q': 15, 'R': 15})
+        set_column_widths(self.ws, {'A': 12, 'B': 15, 'C': 15, 'D': 15, 'E': 15, 'F': 15, 'G': 15, 'H': 15, 'I': 15, 'J': 15, 'K': 15, 'L': 15, 'M': 15, 'N': 15, 'O': 15, 'P': 15, 'Q': 15, 'R': 15, 'S': 15})
 
     def _write_title(self):
         self.ws['A1'] = 'Sales Report'
@@ -32,7 +32,7 @@ class DailySheet(BaseSheet):
             'Date', 'GoFood', 'GO-PAY QRIS', 'Gojek Net', 'Gojek Mutation', 'Gojek Difference',
             'GrabFood', 'GrabOVO', 'Grab Net (ac)', 'Shopee Net', 'Shopee Mutation', 'Shopee Difference',
             'ShopeePay Net', 'ShopeePay Mutation', 'ShopeePay Difference',
-            'Tiktok Net', 'Qpon Net', 'UV'
+            'Tiktok Net', 'Qpon Net', 'Webshop Net', 'UV'
         ]
         extra_headers = ['Cash Income (Admin)', 'Cash Expense (Admin)', 'Sisa Cash (Admin)', 'Minusan (Mutasi)']
 
@@ -57,7 +57,8 @@ class DailySheet(BaseSheet):
             'Gojek Difference': DIFFERENCE_FILL, 'GrabFood': GRAB_FILL, 'GrabOVO': GRAB_FILL, 'Grab Net': GRAB_FILL, 'Grab Net (ac)': GRAB_FILL,
             'Shopee Net': SHOPEE_FILL, 'Shopee Mutation': SHOPEE_FILL, 'Shopee Difference': DIFFERENCE_FILL,
             'ShopeePay Net': SHOPEEPAY_FILL, 'ShopeePay Mutation': SHOPEEPAY_FILL, 'ShopeePay Difference': DIFFERENCE_FILL,
-            'Tiktok Net': TIKTOK_FILL, 'Qpon Net': TIKTOK_FILL, 'UV': PatternFill(start_color='35F0F0', end_color='35F0F0', fill_type='solid'),
+            'Tiktok Net': TIKTOK_FILL, 'Qpon Net': TIKTOK_FILL, 'Webshop Net': TIKTOK_FILL,
+            'UV': PatternFill(start_color='35F0F0', end_color='35F0F0', fill_type='solid'),
             'Cash Income (Admin)': CASH_FILL, 'Cash Expense (Admin)': CASH_FILL, 'Sisa Cash (Admin)': CASH_FILL
         }
 
@@ -95,6 +96,7 @@ class DailySheet(BaseSheet):
             'ShopeePay Difference': lambda totals, date, minusan_total: totals.get('ShopeePay_Difference', 0),
             'Tiktok Net': lambda totals, date, minusan_total: totals.get('Tiktok_Net', 0),
             'Qpon Net': lambda totals, date, minusan_total: totals.get('Qpon_Net', 0),
+            'Webshop Net': lambda totals, date, minusan_total: totals.get('Webshop_Net', 0),
             'UV': lambda totals, date, minusan_total: totals.get('UV', 0),
             'Cash Income (Admin)': lambda totals, date, minusan_total: totals.get('Cash_Income', 0),
             'Cash Expense (Admin)': lambda totals, date, minusan_total: totals.get('Cash_Expense', 0),
@@ -157,6 +159,7 @@ class DailySheet(BaseSheet):
             'ShopeePay Difference': lambda: grand_totals.get('ShopeePay_Difference', 0),
             'Tiktok Net': lambda: grand_totals.get('Tiktok_Net', 0),
             'Qpon Net': lambda: grand_totals.get('Qpon_Net', 0),
+            'Webshop Net': lambda: grand_totals.get('Webshop_Net', 0),
             'UV': lambda: grand_totals.get('UV', 0),
             'Cash Income (Admin)': lambda: grand_totals.get('Cash_Income', 0),
             'Cash Expense (Admin)': lambda: grand_totals.get('Cash_Expense', 0),

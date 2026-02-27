@@ -10,6 +10,7 @@ class Outlet(db.Model):
     outlet_name_gojek = db.Column(db.String(255), nullable=True)
     outlet_name_grab = db.Column(db.String(255), nullable=True)
     outlet_name_qpon = db.Column(db.String(255), nullable=True)
+    outlet_name_webshop = db.Column(db.String(255), nullable=True)
     outlet_phone = db.Column(db.String(20), nullable=True)
     outlet_email = db.Column(db.String(255), nullable=True)
     area = db.Column(db.String(100), nullable=False)
@@ -56,6 +57,7 @@ class Outlet(db.Model):
             "outlet_code": self.outlet_code,
             "outlet_name_gojek": self.outlet_name_gojek,
             "outlet_name_grab": self.outlet_name_grab,
+            "outlet_name_webshop": self.outlet_name_webshop,
             "outlet_phone": self.outlet_phone,
             "outlet_email": self.outlet_email,
             "area": self.area,

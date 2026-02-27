@@ -17,6 +17,7 @@ from app.controllers.mutations_controller import mutations_bp
 from app.controllers.test_controller import test_bp
 from app.controllers.bi_controller import bi_bp
 from app.controllers import qpon_controller
+from app.controllers import webshop_controller
 from flask_cors import CORS
 
 def create_app():
