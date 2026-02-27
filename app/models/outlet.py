@@ -9,6 +9,7 @@ class Outlet(db.Model):
     outlet_code = db.Column(db.String(50), unique=True, nullable=False)
     outlet_name_gojek = db.Column(db.String(255), nullable=True)
     outlet_name_grab = db.Column(db.String(255), nullable=True)
+    outlet_name_qpon = db.Column(db.String(255), nullable=True)
     outlet_phone = db.Column(db.String(20), nullable=True)
     outlet_email = db.Column(db.String(255), nullable=True)
     area = db.Column(db.String(100), nullable=False)

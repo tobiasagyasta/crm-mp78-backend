@@ -51,6 +51,9 @@ docker-compose.override.yml
 # Windows files
 Thumbs.db
 
+# Scripts
+scripts/
+
 # PyCharm project settings
 .idea/
 store_ids.csv
@@ -59,3 +62,4 @@ store_id_getter.py
 example_gojek.csv
 example_shopee.csv
 store_ids_shopee.csv
+app/services/qpon_importer.py

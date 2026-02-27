@@ -1,5 +1,4 @@
 from flask import Flask, jsonify
-from app.config.config import Config
 from app.config.env import init_env
 from app.extensions import db, jwt, s3
 from app.controllers.auth_controller import auth_bp
@@ -17,11 +16,13 @@ from app.controllers.reports_controller_s3 import reports_s3_bp
 from app.controllers.mutations_controller import mutations_bp
 from app.controllers.test_controller import test_bp
 from app.controllers.bi_controller import bi_bp
+from app.controllers import qpon_controller
 from flask_cors import CORS
 
 def create_app():
     # Initialize environment variables
     init_env()
+    from app.config.config import Config
     app = Flask(__name__)
     app.config.from_object(Config)
 
