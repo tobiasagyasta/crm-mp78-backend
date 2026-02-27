@@ -63,6 +63,11 @@ def upload_report_qpon():
                         )
                         continue
 
+                    parsed["nett_amount"] = QponReport.apply_nett_fallback(
+                        parsed.get("gross_amount"),
+                        parsed.get("nett_amount"),
+                    )
+
                     billing_id = parsed.get("billing_id")
                     if not billing_id:
                         skipped_reports += 1

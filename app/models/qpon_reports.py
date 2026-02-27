@@ -88,6 +88,16 @@ class QponReport(db.Model):
             return 0.0
 
     @staticmethod
+    def apply_nett_fallback(gross_amount: float | int | None, nett_amount: float | int | None) -> float:
+        gross = float(gross_amount or 0.0)
+        nett = float(nett_amount or 0.0)
+
+        if gross != 0 and nett == 0:
+            return round(0.99 * gross, 2)
+
+        return nett
+
+    @staticmethod
     def _parse_date(value) -> datetime | None:
         raw = QponReport._clean_str(value)
         if raw == "":
@@ -148,6 +158,7 @@ class QponReport(db.Model):
             outlet_name = QponReport._clean_str(outlet_name_raw)
             gross_amount = QponReport._parse_amount(gross_amount_raw)
             nett_amount = QponReport._parse_amount(nett_amount_raw)
+            nett_amount = QponReport.apply_nett_fallback(gross_amount, nett_amount)
 
             outlet = None
             normalized = outlet_name.strip().lower()

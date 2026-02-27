@@ -54,6 +54,9 @@ Thumbs.db
 # Scripts
 scripts/
 
+# Migrations
+migrations/
+
 # PyCharm project settings
 .idea/
 store_ids.csv
