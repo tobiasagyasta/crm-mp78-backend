@@ -22,20 +22,20 @@ class PukisClosingSheet(BaseSheet):
         end_date = self.data['end_date']
 
         self.ws['A1'] = outlet.outlet_name_gojek
-        self.ws.merge_cells('A1:Q1')
+        self.ws.merge_cells('A1:R1')
         self.ws['A1'].alignment = CENTER_ALIGN
         self.ws['A1'].font = HEADER_FONT
 
         self.ws['A2'] = f"PERIODE {start_date.strftime('%d %b %Y')} - {end_date.strftime('%d %b %Y')}"
-        self.ws.merge_cells('A2:Q2')
+        self.ws.merge_cells('A2:R2')
         self.ws['A2'].alignment = CENTER_ALIGN
         self.ws['A2'].font = HEADER_FONT
 
-        header1 = ["TANGGAL", "PENERIMAAN", None, None, None, None, None,None, "PUKIS JUMBO TERJUAL", "PUKIS KLASIK TERJUAL", "PUKIS FREE", "PUKIS SISA", "TGL TF REK BARU", "NOMINAL TF", "SELISIH", "KETERANGAN", "NOTE"]
+        header1 = ["TANGGAL", "PENERIMAAN", None, None, None, None, None, None, None, "PUKIS JUMBO TERJUAL", "PUKIS KLASIK TERJUAL", "PUKIS FREE", "PUKIS SISA", "TGL TF REK BARU", "NOMINAL TF", "SELISIH", "KETERANGAN", "NOTE"]
         self.ws.append(header1)
-        self.ws.merge_cells(start_row=4, start_column=2, end_row=4, end_column=8)
+        self.ws.merge_cells(start_row=4, start_column=2, end_row=4, end_column=9)
 
-        header2 = [None, "CASH", "GOJEK", "GRAB", "SHOPEE FOOD", "TIKTOK", "QPON", "TRF"]
+        header2 = [None, "CASH", "GOJEK", "GRAB", "SHOPEE FOOD", "TIKTOK", "QPON", "WEBSHOP", "TRF"]
         self.ws.append(header2)
         header2_row = self.ws.max_row
         for cell in self.ws[3]:
@@ -49,6 +49,8 @@ class PukisClosingSheet(BaseSheet):
             "GRAB": GRAB_FILL,
             "SHOPEE FOOD": SHOPEE_FILL,
             "TIKTOK": TIKTOK_FILL,
+            "QPON": TIKTOK_FILL,
+            "WEBSHOP": TIKTOK_FILL,
         }
 
         for col in range(1, len(header2) + 1):
@@ -98,7 +100,8 @@ class PukisClosingSheet(BaseSheet):
                 daily_totals[date]['Grab_Net'],
                 daily_totals[date]['Shopee_Net'],
                 daily_totals[date]['Tiktok_Net'],
-                0,  # QPON
+                daily_totals[date]['Qpon_Net'],  # QPON
+                daily_totals[date].get('Webshop_Net', 0),  # WEBSHOP
                 0,  # TRF
                 jumbo_terjual,
                 reguler_terjual,
@@ -137,7 +140,8 @@ class PukisClosingSheet(BaseSheet):
             grand_totals.get('Grab_Net', 0),
             grand_totals.get('Shopee_Net', 0),
             grand_totals.get('Tiktok_Net', 0),
-            0,
+            grand_totals.get('Qpon_Net', 0),
+            grand_totals.get('Webshop_Net', 0),
             0,
             total_jumbo_terjual,
             total_reguler_terjual,
@@ -147,7 +151,7 @@ class PukisClosingSheet(BaseSheet):
         ]
         self.ws.append(total_row)
 
-        for i in range (1,9):
+        for i in range(1, 10):
             self.ws.cell(row=self.ws.max_row, column=i).font = HEADER_FONT
         
         # self.ws.append(total_row)
