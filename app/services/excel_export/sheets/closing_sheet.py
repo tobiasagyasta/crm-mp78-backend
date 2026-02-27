@@ -37,8 +37,8 @@ class ClosingSheet(BaseSheet):
 
         closing_row = 3
         # Updated platform columns to include GrabOVO
-        platform_columns = ['Gojek_Mutation', 'Grab_Net', 'Shopee_Net', 'ShopeePay_Net', 'Tiktok_Net', 'UV']
-        platform_names = ['Gojek', 'Grab', 'ShopeeFood', 'ShopeePay', 'Tiktok', 'Ultra Voucher']
+        platform_columns = ['Gojek_Mutation', 'Grab_Net', 'Shopee_Net', 'ShopeePay_Net', 'Tiktok_Net', 'Qpon_Net', 'UV']
+        platform_names = ['Gojek', 'Grab', 'ShopeeFood', 'ShopeePay', 'Tiktok', 'Qpon', 'Ultra Voucher']
 
         # Merged 'Tanggal' header
         self.ws.merge_cells(start_row=closing_row, start_column=1, end_row=closing_row + 1, end_column=1)
@@ -69,7 +69,7 @@ class ClosingSheet(BaseSheet):
             if name in ['GoFood', 'GO-PAY QRIS']: cell.fill = GOJEK_FILL
             elif name in ['Grab', 'Grab(OVO)']: cell.fill = GRAB_FILL
             elif name in ['ShopeeFood', 'ShopeePay']: cell.fill = SHOPEE_FILL
-            elif name == 'Tiktok': cell.fill = TIKTOK_FILL
+            elif name in ['Tiktok', 'Qpon']: cell.fill = TIKTOK_FILL
 
         closing_row += 2
 
@@ -105,8 +105,8 @@ class ClosingSheet(BaseSheet):
         start_date = self.data['start_date']
         end_date = self.data['end_date']
         manual_entries = self.data['manual_entries']
-        platform_columns = ['Gojek_Mutation', 'Grab_Net', 'Shopee_Net', 'ShopeePay_Net', 'Tiktok_Net', 'UV']
-        platform_names = ['Gojek', 'Grab', 'ShopeeFood', 'ShopeePay', 'Tiktok', 'Ultra Voucher']
+        platform_columns = ['Gojek_Mutation', 'Grab_Net', 'Shopee_Net', 'ShopeePay_Net', 'Tiktok_Net', 'Qpon_Net', 'UV']
+        platform_names = ['Gojek', 'Grab', 'ShopeeFood', 'ShopeePay', 'Tiktok', 'Qpon', 'Ultra Voucher']
 
         col_start = self.ws.max_column + 3
         row_start = 3
@@ -124,6 +124,7 @@ class ClosingSheet(BaseSheet):
             self._get_grand_total_with_fallback('Shopee_Net') +
             self._get_grand_total_with_fallback('ShopeePay_Net') +
             self._get_grand_total_with_fallback('Tiktok_Net') +
+            self._get_grand_total_with_fallback('Qpon_Net') +
             sum(float(entry.amount) for entry, _, _ in manual_entries if entry.entry_type == 'income') +
             self._get_grand_total_with_fallback('UV')
         )
@@ -202,7 +203,7 @@ class ClosingSheet(BaseSheet):
 
     def _apply_styles(self):
         # Apply borders to the main table
-        for row in self.ws.iter_rows(min_row=1, max_row=self.ws.max_row, min_col=1, max_col=7):
+        for row in self.ws.iter_rows(min_row=1, max_row=self.ws.max_row, min_col=1, max_col=8):
             for cell in row:
                 cell.border = THIN_BORDER
         # Apply borders to the grand total section

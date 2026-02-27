@@ -1457,12 +1457,15 @@ def get_reports_totals():
     brand_name = request.args.get('brand_name')
 
     try:
+        from app.models.qpon_reports import QponReport
+
         # Initialize queries
         gojek_query = GojekReport.query
         grab_query = GrabFoodReport.query
         shopee_query = ShopeeReport.query
         shopeepay_query = ShopeepayReport.query
         tiktok_query = TiktokReport.query
+        qpon_query = QponReport.query
         cash_query = CashReport.query
         manual_entries_query = ManualEntry.query
         # Return error if outlet_code is not provided
@@ -1475,6 +1478,7 @@ def get_reports_totals():
             shopee_query = shopee_query.filter(ShopeeReport.outlet_code == outlet_code)
             shopeepay_query = shopeepay_query.filter(ShopeepayReport.outlet_code == outlet_code)
             tiktok_query = tiktok_query.filter(TiktokReport.outlet_code == outlet_code)
+            qpon_query = qpon_query.filter(QponReport.outlet_code == outlet_code)
             cash_query = cash_query.filter(CashReport.outlet_code == outlet_code)
             manual_entries_query = manual_entries_query.filter(ManualEntry.outlet_code == outlet_code)
 
@@ -1485,6 +1489,7 @@ def get_reports_totals():
             cash_query = cash_query.filter(CashReport.brand_name == brand_name)
             shopeepay_query = shopeepay_query.filter(ShopeepayReport.brand_name == brand_name)
             tiktok_query = tiktok_query.filter(TiktokReport.brand_name == brand_name)
+            qpon_query = qpon_query.filter(QponReport.brand_name == brand_name)
             manual_entries_query = manual_entries_query.filter(ManualEntry.brand_name == brand_name)
 
         # Apply date filters if provided
@@ -1514,6 +1519,10 @@ def get_reports_totals():
             tiktok_query = tiktok_query.filter(
                 TiktokReport.order_time >= start_date,
                 TiktokReport.order_time <= end_date_inclusive
+            )
+            qpon_query = qpon_query.filter(
+                QponReport.bill_created_at >= start_date,
+                QponReport.bill_created_at <= end_date_inclusive
             )
             
             # Use SQLAlchemy filtering for cash reports instead of post-filtering
@@ -1545,6 +1554,10 @@ def get_reports_totals():
             if report.transaction_type != "Withdrawal"
         )
         tiktok_total = sum(float(report.net_amount or 0) for report in tiktok_query.all())   
+        qpon_total = sum(
+            float((getattr(report, 'net_amount', None) if getattr(report, 'net_amount', None) is not None else getattr(report, 'nett_amount', 0)) or 0)
+            for report in qpon_query.all()
+        )
         
         # Calculate cash totals using the filtered queries
         cash_income = sum(float(report.total or 0) for report in cash_income_query.all())
@@ -1555,8 +1568,7 @@ def get_reports_totals():
         manual_entries_total = sum(float(entry.amount or 0) for entry in manual_entries_query.all())
 
         # Calculate running total
-        running_total = gojek_total + grab_total + shopee_total + cash_net + shopeepay_total - manual_entries_total
-
+        running_total = gojek_total + grab_total + shopee_total + shopeepay_total + tiktok_total + qpon_total + cash_net - manual_entries_total
         response = {
             'outlet_code': outlet_code,
             'brand_name': brand_name,
@@ -1570,6 +1582,7 @@ def get_reports_totals():
                 'shopee': round(shopee_total, 2),
                 'shopeepay': round(shopeepay_total, 2),
                 'tiktok': round(tiktok_total, 2),
+                'qpon': round(qpon_total, 2),
                 'cash': {
                     'income': round(cash_income, 2),
                     'expense': round(cash_expense, 2),

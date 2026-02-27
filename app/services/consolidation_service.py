@@ -7,7 +7,6 @@ from app.models.gojek_reports import GojekReport
 from app.models.grabfood_reports import GrabFoodReport
 from app.models.shopee_reports import ShopeeReport
 from app.models.shopeepay_reports import ShopeepayReport
-
 REPORT_CONFIG = {
     'gojek': {
         'model': GojekReport,
