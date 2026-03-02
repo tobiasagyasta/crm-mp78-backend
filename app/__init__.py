@@ -7,6 +7,7 @@ from app.controllers.protected_controller import protected_bp
 from app.controllers.partner_controller import partner_bp
 from app.controllers.outlet_controller import outlet_bp
 from app.controllers.product_controller import product_bp
+from app.controllers.rekening_controller import rekening_bp
 from app.controllers.expense_category_controller import expense_category_bp
 from app.controllers.income_category_controller import income_category_bp
 from app.controllers.reports_controller import reports_bp
@@ -58,6 +59,7 @@ def create_app():
     app.register_blueprint(partner_bp)
     app.register_blueprint(outlet_bp)
     app.register_blueprint(product_bp)
+    app.register_blueprint(rekening_bp)
     app.register_blueprint(expense_category_bp)
     app.register_blueprint(income_category_bp)
     app.register_blueprint(reports_bp)
