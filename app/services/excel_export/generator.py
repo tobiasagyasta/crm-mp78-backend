@@ -1,5 +1,6 @@
 from io import BytesIO
 from openpyxl import Workbook
+from app.models.mpr_mapping import MprMapping
 from app.services.excel_export.data_service import get_report_data
 from app.services.excel_export.sheets.daily_sheet import DailySheet
 from app.services.excel_export.sheets.summary_sheet import SummarySheet
@@ -20,12 +21,17 @@ class ExcelReportGenerator:
         """
         Generates the full Excel report by fetching data and calling each sheet generator.
         """
-        report_data = get_report_data(self.outlet_code, self.start_date, self.end_date)
-        report_data['user_role'] = self.user_role
+        report_data = self._build_report_data(self.outlet_code)
+
+        DailySheet(self.wb, report_data).generate()
+
+        mpr_report_data = self._get_mpr_report_data(report_data)
+        report_data['mpr_report_data'] = mpr_report_data
+        if mpr_report_data:
+            DailySheet(self.wb, mpr_report_data, sheet_name='MPR Daily').generate()
 
         # Define the sheet generators to run
         sheet_generators = [
-            DailySheet,
             SummarySheet,
         ]
 
@@ -47,3 +53,26 @@ class ExcelReportGenerator:
         excel_file.seek(0)
 
         return excel_file
+
+    def _build_report_data(self, outlet_code: str) -> dict:
+        report_data = get_report_data(outlet_code, self.start_date, self.end_date)
+        report_data['user_role'] = self.user_role
+        return report_data
+
+    def _get_mpr_report_data(self, report_data: dict) -> dict | None:
+        outlet = report_data['outlet']
+        if outlet.brand != "MP78":
+            return None
+
+        mapping = MprMapping.query.filter_by(mp78_outlet_code=outlet.outlet_code).first()
+        if not mapping or not mapping.mpr_outlet_code:
+            return None
+
+        try:
+            return self._build_report_data(mapping.mpr_outlet_code)
+        except ValueError as exc:
+            print(
+                "Warning: Skipping MPR Daily sheet for "
+                f"{outlet.outlet_code}: {exc}"
+            )
+            return None

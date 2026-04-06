@@ -2,6 +2,7 @@ from flask import Blueprint, jsonify, request
 from sqlalchemy.exc import IntegrityError
 
 from app.extensions import db
+from app.models.outlet import Outlet
 from app.models.rekening import Rekening
 
 rekening_bp = Blueprint("rekening_bp", __name__, url_prefix="/rekenings")
@@ -110,6 +111,15 @@ def delete_rekening(rekening_id):
     if not rekening:
         return jsonify({"error": "Rekening not found"}), 404
 
-    db.session.delete(rekening)
-    db.session.commit()
+    try:
+        Outlet.query.filter_by(rekening_id=rekening.id).update(
+            {"rekening_id": None},
+            synchronize_session=False,
+        )
+        db.session.delete(rekening)
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({"error": "Failed to delete rekening"}), 400
+
     return jsonify({"message": "Rekening deleted successfully"}), 200

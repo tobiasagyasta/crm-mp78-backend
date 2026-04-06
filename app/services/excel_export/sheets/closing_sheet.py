@@ -9,36 +9,34 @@ import re
 class ClosingSheet(BaseSheet):
     def __init__(self, workbook, data):
         super().__init__(workbook, 'Closing Sheet', data)
+        self.main_table_col_end = None
+        self.grand_total_col_start = None
+        self.grand_total_col_end = None
+        self.grand_total_row_start = None
+        self.store_id_col_start = None
+        self.store_id_col_end = None
+        self.store_id_row = None
+        self.store_id_row_end = None
 
     def generate(self):
         self._write_main_table()
         self._write_grand_total_section()
+        self._write_store_id_table()
         self._apply_styles()
         auto_fit_columns(self.ws)
 
     def _write_main_table(self):
         outlet = self.data['outlet']
-        grand_totals = self.data['grand_totals']
         all_dates = self.data['all_dates']
-        daily_totals = self.data['daily_totals']
+        platform_definitions = self._get_main_table_platforms()
 
         # Header
         self.ws['A1'] = outlet.outlet_name_gojek
         self.ws['A1'].alignment = CENTER_ALIGN
         self.ws['A1'].font = HEADER_FONT
-        self.ws['B2'] = outlet.store_id_gojek
-        self.ws['B2'].alignment = CENTER_ALIGN
-        self.ws['C2'] = outlet.store_id_grab
-        self.ws['C2'].alignment = CENTER_ALIGN
-        self.ws['D2'] = outlet.store_id_shopee
-        self.ws['D2'].alignment = CENTER_ALIGN
-        self.ws['E2'] = outlet.store_id_shopee
-        self.ws['E2'].alignment = CENTER_ALIGN
 
         closing_row = 3
-        # Updated platform columns to include GrabOVO
-        platform_columns = ['Gojek_Mutation', 'Grab_Net', 'Shopee_Net', 'ShopeePay_Net', 'Tiktok_Net', 'Qpon_Net', 'Webshop_Net', 'UV']
-        platform_names = ['Gojek', 'Grab', 'ShopeeFood', 'ShopeePay', 'Tiktok', 'Qpon', 'Webshop', 'Ultra Voucher']
+        self._write_main_table_group_headers(closing_row - 1, platform_definitions)
 
         # Merged 'Tanggal' header
         self.ws.merge_cells(start_row=closing_row, start_column=1, end_row=closing_row + 1, end_column=1)
@@ -48,12 +46,9 @@ class ClosingSheet(BaseSheet):
         tanggal_cell.alignment = CENTER_ALIGN
 
         # Platform totals in the first row of the header
-        for col, header in enumerate(platform_columns, 2):
+        for col, (name, header, report_type) in enumerate(platform_definitions, 2):
             cell = self.ws.cell(row=closing_row, column=col)
-            value = grand_totals.get(header)
-            if header.endswith('_Mutation') and not value:
-                net_key = header.replace('_Mutation', '_Net')
-                value = grand_totals.get(net_key, 0)
+            value = self._get_platform_grand_total_with_fallback(report_type, header)
             cell.value = value
             cell.font = HEADER_FONT
             cell.alignment = RIGHT_ALIGN
@@ -61,26 +56,27 @@ class ClosingSheet(BaseSheet):
             cell.fill = YELLOW_FILL
 
         # Platform names in the second row of the header
-        for col, name in enumerate(platform_names, 2):
+        for col, (name, _, _) in enumerate(platform_definitions, 2):
             cell = self.ws.cell(row=closing_row + 1, column=col)
             cell.value = name
             cell.font = HEADER_FONT
             cell.alignment = CENTER_ALIGN
-            if name in ['GoFood', 'GO-PAY QRIS']: cell.fill = GOJEK_FILL
-            elif name in ['Grab', 'Grab(OVO)']: cell.fill = GRAB_FILL
-            elif name in ['ShopeeFood', 'ShopeePay']: cell.fill = SHOPEE_FILL
-            elif name in ['Tiktok', 'Qpon', 'Webshop']: cell.fill = TIKTOK_FILL
+            if name in ['Gojek', 'Gojek MPR']:
+                cell.fill = GOJEK_FILL
+            elif name in ['Grab', 'Grab MPR', 'Grab(OVO)']:
+                cell.fill = GRAB_FILL
+            elif name in ['ShopeeFood', 'ShopeePay', 'Shopee MPR']:
+                cell.fill = SHOPEE_FILL
+            elif name in ['Tiktok', 'Tiktok MPR', 'Qpon', 'Webshop']:
+                cell.fill = TIKTOK_FILL
 
         closing_row += 2
 
         # Daily data rows
         for date in all_dates:
             row_data = [date]
-            for header in platform_columns:
-                value = daily_totals[date].get(header)
-                if header.endswith('_Mutation') and not value:
-                    net_key = header.replace('_Mutation', '_Net')
-                    value = daily_totals[date].get(net_key, 0)
+            for _, header, report_type in platform_definitions:
+                value = self._get_platform_daily_value_with_fallback(report_type, date, header)
                 row_data.append(value)
 
             for col, value in enumerate(row_data, 1):
@@ -92,12 +88,109 @@ class ClosingSheet(BaseSheet):
                     cell.number_format = '#,##0'
             closing_row += 1
 
+        self.main_table_col_end = len(platform_definitions) + 1
+
+    def _write_main_table_group_headers(self, row, platform_definitions):
+        if not self.data.get('mpr_report_data'):
+            return
+
+        current_report_type = None
+        start_col = None
+
+        for col, (_, _, report_type) in enumerate(platform_definitions, 2):
+            if report_type != current_report_type:
+                if current_report_type is not None:
+                    self._merge_main_table_group_header(row, start_col, col - 1, current_report_type)
+                current_report_type = report_type
+                start_col = col
+
+        if current_report_type is not None and start_col is not None:
+            end_col = len(platform_definitions) + 1
+            self._merge_main_table_group_header(row, start_col, end_col, current_report_type)
+
+    def _merge_main_table_group_header(self, row, start_col, end_col, report_type):
+        if report_type not in ['main', 'mpr'] or start_col > end_col:
+            return
+
+        label = 'MP78' if report_type == 'main' else 'MPR'
+        self.ws.merge_cells(start_row=row, start_column=start_col, end_row=row, end_column=end_col)
+        cell = self.ws.cell(row=row, column=start_col, value=label)
+        cell.font = HEADER_FONT
+        cell.alignment = CENTER_ALIGN
+        cell.fill = BLUE_FILL
+
     def _get_grand_total_with_fallback(self, header):
         grand_totals = self.data['grand_totals']
         value = grand_totals.get(header)
         if header.endswith('_Mutation') and not value:
             net_key = header.replace('_Mutation', '_Net')
             value = grand_totals.get(net_key, 0)
+        return value
+
+    def _get_mpr_grand_total_with_fallback(self, header):
+        mpr_report_data = self.data.get('mpr_report_data')
+        if not mpr_report_data:
+            return None
+
+        grand_totals = mpr_report_data.get('grand_totals', {})
+        value = grand_totals.get(header)
+        if header.endswith('_Mutation') and not value:
+            net_key = header.replace('_Mutation', '_Net')
+            value = grand_totals.get(net_key, 0)
+        return value
+
+    def _get_platform_definitions_for_mpr(self):
+        return [
+            ('Gojek MPR', 'Gojek_Mutation', 'mpr'),
+            ('Grab MPR', 'Grab_Net', 'mpr'),
+            ('Shopee MPR', 'Shopee_Net', 'mpr'),
+            ('Tiktok MPR', 'Tiktok_Net', 'mpr'),
+        ]
+
+    def _get_main_table_platforms(self):
+        platform_definitions = [
+            ('Gojek', 'Gojek_Mutation', 'main'),
+            ('Grab', 'Grab_Net', 'main'),
+            ('ShopeeFood', 'Shopee_Net', 'main'),
+            ('ShopeePay', 'ShopeePay_Net', 'main'),
+            ('Tiktok', 'Tiktok_Net', 'main'),
+            ('Qpon', 'Qpon_Net', 'main'),
+            ('Webshop', 'Webshop_Net', 'main'),
+        ]
+
+        if not self.data.get('mpr_report_data'):
+            return platform_definitions
+
+        return [
+            ('Gojek', 'Gojek_Mutation', 'main'),
+            ('Grab', 'Grab_Net', 'main'),
+            ('ShopeeFood', 'Shopee_Net', 'main'),
+            ('ShopeePay', 'ShopeePay_Net', 'main'),
+            ('Tiktok', 'Tiktok_Net', 'main'),
+            ('Qpon', 'Qpon_Net', 'main'),
+            ('Webshop', 'Webshop_Net', 'main'),
+            ('Gojek MPR', 'Gojek_Mutation', 'mpr'),
+            ('Grab MPR', 'Grab_Net', 'mpr'),
+            ('Shopee MPR', 'Shopee_Net', 'mpr'),
+            ('Tiktok MPR', 'Tiktok_Net', 'mpr'),
+        ]
+
+    def _get_platform_grand_total_with_fallback(self, report_type, header):
+        if report_type == 'mpr':
+            return self._get_mpr_grand_total_with_fallback(header)
+        return self._get_grand_total_with_fallback(header)
+
+    def _get_platform_daily_value_with_fallback(self, report_type, date, header):
+        report_data = self.data if report_type == 'main' else self.data.get('mpr_report_data')
+        if not report_data:
+            return None
+
+        daily_totals = report_data.get('daily_totals', {})
+        day_totals = daily_totals.get(date, {})
+        value = day_totals.get(header)
+        if header.endswith('_Mutation') and not value:
+            net_key = header.replace('_Mutation', '_Net')
+            value = day_totals.get(net_key, 0)
         return value
 
     def _write_grand_total_section(self):
@@ -110,6 +203,9 @@ class ClosingSheet(BaseSheet):
 
         col_start = self.ws.max_column + 3
         row_start = 3
+        self.grand_total_col_start = col_start
+        self.grand_total_col_end = col_start + 3
+        self.grand_total_row_start = row_start
 
         self.ws.cell(row=row_start, column=col_start, value=outlet.outlet_name_gojek).font = HEADER_FONT
         self.ws.cell(row=row_start, column=col_start).alignment = CENTER_ALIGN
@@ -170,6 +266,23 @@ class ClosingSheet(BaseSheet):
                 management_cell_value.alignment = RIGHT_ALIGN
                 final_i += 1
 
+        mpr_rows = [
+            (label, header)
+            for label, header, _ in self._get_platform_definitions_for_mpr()
+        ]
+        for label, header in mpr_rows:
+            mpr_value = self._get_mpr_grand_total_with_fallback(header)
+            if mpr_value is None:
+                continue
+
+            label_row = row_start + 1 + final_i + 1
+            self.ws.cell(row=label_row, column=col_start, value=label).alignment = LEFT_ALIGN
+            self.ws.cell(row=label_row, column=col_start, value=label).font = HEADER_FONT
+            value_cell = self.ws.cell(row=label_row, column=col_start + 1, value=mpr_value)
+            value_cell.number_format = '#,##0'
+            value_cell.alignment = RIGHT_ALIGN
+            final_i += 1
+
         MONTH_MAP = {
             'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4, 'Mei': 5, 'Jun': 6,
             'Jul': 7, 'Aug': 8, 'Sep': 9, 'Oct': 10, 'Nov': 11, 'Des': 12
@@ -202,18 +315,86 @@ class ClosingSheet(BaseSheet):
             cell.number_format = '#,##0'
             cell.alignment = RIGHT_ALIGN
 
+    def _write_store_id_table(self):
+        outlet = self.data['outlet']
+        mpr_report_data = self.data.get('mpr_report_data')
+        mpr_outlet = mpr_report_data.get('outlet') if mpr_report_data else None
+
+        row = 3
+        start_column = 20  # Column T
+        store_id_rows = [
+            ('Gojek', outlet.store_id_gojek, GOJEK_FILL),
+            ('Grab', outlet.store_id_grab, GRAB_FILL),
+            ('ShopeeFood', outlet.store_id_shopee, SHOPEE_FILL),
+            ('ShopeePay', outlet.store_id_shopee, SHOPEE_FILL),
+        ]
+
+        if mpr_outlet:
+            store_id_rows.extend([
+                ('Gojek MPR', mpr_outlet.store_id_gojek, GOJEK_FILL),
+                ('Grab MPR', mpr_outlet.store_id_grab, GRAB_FILL),
+                ('Shopee MPR', mpr_outlet.store_id_shopee, SHOPEE_FILL),
+            ])
+
+        self.store_id_col_start = start_column
+        self.store_id_col_end = start_column + 1
+        self.store_id_row = row
+        self.store_id_row_end = row + len(store_id_rows)
+        self.ws.row_dimensions[row].height = 18
+
+        header_cells = [
+            (start_column, 'Platform Name'),
+            (start_column + 1, 'Store ID'),
+        ]
+        for column, value in header_cells:
+            cell = self.ws.cell(row=row, column=column, value=value)
+            cell.font = HEADER_FONT
+            cell.alignment = CENTER_ALIGN
+            cell.fill = BLUE_FILL
+
+        for offset, (label, value, fill) in enumerate(store_id_rows, start=1):
+            data_row = row + offset
+            self.ws.row_dimensions[data_row].height = 18
+
+            label_cell = self.ws.cell(row=data_row, column=start_column, value=label)
+            label_cell.font = HEADER_FONT
+            label_cell.alignment = CENTER_ALIGN
+            label_cell.fill = fill
+
+            value_cell = self.ws.cell(row=data_row, column=start_column + 1, value=value or "-")
+            value_cell.font = HEADER_FONT
+            value_cell.alignment = CENTER_ALIGN
+            value_cell.fill = fill
+
     def _apply_styles(self):
         # Apply borders to the main table
-        for row in self.ws.iter_rows(min_row=1, max_row=self.ws.max_row, min_col=1, max_col=9):
-            for cell in row:
-                cell.border = THIN_BORDER
-        # Apply borders to the grand total section
-        final_row = 0
-        for row in self.ws.iter_rows(min_row=3, min_col=9, max_col=self.ws.max_column):
-            for cell in row:
-                cell.border = THIN_BORDER
-            if row[0].row > final_row:
-                final_row = row[0].row
-        for row in self.ws.iter_rows(min_row=3, max_row=final_row, min_col=9, max_col=self.ws.max_column):
-            for cell in row:
-                cell.border = THIN_BORDER
+        if self.main_table_col_end:
+            for row in self.ws.iter_rows(
+                min_row=1,
+                max_row=self.ws.max_row,
+                min_col=1,
+                max_col=self.main_table_col_end,
+            ):
+                for cell in row:
+                    cell.border = THIN_BORDER
+        # Apply borders to the grand total section only.
+        if self.grand_total_col_start and self.grand_total_col_end and self.grand_total_row_start:
+            for row in self.ws.iter_rows(
+                min_row=self.grand_total_row_start,
+                max_row=self.ws.max_row,
+                min_col=self.grand_total_col_start,
+                max_col=self.grand_total_col_end,
+            ):
+                for cell in row:
+                    cell.border = THIN_BORDER
+
+        # Apply borders to the store ID table separately.
+        if self.store_id_col_start and self.store_id_col_end and self.store_id_row and self.store_id_row_end:
+            for row in self.ws.iter_rows(
+                min_row=self.store_id_row,
+                max_row=self.store_id_row_end,
+                min_col=self.store_id_col_start,
+                max_col=self.store_id_col_end,
+            ):
+                for cell in row:
+                    cell.border = THIN_BORDER

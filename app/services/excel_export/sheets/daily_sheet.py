@@ -7,8 +7,8 @@ from app.services.excel_export.utils.excel_utils import (
 )
 
 class DailySheet(BaseSheet):
-    def __init__(self, workbook, data):
-        super().__init__(workbook, 'Daily', data)
+    def __init__(self, workbook, data, sheet_name='Daily'):
+        super().__init__(workbook, sheet_name, data)
 
     def generate(self):
         self._write_title()

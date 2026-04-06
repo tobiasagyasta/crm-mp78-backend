@@ -18,6 +18,7 @@ class Outlet(db.Model):
     city_grouping = db.Column(db.String(100), nullable=True)
     address = db.Column(db.String(500), nullable=True)
     brand = db.Column(db.String(100), nullable=True)
+    rekening_id = db.Column(db.Integer, db.ForeignKey("rekenings.id"), nullable=True)
     
     # Store IDs for different platforms
     store_id_gojek = db.Column(db.String(50), nullable=True, unique=True)
@@ -65,6 +66,7 @@ class Outlet(db.Model):
             "city_grouping": self.city_grouping,
             "address": self.address,
             "brand": self.brand,
+            "rekening_id": self.rekening_id,
             "store_id_gojek": self.store_id_gojek,
             "store_id_grab": self.store_id_grab,
             "store_id_shopee": self.store_id_shopee,

@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify
 from app.extensions import db
 from app.models.outlet import Outlet
+from app.models.rekening import Rekening
 from datetime import datetime
 
 outlet_bp = Blueprint("outlet_bp", __name__, url_prefix="/outlets")
@@ -170,6 +171,21 @@ def get_outlet(outlet_id):
         return jsonify({"error": "Outlet not found"}), 404
     return jsonify(outlet.to_dict())
 
+
+# Get outlets by rekening ID
+@outlet_bp.route("/rekening/<int:rekening_id>", methods=["GET"])
+def get_outlets_by_rekening_id(rekening_id):
+    rekening = Rekening.query.get(rekening_id)
+    if not rekening:
+        return jsonify({"error": "Rekening not found"}), 404
+
+    outlets = Outlet.query.filter_by(rekening_id=rekening_id).all()
+    return jsonify({
+        "rekening_id": rekening_id,
+        "count": len(outlets),
+        "outlets": [outlet.to_dict() for outlet in outlets]
+    }), 200
+
 # Get outlet by outlet_code
 
 @outlet_bp.route("/closing/<outlet_code>", methods=["GET"])
@@ -189,6 +205,57 @@ def get_outlet_by_code(outlet_code):
     if not outlet:
         return jsonify({"error": "Outlet not found"}), 404
     return jsonify(outlet.to_dict())
+
+
+# Update outlet rekening_id
+@outlet_bp.route("/<int:outlet_id>/rekening", methods=["PUT"])
+def update_outlet_rekening_id(outlet_id):
+    outlet = Outlet.query.get(outlet_id)
+    if not outlet:
+        return jsonify({"error": "Outlet not found"}), 404
+
+    data = request.get_json() or {}
+    if "rekening_id" not in data:
+        return jsonify({"error": "rekening_id is required"}), 400
+
+    rekening_id = data.get("rekening_id")
+    if rekening_id is None:
+        return jsonify({"error": "rekening_id cannot be null. Use DELETE /outlets/<id>/rekening to clear it"}), 400
+
+    try:
+        rekening_id = int(rekening_id)
+    except (TypeError, ValueError):
+        return jsonify({"error": "rekening_id must be an integer"}), 400
+
+    rekening = Rekening.query.get(rekening_id)
+    if not rekening:
+        return jsonify({"error": "Rekening not found"}), 404
+
+    try:
+        outlet.rekening_id = rekening_id
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        return jsonify({"error": "Failed to update outlet rekening_id"}), 500
+
+    return jsonify(outlet.to_dict()), 200
+
+
+# Nullify outlet rekening_id
+@outlet_bp.route("/<int:outlet_id>/rekening", methods=["DELETE"])
+def clear_outlet_rekening_id(outlet_id):
+    outlet = Outlet.query.get(outlet_id)
+    if not outlet:
+        return jsonify({"error": "Outlet not found"}), 404
+
+    try:
+        outlet.rekening_id = None
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        return jsonify({"error": "Failed to clear outlet rekening_id"}), 500
+
+    return jsonify(outlet.to_dict()), 200
 
 # Update an outlet
 @outlet_bp.route("/<int:outlet_id>", methods=["PUT"])
