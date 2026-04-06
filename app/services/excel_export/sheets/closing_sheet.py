@@ -198,8 +198,8 @@ class ClosingSheet(BaseSheet):
         start_date = self.data['start_date']
         end_date = self.data['end_date']
         manual_entries = self.data['manual_entries']
-        platform_columns = ['Gojek_Mutation', 'Grab_Net', 'Shopee_Net', 'ShopeePay_Net', 'Tiktok_Net', 'Qpon_Net', 'Webshop_Net', 'UV']
-        platform_names = ['Gojek', 'Grab', 'ShopeeFood', 'ShopeePay', 'Tiktok', 'Qpon', 'Webshop', 'Ultra Voucher']
+        platform_columns = ['Gojek_Mutation', 'Grab_Net', 'Shopee_Net', 'ShopeePay_Net', 'Tiktok_Net', 'Qpon_Net', 'Webshop_Net']
+        platform_names = ['Gojek', 'Grab', 'ShopeeFood', 'ShopeePay', 'Tiktok', 'Qpon', 'Webshop']
 
         col_start = self.ws.max_column + 3
         row_start = 3
