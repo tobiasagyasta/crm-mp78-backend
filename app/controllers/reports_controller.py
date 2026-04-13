@@ -79,7 +79,13 @@ from flask import Blueprint, jsonify, request, send_file
 from openpyxl.workbook import Workbook
 
 from app.services.excel_export.sheets.monthly_income_sheet import MonthlyIncomeSheet
-from app.services.reporting_service import generate_monthly_net_income_data
+from app.services.excel_export.sheets.monthly_mpr_commission_sheet import (
+    MonthlyMprCommissionSheet,
+)
+from app.services.reporting_service import (
+    generate_monthly_mpr_commission_data,
+    generate_monthly_net_income_data,
+)
 from app.utils.report_generator import generate_daily_report
 # from app.services.excel_export.data_service import (
 #     get_kas_transactions, create_kas_transaction,
@@ -1961,6 +1967,61 @@ def monthly_income_report():
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
         # ensure the browser can see Content-Disposition and set a safe referrer policy
+        response.headers['Access-Control-Expose-Headers'] = 'Content-Disposition'
+        response.headers['Referrer-Policy'] = 'no-referrer-when-downgrade'
+        return response
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@reports_bp.route("/monthly-mpr-commission", methods=["POST", "OPTIONS"])
+@cross_origin(expose_headers=["Content-Disposition"])
+def monthly_mpr_commission_report():
+    """
+    Generates and returns an Excel report of monthly MPR commission totals.
+    """
+    if request.method == 'OPTIONS':
+        return jsonify({'status': 'OK'}), 200
+
+    json_data = request.get_json(silent=True) or {}
+    year = json_data.get("year", datetime.now().year)
+    start_date, end_date, date_range_error = parse_date_range(request.args)
+    if date_range_error:
+        return jsonify({"error": date_range_error}), 400
+
+    try:
+        data = generate_monthly_mpr_commission_data(
+            year,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        if not data:
+            return jsonify({"error": "No data found for the given criteria"}), 404
+
+        workbook = openpyxl.Workbook()
+        if "Sheet" in workbook.sheetnames:
+            workbook.remove(workbook["Sheet"])
+
+        sheet = MonthlyMprCommissionSheet(workbook, data)
+        sheet.generate()
+
+        output = io.BytesIO()
+        workbook.save(output)
+        output.seek(0)
+
+        if start_date and end_date:
+            download_name = (
+                f"Monthly_mpr_commission_MPR_{start_date.isoformat()}_to_{end_date.isoformat()}.xlsx"
+            )
+        else:
+            download_name = f"Monthly_mpr_commission_MPR_{year}.xlsx"
+
+        response = send_file(
+            output,
+            as_attachment=True,
+            download_name=download_name,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
         response.headers['Access-Control-Expose-Headers'] = 'Content-Disposition'
         response.headers['Referrer-Policy'] = 'no-referrer-when-downgrade'
         return response
