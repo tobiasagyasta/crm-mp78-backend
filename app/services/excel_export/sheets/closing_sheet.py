@@ -7,6 +7,8 @@ from datetime import datetime
 import re
 
 class ClosingSheet(BaseSheet):
+    MPR_COMMISSION_RATE = 0.08
+
     def __init__(self, workbook, data):
         super().__init__(workbook, 'Closing Sheet', data)
         self.main_table_col_end = None
@@ -69,6 +71,8 @@ class ClosingSheet(BaseSheet):
                 cell.fill = SHOPEE_FILL
             elif name in ['Tiktok', 'Tiktok MPR', 'Qpon', 'Webshop']:
                 cell.fill = TIKTOK_FILL
+            elif name == 'MPR Commission':
+                cell.fill = DIFFERENCE_FILL
 
         closing_row += 2
 
@@ -145,6 +149,7 @@ class ClosingSheet(BaseSheet):
             ('Grab MPR', 'Grab_Net', 'mpr'),
             ('Shopee MPR', 'Shopee_Net', 'mpr'),
             ('Tiktok MPR', 'Tiktok_Net', 'mpr'),
+            ('MPR Commission', 'MPR_Commission', 'mpr'),
         ]
 
     def _get_main_table_platforms(self):
@@ -173,25 +178,18 @@ class ClosingSheet(BaseSheet):
             ('Grab MPR', 'Grab_Net', 'mpr'),
             ('Shopee MPR', 'Shopee_Net', 'mpr'),
             ('Tiktok MPR', 'Tiktok_Net', 'mpr'),
+            ('MPR Commission', 'MPR_Commission', 'mpr'),
         ]
 
     def _get_platform_grand_total_with_fallback(self, report_type, header):
         if report_type == 'mpr':
-            return self._get_mpr_grand_total_with_fallback(header)
+            return self._get_mpr_display_value(header)
         return self._get_grand_total_with_fallback(header)
 
     def _get_platform_daily_value_with_fallback(self, report_type, date, header):
-        report_data = self.data if report_type == 'main' else self.data.get('mpr_report_data')
-        if not report_data:
-            return None
-
-        daily_totals = report_data.get('daily_totals', {})
-        day_totals = daily_totals.get(date, {})
-        value = day_totals.get(header)
-        if header.endswith('_Mutation') and not value:
-            net_key = header.replace('_Mutation', '_Net')
-            value = day_totals.get(net_key, 0)
-        return value
+        if report_type == 'mpr':
+            return self._get_mpr_display_value(header, date)
+        return self._get_report_value_with_fallback(self.data, header, date)
 
     def _write_grand_total_section(self):
         outlet = self.data['outlet']
@@ -222,6 +220,10 @@ class ClosingSheet(BaseSheet):
             self._get_grand_total_with_fallback('Tiktok_Net') +
             self._get_grand_total_with_fallback('Qpon_Net') +
             self._get_grand_total_with_fallback('Webshop_Net') +
+            (self._get_mpr_display_value('Gojek_Mutation') or 0) +
+            (self._get_mpr_display_value('Grab_Net') or 0) +
+            (self._get_mpr_display_value('Shopee_Net') or 0) +
+            (self._get_mpr_display_value('Tiktok_Net') or 0) +
             sum(float(entry.amount) for entry, _, _ in manual_entries if entry.entry_type == 'income') +
             self._get_grand_total_with_fallback('UV')
         )
@@ -231,9 +233,10 @@ class ClosingSheet(BaseSheet):
         self.ws.cell(row=row_start + 1, column=col_start + 1).fill = GRAB_FILL
         self.ws.cell(row=row_start, column=col_start + 1).fill = GRAB_FILL
 
+        mpr_commission_total = self._get_mpr_display_value('MPR_Commission') or 0
         total_expense = (
             sum(float(entry.amount) for entry, _, _ in manual_entries if entry.entry_type == 'expense') +
-            (self._get_grand_total_with_fallback('Grab_Net') * 1/74)
+            (self._get_grand_total_with_fallback('Grab_Net') * 1/74) + mpr_commission_total
         )
         self.ws.cell(row=row_start + 1, column=col_start + 2, value=total_expense).font = HEADER_FONT
         self.ws.cell(row=row_start + 1, column=col_start + 2).alignment = RIGHT_ALIGN
@@ -271,7 +274,10 @@ class ClosingSheet(BaseSheet):
             for label, header, _ in self._get_platform_definitions_for_mpr()
         ]
         for label, header in mpr_rows:
-            mpr_value = self._get_mpr_grand_total_with_fallback(header)
+            if header == 'MPR_Commission':
+                continue
+
+            mpr_value = self._get_mpr_display_value(header)
             if mpr_value is None:
                 continue
 
@@ -279,6 +285,15 @@ class ClosingSheet(BaseSheet):
             self.ws.cell(row=label_row, column=col_start, value=label).alignment = LEFT_ALIGN
             self.ws.cell(row=label_row, column=col_start, value=label).font = HEADER_FONT
             value_cell = self.ws.cell(row=label_row, column=col_start + 1, value=mpr_value)
+            value_cell.number_format = '#,##0'
+            value_cell.alignment = RIGHT_ALIGN
+            final_i += 1
+
+        if mpr_commission_total:
+            label_row = row_start + 1 + final_i + 1
+            self.ws.cell(row=label_row, column=col_start, value='MPR Commission 8%').alignment = LEFT_ALIGN
+            self.ws.cell(row=label_row, column=col_start, value='MPR Commission 8%').font = HEADER_FONT
+            value_cell = self.ws.cell(row=label_row, column=col_start + 2, value=mpr_commission_total)
             value_cell.number_format = '#,##0'
             value_cell.alignment = RIGHT_ALIGN
             final_i += 1
@@ -365,6 +380,59 @@ class ClosingSheet(BaseSheet):
             value_cell.font = HEADER_FONT
             value_cell.alignment = CENTER_ALIGN
             value_cell.fill = fill
+
+    def _get_report_value_with_fallback(self, report_data, header, date=None):
+        if not report_data:
+            return None
+
+        totals = report_data.get('grand_totals', {})
+        if date is not None:
+            totals = report_data.get('daily_totals', {}).get(date, {})
+
+        value = totals.get(header)
+        if header.endswith('_Mutation') and not value:
+            net_key = header.replace('_Mutation', '_Net')
+            value = totals.get(net_key, 0)
+        return value
+
+    def _get_mpr_base_value(self, header, date=None):
+        report_data = self.data.get('mpr_report_data')
+        if not report_data:
+            return None
+
+        if header == 'MPR_Commission':
+            return self._get_mpr_commission_total(date)
+
+        value = self._get_report_value_with_fallback(report_data, header, date)
+        if header != 'Grab_Net':
+            return value
+
+        totals = report_data.get('grand_totals', {})
+        if date is not None:
+            totals = report_data.get('daily_totals', {}).get(date, {})
+        return (value or 0) - totals.get('Grab_Commission', 0)
+
+    def _get_mpr_display_value(self, header, date=None):
+        if header == 'MPR_Commission':
+            return self._get_mpr_commission_total(date)
+
+        return self._get_report_value_with_fallback(self.data.get('mpr_report_data'), header, date)
+
+    def _get_mpr_commission_total(self, date=None):
+        headers = ['Gojek_Mutation', 'Grab_Net', 'Shopee_Net', 'Tiktok_Net']
+        commission_total = 0
+        has_value = False
+
+        for header in headers:
+            base_value = self._get_mpr_base_value(header, date)
+            if base_value is None:
+                continue
+            has_value = True
+            commission_total += base_value * self.MPR_COMMISSION_RATE
+
+        if not has_value:
+            return None
+        return commission_total
 
     def _apply_styles(self):
         # Apply borders to the main table

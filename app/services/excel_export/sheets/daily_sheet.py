@@ -74,17 +74,16 @@ class DailySheet(BaseSheet):
         all_dates = self.data['all_dates']
         daily_totals = self.data['daily_totals']
         minusan_by_date = self.data['minusan_by_date']
-        outlet_brand = self.data['outlet'].brand
         current_row = 6
 
         header_value_map = {
             'Date': lambda totals, date, minusan_total: date,
-            'GoFood': lambda totals, date, minusan_total: (totals.get('Gojek_Net', 0) - totals.get('Gojek_QRIS', 0)),
+            'GoFood': lambda totals, date, minusan_total: totals.get('Gojek_Net', 0) - totals.get('Gojek_QRIS', 0),
             'GO-PAY QRIS': lambda totals, date, minusan_total: totals.get('Gojek_QRIS', 0),
             'Gojek Net': lambda totals, date, minusan_total: totals.get('Gojek_Net', 0),
             'Gojek Mutation': lambda totals, date, minusan_total: totals.get('Gojek_Mutation', 0),
             'Gojek Difference': lambda totals, date, minusan_total: totals.get('Gojek_Difference', 0),
-            'GrabFood': lambda totals, date, minusan_total: (totals.get('Grab_Net', 0) - totals.get('GrabOVO_Net', 0)),
+            'GrabFood': lambda totals, date, minusan_total: totals.get('Grab_Net', 0) - totals.get('GrabOVO_Net', 0),
             'GrabOVO': lambda totals, date, minusan_total: totals.get('GrabOVO_Net', 0),
             'Grab Net': lambda totals, date, minusan_total: totals.get('Grab_Net', 0),
             'Grab Net (ac)': lambda totals, date, minusan_total: totals.get('Grab_Commission', 0),
@@ -107,13 +106,6 @@ class DailySheet(BaseSheet):
         for date in all_dates:
             totals = daily_totals.get(date, {})
             minusan_total = minusan_by_date.get(date, 0)
-
-            # Recalculate Grab_Commission for the specific date
-            if outlet_brand not in ["Pukis & Martabak Kota Baru"]:
-                totals['Grab_Commission'] = totals.get('Grab_Net', 0) - (totals.get('Grab_Net', 0) * 1/74)
-            else:
-                totals['Grab_Commission'] = 0
-
             row_data = [
                 header_value_map[header](totals, date, minusan_total) if header in header_value_map else None
                 for header in headers
