@@ -403,14 +403,7 @@ class ClosingSheet(BaseSheet):
         if header == 'MPR_Commission':
             return self._get_mpr_commission_total(date)
 
-        value = self._get_report_value_with_fallback(report_data, header, date)
-        if header != 'Grab_Net':
-            return value
-
-        totals = report_data.get('grand_totals', {})
-        if date is not None:
-            totals = report_data.get('daily_totals', {}).get(date, {})
-        return (value or 0) - totals.get('Grab_Commission', 0)
+        return self._get_report_value_with_fallback(report_data, header, date)
 
     def _get_mpr_display_value(self, header, date=None):
         if header == 'MPR_Commission':

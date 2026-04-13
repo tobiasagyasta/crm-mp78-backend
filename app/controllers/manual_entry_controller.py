@@ -6,8 +6,75 @@ from app.models.expense_category import ExpenseCategory
 from datetime import datetime
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import func
+from app.services.manual_entry_import_service import (
+    import_manual_entries_from_adm_csv_content,
+    parse_uploaded_date,
+)
 
 manual_entries_bp = Blueprint('manual_entries', __name__, url_prefix='/manual-entries')
+
+
+@manual_entries_bp.route('/import-adm-expenses', methods=['POST'])
+def import_adm_expenses():
+    files = request.files.getlist('file')
+    if not files:
+        files = [request.files.get('file')]
+
+    if not files or not files[0]:
+        return jsonify({'msg': 'No files uploaded'}), 400
+
+    try:
+        uploaded_date = parse_uploaded_date(request.form.get('uploaded_date'))
+        results = []
+        total_created_entries = 0
+        total_skipped_duplicates = 0
+        total_processed_rows = 0
+        total_rows_in_csv = 0
+        total_skipped_missing_brand = 0
+        total_fallback_calendar_ranges = 0
+        missing_outlet_codes = set()
+
+        for file in files:
+            if not file or file.filename == '':
+                continue
+
+            file_contents = file.read().decode('utf-8-sig')
+            result = import_manual_entries_from_adm_csv_content(
+                file_contents=file_contents,
+                uploaded_date=uploaded_date,
+                source_name=file.filename,
+            )
+            results.append(result)
+            total_created_entries += result['created_entries']
+            total_skipped_duplicates += result['skipped_duplicates']
+            total_processed_rows += result['processed_rows']
+            total_rows_in_csv += result['rows_in_csv']
+            total_skipped_missing_brand += result['skipped_missing_brand']
+            total_fallback_calendar_ranges += result['fallback_calendar_ranges']
+            missing_outlet_codes.update(result['missing_outlet_codes'])
+
+        if not results:
+            return jsonify({'msg': 'No files uploaded'}), 400
+
+        status_code = 201 if total_created_entries > 0 else 200
+        return jsonify({
+            'status': 'ok',
+            'uploaded_date': uploaded_date.isoformat(),
+            'files': results,
+            'total_files': len(results),
+            'total_rows_in_csv': total_rows_in_csv,
+            'total_processed_rows': total_processed_rows,
+            'total_created_entries': total_created_entries,
+            'total_skipped_duplicates': total_skipped_duplicates,
+            'total_skipped_missing_brand': total_skipped_missing_brand,
+            'total_fallback_calendar_ranges': total_fallback_calendar_ranges,
+            'missing_outlet_codes': sorted(missing_outlet_codes),
+        }), status_code
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
 
 @manual_entries_bp.route('/', methods=['POST'])
 def create_entry():
