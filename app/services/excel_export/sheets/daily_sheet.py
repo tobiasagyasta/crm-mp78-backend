@@ -86,7 +86,7 @@ class DailySheet(BaseSheet):
             'GrabFood': lambda totals, date, minusan_total: totals.get('Grab_Net', 0) - totals.get('GrabOVO_Net', 0),
             'GrabOVO': lambda totals, date, minusan_total: totals.get('GrabOVO_Net', 0),
             'Grab Net': lambda totals, date, minusan_total: totals.get('Grab_Net', 0),
-            'Grab Net (ac)': lambda totals, date, minusan_total: totals.get('Grab_Commission', 0),
+            'Grab Net (ac)': lambda totals, date, minusan_total: totals.get('Grab_Net', 0) - totals.get('Grab_Commission', 0),
             'Shopee Net': lambda totals, date, minusan_total: totals.get('Shopee_Net', 0),
             'Shopee Mutation': lambda totals, date, minusan_total: totals.get('Shopee_Mutation', 0),
             'Shopee Difference': lambda totals, date, minusan_total: totals.get('Shopee_Difference', 0),
