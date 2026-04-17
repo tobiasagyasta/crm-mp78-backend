@@ -1,4 +1,5 @@
 from openpyxl.styles import PatternFill
+from openpyxl.utils import get_column_letter
 from app.services.excel_export.base_sheet import BaseSheet
 from app.services.excel_export.utils.excel_utils import (
     HEADER_FONT, YELLOW_FILL, CENTER_ALIGN, GOJEK_FILL, GRAB_FILL, SHOPEE_FILL,
@@ -7,6 +8,8 @@ from app.services.excel_export.utils.excel_utils import (
 )
 
 class DailySheet(BaseSheet):
+    MPR_COMMISSION_RATE = 0.08
+
     def __init__(self, workbook, data, sheet_name='Daily'):
         super().__init__(workbook, sheet_name, data)
 
@@ -15,7 +18,7 @@ class DailySheet(BaseSheet):
         self._write_headers()
         self._write_data()
         self._write_grand_total()
-        set_column_widths(self.ws, {'A': 12, 'B': 15, 'C': 15, 'D': 15, 'E': 15, 'F': 15, 'G': 15, 'H': 15, 'I': 15, 'J': 15, 'K': 15, 'L': 15, 'M': 15, 'N': 15, 'O': 15, 'P': 15, 'Q': 15, 'R': 15, 'S': 15})
+        self._set_column_widths()
 
     def _write_title(self):
         self.ws['A1'] = 'Sales Report'
@@ -36,7 +39,23 @@ class DailySheet(BaseSheet):
         ]
         extra_headers = ['Cash Income (Admin)', 'Cash Expense (Admin)', 'Sisa Cash (Admin)', 'Minusan (Mutasi)']
 
-        if user_role == "management" and outlet_brand not in ["Pukis & Martabak Kota Baru", "Es Ce Hun Tiau & Bongko Wendy"]:
+        if outlet_brand == 'MPR':
+            base_headers = [
+                'Date',
+                'GoFood', 'GO-PAY QRIS', 'Gojek Net', 'Gojek Mutation', 'Gojek Net (ac)', 'Gojek Difference',
+                'GrabFood', 'GrabOVO', 'Grab Net', 'Grab Net (ac)',
+                'Shopee Net', 'Shopee Mutation', 'Shopee Net (ac)', 'Shopee Difference',
+                'ShopeePay Net', 'ShopeePay Mutation', 'ShopeePay Net (ac)', 'ShopeePay Difference',
+                'Tiktok Net', 'Tiktok Net (ac)',
+                'Qpon Net', 'Qpon Net (ac)',
+                'Webshop Net', 'Webshop Net (ac)',
+                'UV'
+            ]
+
+        if (
+            user_role == "management"
+            and outlet_brand not in ["MPR", "Pukis & Martabak Kota Baru", "Es Ce Hun Tiau & Bongko Wendy"]
+        ):
             base_headers.insert(8, 'Grab Net')
 
         if outlet_brand == "Pukis & Martabak Kota Baru" or outlet_brand == "Es Ce Hun Tiau & Bongko Wendy":
@@ -50,11 +69,33 @@ class DailySheet(BaseSheet):
                 base_headers.remove('Grab Net')
         return base_headers
 
+    def _get_value_with_mutation_fallback(self, totals, mutation_key, net_key):
+        return totals.get(mutation_key) or totals.get(net_key, 0)
+
+    def _get_mpr_adjusted_value(self, totals, net_key, mutation_key=None):
+        display_value = (
+            self._get_value_with_mutation_fallback(totals, mutation_key, net_key)
+            if mutation_key else totals.get(net_key, 0)
+        )
+        return display_value - (self.MPR_COMMISSION_RATE * totals.get(net_key, 0))
+
+    def _set_column_widths(self):
+        widths = {
+            get_column_letter(col): 15
+            for col in range(1, self.ws.max_column + 1)
+        }
+        widths['A'] = 12
+        set_column_widths(self.ws, widths)
+
     def _write_headers(self):
         headers = self._get_headers()
         header_colors = {
             'Date': DATE_FILL, 'GoFood': GOJEK_FILL, 'GO-PAY QRIS': GOJEK_FILL, 'Gojek Net': GOJEK_FILL, 'Gojek Mutation': GOJEK_FILL,
             'Gojek Difference': DIFFERENCE_FILL, 'GrabFood': GRAB_FILL, 'GrabOVO': GRAB_FILL, 'Grab Net': GRAB_FILL, 'Grab Net (ac)': GRAB_FILL,
+            'Gojek Net (ac)': GOJEK_FILL, 'Grab Net (ac)': GRAB_FILL,
+            'Shopee Net (ac)': SHOPEE_FILL, 'ShopeePay Net (ac)': SHOPEEPAY_FILL,
+            'Tiktok Net (ac)': TIKTOK_FILL, 'Qpon Net (ac)': TIKTOK_FILL,
+            'Webshop Net (ac)': TIKTOK_FILL,
             'Shopee Net': SHOPEE_FILL, 'Shopee Mutation': SHOPEE_FILL, 'Shopee Difference': DIFFERENCE_FILL,
             'ShopeePay Net': SHOPEEPAY_FILL, 'ShopeePay Mutation': SHOPEEPAY_FILL, 'ShopeePay Difference': DIFFERENCE_FILL,
             'Tiktok Net': TIKTOK_FILL, 'Qpon Net': TIKTOK_FILL, 'Webshop Net': TIKTOK_FILL,
@@ -82,20 +123,27 @@ class DailySheet(BaseSheet):
             'GO-PAY QRIS': lambda totals, date, minusan_total: totals.get('Gojek_QRIS', 0),
             'Gojek Net': lambda totals, date, minusan_total: totals.get('Gojek_Net', 0),
             'Gojek Mutation': lambda totals, date, minusan_total: totals.get('Gojek_Mutation', 0),
+            'Gojek Net (ac)': lambda totals, date, minusan_total: self._get_mpr_adjusted_value(totals, 'Gojek_Net', 'Gojek_Mutation'),
             'Gojek Difference': lambda totals, date, minusan_total: totals.get('Gojek_Difference', 0),
             'GrabFood': lambda totals, date, minusan_total: totals.get('Grab_Net', 0) - totals.get('GrabOVO_Net', 0),
             'GrabOVO': lambda totals, date, minusan_total: totals.get('GrabOVO_Net', 0),
             'Grab Net': lambda totals, date, minusan_total: totals.get('Grab_Net', 0),
             'Grab Net (ac)': lambda totals, date, minusan_total: totals.get('Grab_Net', 0) - totals.get('Grab_Commission', 0),
+            'Grab Net (ac)': lambda totals, date, minusan_total: self._get_mpr_adjusted_value(totals, 'Grab_Net'),
             'Shopee Net': lambda totals, date, minusan_total: totals.get('Shopee_Net', 0),
             'Shopee Mutation': lambda totals, date, minusan_total: totals.get('Shopee_Mutation', 0),
+            'Shopee Net (ac)': lambda totals, date, minusan_total: self._get_mpr_adjusted_value(totals, 'Shopee_Net', 'Shopee_Mutation'),
             'Shopee Difference': lambda totals, date, minusan_total: totals.get('Shopee_Difference', 0),
             'ShopeePay Net': lambda totals, date, minusan_total: totals.get('ShopeePay_Net', 0),
             'ShopeePay Mutation': lambda totals, date, minusan_total: totals.get('ShopeePay_Mutation', 0),
+            'ShopeePay Net (ac)': lambda totals, date, minusan_total: self._get_mpr_adjusted_value(totals, 'ShopeePay_Net', 'ShopeePay_Mutation'),
             'ShopeePay Difference': lambda totals, date, minusan_total: totals.get('ShopeePay_Difference', 0),
             'Tiktok Net': lambda totals, date, minusan_total: totals.get('Tiktok_Net', 0),
+            'Tiktok Net (ac)': lambda totals, date, minusan_total: self._get_mpr_adjusted_value(totals, 'Tiktok_Net'),
             'Qpon Net': lambda totals, date, minusan_total: totals.get('Qpon_Net', 0),
+            'Qpon Net (ac)': lambda totals, date, minusan_total: self._get_mpr_adjusted_value(totals, 'Qpon_Net'),
             'Webshop Net': lambda totals, date, minusan_total: totals.get('Webshop_Net', 0),
+            'Webshop Net (ac)': lambda totals, date, minusan_total: self._get_mpr_adjusted_value(totals, 'Webshop_Net'),
             'UV': lambda totals, date, minusan_total: totals.get('UV', 0),
             'Cash Income (Admin)': lambda totals, date, minusan_total: totals.get('Cash_Income', 0),
             'Cash Expense (Admin)': lambda totals, date, minusan_total: totals.get('Cash_Expense', 0),
@@ -138,20 +186,27 @@ class DailySheet(BaseSheet):
             'GO-PAY QRIS': lambda: grand_totals.get('Gojek_QRIS', 0),
             'Gojek Net': lambda: grand_totals.get('Gojek_Net', 0),
             'Gojek Mutation': lambda: grand_totals.get('Gojek_Mutation', 0),
+            'Gojek Net (ac)': lambda: self._get_mpr_adjusted_value(grand_totals, 'Gojek_Net', 'Gojek_Mutation'),
             'Gojek Difference': lambda: grand_totals.get('Gojek_Difference', 0),
             'GrabFood': lambda: grand_totals.get('Grab_Net', 0) - grand_totals.get('GrabOVO_Net', 0),
             'GrabOVO': lambda: grand_totals.get('GrabOVO_Net', 0),
             'Grab Net': lambda: grand_totals.get('Grab_Net', 0),
             'Grab Net (ac)': lambda: grand_totals.get('Grab_Net', 0) - grand_totals.get('Grab_Commission', 0),
+            'Grab Net (ac)': lambda: self._get_mpr_adjusted_value(grand_totals, 'Grab_Net'),
             'Shopee Net': lambda: grand_totals.get('Shopee_Net', 0),
             'Shopee Mutation': lambda: grand_totals.get('Shopee_Mutation', 0),
+            'Shopee Net (ac)': lambda: self._get_mpr_adjusted_value(grand_totals, 'Shopee_Net', 'Shopee_Mutation'),
             'Shopee Difference': lambda: grand_totals.get('Shopee_Difference', 0),
             'ShopeePay Net': lambda: grand_totals.get('ShopeePay_Net', 0),
             'ShopeePay Mutation': lambda: grand_totals.get('ShopeePay_Mutation', 0),
+            'ShopeePay Net (ac)': lambda: self._get_mpr_adjusted_value(grand_totals, 'ShopeePay_Net', 'ShopeePay_Mutation'),
             'ShopeePay Difference': lambda: grand_totals.get('ShopeePay_Difference', 0),
             'Tiktok Net': lambda: grand_totals.get('Tiktok_Net', 0),
+            'Tiktok Net (ac)': lambda: self._get_mpr_adjusted_value(grand_totals, 'Tiktok_Net'),
             'Qpon Net': lambda: grand_totals.get('Qpon_Net', 0),
+            'Qpon Net (ac)': lambda: self._get_mpr_adjusted_value(grand_totals, 'Qpon_Net'),
             'Webshop Net': lambda: grand_totals.get('Webshop_Net', 0),
+            'Webshop Net (ac)': lambda: self._get_mpr_adjusted_value(grand_totals, 'Webshop_Net'),
             'UV': lambda: grand_totals.get('UV', 0),
             'Cash Income (Admin)': lambda: grand_totals.get('Cash_Income', 0),
             'Cash Expense (Admin)': lambda: grand_totals.get('Cash_Expense', 0),
