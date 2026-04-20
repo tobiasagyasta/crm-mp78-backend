@@ -133,8 +133,8 @@ def resolve_manual_entry_date_range(
     return start_date, end_date, False
 
 
-def _build_description(expense_category: str, start_date: date, end_date: date) -> str:
-    return f"{expense_category} {start_date.isoformat()} to {end_date.isoformat()}"
+def _build_description(start_date: date, end_date: date) -> str:
+    return f" {start_date.isoformat()} to {end_date.isoformat()}"
 
 
 def _parse_amount(value: str, category_name: str, row_number: int) -> Decimal | None:
@@ -291,7 +291,7 @@ def import_manual_entries_from_adm_csv_content(
                     outlet_code=outlet_code,
                     brand_name=brand_name,
                     amount=amount,
-                    description=_build_description(expense_category_name, start_date, end_date),
+                    description=_build_description(start_date, end_date),
                     start_date=start_date,
                     end_date=end_date,
                     category_id=expense_category.id,
