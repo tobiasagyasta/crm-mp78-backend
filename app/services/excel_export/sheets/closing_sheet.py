@@ -63,16 +63,14 @@ class ClosingSheet(BaseSheet):
             cell.value = name
             cell.font = HEADER_FONT
             cell.alignment = CENTER_ALIGN
-            if name in ['Gojek', 'Gojek MPR']:
+            if name in ['Gojek', 'Gojek MPR (ac)']:
                 cell.fill = GOJEK_FILL
-            elif name in ['Grab', 'Grab MPR', 'Grab(OVO)']:
+            elif name in ['Grab', 'Grab MPR (ac)', 'Grab(OVO)']:
                 cell.fill = GRAB_FILL
-            elif name in ['ShopeeFood', 'ShopeePay', 'Shopee MPR']:
+            elif name in ['ShopeeFood', 'ShopeePay', 'Shopee MPR (ac)']:
                 cell.fill = SHOPEE_FILL
-            elif name in ['Tiktok', 'Tiktok MPR', 'Qpon', 'Webshop']:
+            elif name in ['Tiktok', 'Tiktok MPR (ac)', 'Qpon', 'Webshop']:
                 cell.fill = TIKTOK_FILL
-            elif name == 'MPR Commission':
-                cell.fill = DIFFERENCE_FILL
 
         closing_row += 2
 
@@ -145,11 +143,10 @@ class ClosingSheet(BaseSheet):
 
     def _get_platform_definitions_for_mpr(self):
         return [
-            ('Gojek MPR', 'Gojek_Mutation', 'mpr'),
-            ('Grab MPR', 'Grab_Net', 'mpr'),
-            ('Shopee MPR', 'Shopee_Net', 'mpr'),
-            ('Tiktok MPR', 'Tiktok_Net', 'mpr'),
-            ('MPR Commission', 'MPR_Commission', 'mpr'),
+            ('Gojek MPR (ac)', 'Gojek_Mutation', 'mpr'),
+            ('Grab MPR (ac)', 'Grab_Net', 'mpr'),
+            ('Shopee MPR (ac)', 'Shopee_Net', 'mpr'),
+            ('Tiktok MPR (ac)', 'Tiktok_Net', 'mpr'),
         ]
 
     def _get_main_table_platforms(self):
@@ -174,11 +171,10 @@ class ClosingSheet(BaseSheet):
             ('Tiktok', 'Tiktok_Net', 'main'),
             ('Qpon', 'Qpon_Net', 'main'),
             ('Webshop', 'Webshop_Net', 'main'),
-            ('Gojek MPR', 'Gojek_Mutation', 'mpr'),
-            ('Grab MPR', 'Grab_Net', 'mpr'),
-            ('Shopee MPR', 'Shopee_Net', 'mpr'),
-            ('Tiktok MPR', 'Tiktok_Net', 'mpr'),
-            ('MPR Commission', 'MPR_Commission', 'mpr'),
+            ('Gojek MPR (ac)', 'Gojek_Mutation', 'mpr'),
+            ('Grab MPR (ac)', 'Grab_Net', 'mpr'),
+            ('Shopee MPR (ac)', 'Shopee_Net', 'mpr'),
+            ('Tiktok MPR (ac)', 'Tiktok_Net', 'mpr'),
         ]
 
     def _get_platform_grand_total_with_fallback(self, report_type, header):
@@ -233,10 +229,9 @@ class ClosingSheet(BaseSheet):
         self.ws.cell(row=row_start + 1, column=col_start + 1).fill = GRAB_FILL
         self.ws.cell(row=row_start, column=col_start + 1).fill = GRAB_FILL
 
-        mpr_commission_total = self._get_mpr_display_value('MPR_Commission') or 0
         total_expense = (
             sum(float(entry.amount) for entry, _, _ in manual_entries if entry.entry_type == 'expense') +
-            (self._get_grand_total_with_fallback('Grab_Net') * 1/74) + mpr_commission_total
+            (self._get_grand_total_with_fallback('Grab_Net') * 1/74)
         )
         self.ws.cell(row=row_start + 1, column=col_start + 2, value=total_expense).font = HEADER_FONT
         self.ws.cell(row=row_start + 1, column=col_start + 2).alignment = RIGHT_ALIGN
@@ -274,9 +269,6 @@ class ClosingSheet(BaseSheet):
             for label, header, _ in self._get_platform_definitions_for_mpr()
         ]
         for label, header in mpr_rows:
-            if header == 'MPR_Commission':
-                continue
-
             mpr_value = self._get_mpr_display_value(header)
             if mpr_value is None:
                 continue
@@ -285,15 +277,6 @@ class ClosingSheet(BaseSheet):
             self.ws.cell(row=label_row, column=col_start, value=label).alignment = LEFT_ALIGN
             self.ws.cell(row=label_row, column=col_start, value=label).font = HEADER_FONT
             value_cell = self.ws.cell(row=label_row, column=col_start + 1, value=mpr_value)
-            value_cell.number_format = '#,##0'
-            value_cell.alignment = RIGHT_ALIGN
-            final_i += 1
-
-        if mpr_commission_total:
-            label_row = row_start + 1 + final_i + 1
-            self.ws.cell(row=label_row, column=col_start, value='MPR Commission 8%').alignment = LEFT_ALIGN
-            self.ws.cell(row=label_row, column=col_start, value='MPR Commission 8%').font = HEADER_FONT
-            value_cell = self.ws.cell(row=label_row, column=col_start + 2, value=mpr_commission_total)
             value_cell.number_format = '#,##0'
             value_cell.alignment = RIGHT_ALIGN
             final_i += 1
@@ -395,37 +378,16 @@ class ClosingSheet(BaseSheet):
             value = totals.get(net_key, 0)
         return value
 
-    def _get_mpr_base_value(self, header, date=None):
-        report_data = self.data.get('mpr_report_data')
-        if not report_data:
-            return None
-
-        if header == 'MPR_Commission':
-            return self._get_mpr_commission_total(date)
-
-        return self._get_report_value_with_fallback(report_data, header, date)
+    def _is_mpr_adjusted_header(self, header):
+        return header in {'Gojek_Mutation', 'Grab_Net', 'Shopee_Net', 'Tiktok_Net'}
 
     def _get_mpr_display_value(self, header, date=None):
-        if header == 'MPR_Commission':
-            return self._get_mpr_commission_total(date)
-
-        return self._get_report_value_with_fallback(self.data.get('mpr_report_data'), header, date)
-
-    def _get_mpr_commission_total(self, date=None):
-        headers = ['Gojek_Mutation', 'Grab_Net', 'Shopee_Net', 'Tiktok_Net']
-        commission_total = 0
-        has_value = False
-
-        for header in headers:
-            base_value = self._get_mpr_base_value(header, date)
-            if base_value is None:
-                continue
-            has_value = True
-            commission_total += base_value * self.MPR_COMMISSION_RATE
-
-        if not has_value:
+        value = self._get_report_value_with_fallback(self.data.get('mpr_report_data'), header, date)
+        if value is None:
             return None
-        return commission_total
+        if self._is_mpr_adjusted_header(header):
+            return value * (1 - self.MPR_COMMISSION_RATE)
+        return value
 
     def _apply_styles(self):
         # Apply borders to the main table
