@@ -9,6 +9,7 @@ from app.services.excel_export.utils.excel_utils import (
 
 class DailySheet(BaseSheet):
     MPR_COMMISSION_RATE = 0.08
+    MANAGEMENT_COMMISSION_RATE = 1 / 74
 
     def __init__(self, workbook, data, sheet_name='Daily'):
         super().__init__(workbook, sheet_name, data)
@@ -79,6 +80,17 @@ class DailySheet(BaseSheet):
         )
         return display_value - (self.MPR_COMMISSION_RATE * totals.get(net_key, 0))
 
+    def _get_grab_net_ac_value(self, totals):
+        if self.data['outlet'].brand == 'MPR':
+            return self._get_mpr_adjusted_value(totals, 'Grab_Net')
+
+        grab_net = totals.get('Grab_Net', 0)
+        management_commission = totals.get(
+            'Grab_Commission',
+            grab_net * self.MANAGEMENT_COMMISSION_RATE
+        )
+        return grab_net - management_commission
+
     def _set_column_widths(self):
         widths = {
             get_column_letter(col): 15
@@ -128,8 +140,7 @@ class DailySheet(BaseSheet):
             'GrabFood': lambda totals, date, minusan_total: totals.get('Grab_Net', 0) - totals.get('GrabOVO_Net', 0),
             'GrabOVO': lambda totals, date, minusan_total: totals.get('GrabOVO_Net', 0),
             'Grab Net': lambda totals, date, minusan_total: totals.get('Grab_Net', 0),
-            'Grab Net (ac)': lambda totals, date, minusan_total: totals.get('Grab_Net', 0) - totals.get('Grab_Commission', 0),
-            'Grab Net (ac)': lambda totals, date, minusan_total: self._get_mpr_adjusted_value(totals, 'Grab_Net'),
+            'Grab Net (ac)': lambda totals, date, minusan_total: self._get_grab_net_ac_value(totals),
             'Shopee Net': lambda totals, date, minusan_total: totals.get('Shopee_Net', 0),
             'Shopee Mutation': lambda totals, date, minusan_total: totals.get('Shopee_Mutation', 0),
             'Shopee Net (ac)': lambda totals, date, minusan_total: self._get_mpr_adjusted_value(totals, 'Shopee_Net', 'Shopee_Mutation'),
@@ -191,8 +202,7 @@ class DailySheet(BaseSheet):
             'GrabFood': lambda: grand_totals.get('Grab_Net', 0) - grand_totals.get('GrabOVO_Net', 0),
             'GrabOVO': lambda: grand_totals.get('GrabOVO_Net', 0),
             'Grab Net': lambda: grand_totals.get('Grab_Net', 0),
-            'Grab Net (ac)': lambda: grand_totals.get('Grab_Net', 0) - grand_totals.get('Grab_Commission', 0),
-            'Grab Net (ac)': lambda: self._get_mpr_adjusted_value(grand_totals, 'Grab_Net'),
+            'Grab Net (ac)': lambda: self._get_grab_net_ac_value(grand_totals),
             'Shopee Net': lambda: grand_totals.get('Shopee_Net', 0),
             'Shopee Mutation': lambda: grand_totals.get('Shopee_Mutation', 0),
             'Shopee Net (ac)': lambda: self._get_mpr_adjusted_value(grand_totals, 'Shopee_Net', 'Shopee_Mutation'),
