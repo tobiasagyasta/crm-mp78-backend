@@ -11,6 +11,14 @@ from app.services.excel_export.utils.excel_utils import (
 class DailySheet(BaseSheet):
     MPR_COMMISSION_RATE = 0.08
     MANAGEMENT_COMMISSION_RATE = 1 / 74
+    OPTIONAL_MPR_AC_HEADERS = {
+        'Gojek Net (ac)',
+        'Shopee Net (ac)',
+        'ShopeePay Net (ac)',
+        'Tiktok Net (ac)',
+        'Qpon Net (ac)',
+        'Webshop Net (ac)',
+    }
 
     def __init__(self, workbook, data, sheet_name='Daily'):
         super().__init__(workbook, sheet_name, data)
@@ -70,6 +78,13 @@ class DailySheet(BaseSheet):
             base_headers.insert(9, 'Grab Net (ac)')
             if 'Grab Net' in base_headers:
                 base_headers.remove('Grab Net')
+
+        if outlet_brand == 'MPR' and not self._current_outlet_has_mpr_mapping():
+            base_headers = [
+                header for header in base_headers
+                if header not in self.OPTIONAL_MPR_AC_HEADERS
+            ]
+
         return base_headers
 
     def _get_value_with_mutation_fallback(self, totals, mutation_key, net_key):
