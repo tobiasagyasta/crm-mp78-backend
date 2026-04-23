@@ -1,5 +1,6 @@
 from openpyxl.styles import PatternFill
 from openpyxl.utils import get_column_letter
+from app.models.mpr_mapping import MprMapping
 from app.services.excel_export.base_sheet import BaseSheet
 from app.services.excel_export.utils.excel_utils import (
     HEADER_FONT, YELLOW_FILL, CENTER_ALIGN, GOJEK_FILL, GRAB_FILL, SHOPEE_FILL,
@@ -13,6 +14,7 @@ class DailySheet(BaseSheet):
 
     def __init__(self, workbook, data, sheet_name='Daily'):
         super().__init__(workbook, sheet_name, data)
+        self._has_mpr_mapping = None
 
     def generate(self):
         self._write_title()
@@ -80,8 +82,20 @@ class DailySheet(BaseSheet):
         )
         return display_value - (self.MPR_COMMISSION_RATE * totals.get(net_key, 0))
 
+    def _current_outlet_has_mpr_mapping(self):
+        if self._has_mpr_mapping is None:
+            outlet_code = self.data['outlet'].outlet_code
+            self._has_mpr_mapping = (
+                MprMapping.query.filter_by(mpr_outlet_code=outlet_code).first() is not None
+            )
+
+        return self._has_mpr_mapping
+
     def _get_grab_net_ac_value(self, totals):
-        if self.data['outlet'].brand == 'MPR':
+        if (
+            self.data['outlet'].brand == 'MPR'
+            and self._current_outlet_has_mpr_mapping()
+        ):
             return self._get_mpr_adjusted_value(totals, 'Grab_Net')
 
         grab_net = totals.get('Grab_Net', 0)
