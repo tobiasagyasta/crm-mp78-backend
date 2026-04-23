@@ -1,5 +1,5 @@
 from collections import defaultdict
-from datetime import date
+from datetime import date, timedelta
 
 from app.extensions import db
 from app.models.daily_merchant_totals import DailyMerchantTotal
@@ -52,6 +52,30 @@ def _resolve_financial_period(
             financial_year -= 1
 
     return financial_year, financial_month
+
+
+def _next_month(period_year: int, period_month: int) -> tuple[int, int]:
+    if period_month == 12:
+        return period_year + 1, 1
+    return period_year, period_month + 1
+
+
+def _build_period_window(
+    period_year: int,
+    period_month: int,
+    closing_date_str: str | None,
+) -> tuple[date, date]:
+    opening_day = _parse_opening_day(closing_date_str)
+    if not opening_day:
+        period_start = date(period_year, period_month, 1)
+        next_year, next_month = _next_month(period_year, period_month)
+        period_end = date(next_year, next_month, 1) - timedelta(days=1)
+        return period_start, period_end
+
+    next_year, next_month = _next_month(period_year, period_month)
+    period_start = date(period_year, period_month, 1) + timedelta(days=opening_day - 1)
+    period_end = date(next_year, next_month, 1) + timedelta(days=opening_day - 2)
+    return period_start, period_end
 
 
 def generate_monthly_net_income_data(
@@ -144,6 +168,142 @@ def generate_monthly_net_income_data(
             'periods': periods,
             'outlets': data,
         }
+
+    return data
+
+
+def generate_monthly_net_income_data_from_closing_anchor(
+    brand_name: str,
+    start_date: date,
+    end_date: date,
+) -> dict:
+    """
+    Generates monthly Grab net total data for calendar months between ``start_date``
+    and ``end_date``, but expands each month into the outlet's financial closing
+    window.
+    """
+    outlets = Outlet.query.filter_by(brand=brand_name, status='Active').all()
+    if not outlets:
+        return {}
+
+    periods = _month_range(start_date, end_date)
+    period_set = set(periods)
+    outlet_map = {str(outlet.outlet_code): outlet for outlet in outlets}
+
+    query_start_date: date | None = None
+    query_end_date: date | None = None
+    for outlet in outlets:
+        first_period_start, _ = _build_period_window(
+            periods[0][0],
+            periods[0][1],
+            outlet.closing_date,
+        )
+        _, last_period_end = _build_period_window(
+            periods[-1][0],
+            periods[-1][1],
+            outlet.closing_date,
+        )
+        if query_start_date is None or first_period_start < query_start_date:
+            query_start_date = first_period_start
+        if query_end_date is None or last_period_end > query_end_date:
+            query_end_date = last_period_end
+
+    grab_reports = GrabFoodReport.query.filter(
+        GrabFoodReport.brand_name == brand_name,
+        db.func.cast(GrabFoodReport.tanggal_dibuat, db.Date) >= query_start_date,
+        db.func.cast(GrabFoodReport.tanggal_dibuat, db.Date) <= query_end_date,
+    ).all()
+
+    data = {}
+    for outlet in outlets:
+        opening_day = _parse_opening_day(outlet.closing_date)
+        closing_day_display = outlet.closing_date if opening_day else 'Calendar'
+        data[outlet.outlet_code] = {
+            'name': outlet.outlet_name_gojek,
+            'closing_day': closing_day_display,
+            'monthly_totals': {period: 0 for period in periods},
+            'total': 0,
+        }
+
+    for report in grab_reports:
+        if not report.tanggal_dibuat:
+            continue
+
+        outlet = outlet_map.get(str(report.outlet_code))
+        if not outlet:
+            continue
+
+        financial_year, financial_month = _resolve_financial_period(
+            report.tanggal_dibuat.date(),
+            outlet.closing_date,
+        )
+        period_key = (financial_year, financial_month)
+        if period_key not in period_set:
+            continue
+
+        net_total = float(report.total or 0)
+        data[outlet.outlet_code]['monthly_totals'][period_key] += net_total
+        data[outlet.outlet_code]['total'] += net_total
+
+    return {
+        'periods': periods,
+        'outlets': data,
+    }
+
+
+def generate_monthly_grab_net_income_data(
+    brand_name: str,
+    year: int,
+) -> dict:
+    """
+    Generates aggregated monthly Grab net totals for all active outlets of a brand.
+
+    Financial month grouping follows each outlet's ``closing_date`` and falls back
+    to regular calendar months when the closing range is not configured.
+    """
+    outlets = Outlet.query.filter_by(brand=brand_name, status='Active').all()
+    if not outlets:
+        return {}
+
+    outlet_map = {outlet.outlet_code: outlet for outlet in outlets}
+    data = {}
+    for outlet in outlets:
+        opening_day = _parse_opening_day(outlet.closing_date)
+        closing_day_display = outlet.closing_date if opening_day else 'Calendar'
+        data[outlet.outlet_code] = {
+            'name': outlet.outlet_name_gojek or outlet.outlet_name_grab or outlet.outlet_code,
+            'closing_day': closing_day_display,
+            'monthly_totals': {i: 0 for i in range(1, 13)},
+            'total': 0,
+        }
+
+    query_start_date = date(year, 1, 1)
+    query_end_date = date(year + 1, 1, 31)
+    grab_reports = GrabFoodReport.query.filter(
+        GrabFoodReport.brand_name == brand_name,
+        db.func.cast(GrabFoodReport.tanggal_dibuat, db.Date) >= query_start_date,
+        db.func.cast(GrabFoodReport.tanggal_dibuat, db.Date) <= query_end_date,
+    ).all()
+
+    for report in grab_reports:
+        if not report.tanggal_dibuat:
+            continue
+
+        outlet = outlet_map.get(report.outlet_code)
+        if not outlet:
+            continue
+
+        transaction_date = report.tanggal_dibuat.date()
+        financial_year, financial_month = _resolve_financial_period(
+            transaction_date,
+            outlet.closing_date,
+        )
+        if financial_year != year or not (1 <= financial_month <= 12):
+            continue
+
+        net_total = float(report.total or 0)
+        data[outlet.outlet_code]['monthly_totals'][financial_month] += net_total
+        data[outlet.outlet_code]['total'] += net_total
 
     return data
 
@@ -287,3 +447,77 @@ def generate_monthly_mpr_commission_data(
         outlet_data['total_commission'] = total_commission
 
     return data
+
+
+def generate_monthly_management_commission_data(
+    brand_name: str,
+    year: int,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    commission_divisor: float = 74,
+) -> dict:
+    """
+    Generates monthly management commission data for a non-MPR brand.
+
+    Net totals follow each outlet's financial month based on ``closing_date`` and
+    fall back to calendar months when no valid closing range is configured.
+    """
+    normalized_brand_name = (brand_name or "").strip()
+    if not normalized_brand_name or normalized_brand_name.upper() == "MPR":
+        return {}
+
+    if start_date is None and end_date is None:
+        monthly_income_data = generate_monthly_grab_net_income_data(
+            normalized_brand_name,
+            year,
+        )
+    else:
+        monthly_income_data = generate_monthly_net_income_data_from_closing_anchor(
+            normalized_brand_name,
+            start_date,
+            end_date,
+        )
+    if not monthly_income_data:
+        return {}
+
+    if isinstance(monthly_income_data, dict) and "periods" in monthly_income_data:
+        periods = monthly_income_data.get("periods", [])
+        outlets = monthly_income_data.get("outlets", {})
+    else:
+        periods = list(range(1, 13))
+        outlets = monthly_income_data
+
+    transformed_outlets = {}
+    for outlet_code, outlet_data in outlets.items():
+        transformed_monthly_totals = {}
+        total_commission = 0
+        total_after_commission = 0
+
+        for period in periods:
+            raw_net_total = outlet_data.get("monthly_totals", {}).get(period, 0)
+            net_total = float(raw_net_total or 0)
+            commission_total = net_total / commission_divisor if commission_divisor else 0
+            net_after_commission = net_total - commission_total
+            transformed_monthly_totals[period] = {
+                "net_total": net_total,
+                "commission_total": commission_total,
+                "net_after_commission": net_after_commission,
+            }
+            total_commission += commission_total
+            total_after_commission += net_after_commission
+
+        transformed_outlets[outlet_code] = {
+            "name": outlet_data.get("name", outlet_code),
+            "closing_day": outlet_data.get("closing_day", "Calendar"),
+            "monthly_totals": transformed_monthly_totals,
+            "total_commission": total_commission,
+            "total_after_commission": total_after_commission,
+        }
+
+    return {
+        "brand_name": normalized_brand_name,
+        "periods": periods,
+        "outlets": transformed_outlets,
+        "commission_divisor": commission_divisor,
+        "commission_rate": (1 / commission_divisor) if commission_divisor else 0,
+    }

@@ -79,10 +79,14 @@ from flask import Blueprint, jsonify, request, send_file
 from openpyxl.workbook import Workbook
 
 from app.services.excel_export.sheets.monthly_income_sheet import MonthlyIncomeSheet
+from app.services.excel_export.sheets.monthly_management_commission_sheet import (
+    MonthlyManagementCommissionSheet,
+)
 from app.services.excel_export.sheets.monthly_mpr_commission_sheet import (
     MonthlyMprCommissionSheet,
 )
 from app.services.reporting_service import (
+    generate_monthly_management_commission_data,
     generate_monthly_mpr_commission_data,
     generate_monthly_net_income_data,
 )
@@ -2015,6 +2019,68 @@ def monthly_mpr_commission_report():
             )
         else:
             download_name = f"Monthly_mpr_commission_MPR_{year}.xlsx"
+
+        response = send_file(
+            output,
+            as_attachment=True,
+            download_name=download_name,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        response.headers['Access-Control-Expose-Headers'] = 'Content-Disposition'
+        response.headers['Referrer-Policy'] = 'no-referrer-when-downgrade'
+        return response
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@reports_bp.route("/monthly-management-commission", methods=["POST", "OPTIONS"])
+@cross_origin(expose_headers=["Content-Disposition"])
+def monthly_management_commission_report():
+    """
+    Generates and returns an Excel report of monthly management commission totals.
+    """
+    if request.method == 'OPTIONS':
+        return jsonify({'status': 'OK'}), 200
+
+    json_data = request.get_json(silent=True) or {}
+    brand_name = (json_data.get("brand_name") or "").strip()
+    if not brand_name:
+        return jsonify({"error": "brand_name is required"}), 400
+    if brand_name.upper() == "MPR":
+        return jsonify({"error": "brand_name must be a non-MPR brand"}), 400
+
+    year = json_data.get("year", datetime.now().year)
+    start_date, end_date, date_range_error = parse_date_range(request.args)
+    if date_range_error:
+        return jsonify({"error": date_range_error}), 400
+
+    try:
+        data = generate_monthly_management_commission_data(
+            brand_name,
+            year,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        if not data or not data.get("outlets"):
+            return jsonify({"error": "No data found for the given criteria"}), 404
+
+        workbook = openpyxl.Workbook()
+        if "Sheet" in workbook.sheetnames:
+            workbook.remove(workbook["Sheet"])
+
+        sheet = MonthlyManagementCommissionSheet(workbook, data)
+        sheet.generate()
+
+        output = io.BytesIO()
+        workbook.save(output)
+        output.seek(0)
+
+        if start_date and end_date:
+            download_name = (
+                f"Monthly_management_commission_{brand_name}_{start_date.isoformat()}_to_{end_date.isoformat()}.xlsx"
+            )
+        else:
+            download_name = f"Monthly_management_commission_{brand_name}_{year}.xlsx"
 
         response = send_file(
             output,
