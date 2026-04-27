@@ -1,5 +1,7 @@
 MPR_STANDARD_NET_RATE = 0.92
 MPR_QRIS_OVO_NET_RATE = 0.98
+MANAGEMENT_COMMISSION_RATE = 1 / 74
+ENABLE_MP78_MANAGEMENT_AC = True
 
 
 def value_with_mutation_fallback(totals, mutation_key, net_key):
@@ -99,6 +101,31 @@ def shopeepay_net_ac_value(totals):
 
 def standard_net_ac_value(totals, net_key):
     return totals.get(net_key, 0) * MPR_STANDARD_NET_RATE
+
+
+def management_net_ac_value(totals, net_key, difference_key=None):
+    net = totals.get(net_key, 0)
+    difference = (totals.get(difference_key) or 0) if difference_key else 0
+    return net - (net * MANAGEMENT_COMMISSION_RATE) + difference
+
+
+def mp78_ac_value_for_header(totals, header):
+    if header == 'Gojek_Mutation':
+        return management_net_ac_value(totals, 'Gojek_Net', 'Gojek_Difference')
+    if header == 'Grab_Net':
+        return management_net_ac_value(totals, 'Grab_Net', 'Grab_Difference')
+    if header == 'Shopee_Net':
+        return management_net_ac_value(totals, 'Shopee_Net', 'Shopee_Difference')
+    if header == 'ShopeePay_Net':
+        return management_net_ac_value(totals, 'ShopeePay_Net', 'ShopeePay_Difference')
+    if header == 'Tiktok_Net':
+        return management_net_ac_value(totals, 'Tiktok_Net')
+    if header == 'Qpon_Net':
+        return management_net_ac_value(totals, 'Qpon_Net')
+    if header == 'Webshop_Net':
+        return management_net_ac_value(totals, 'Webshop_Net')
+
+    return None
 
 
 def mpr_ac_value_for_header(totals, header):

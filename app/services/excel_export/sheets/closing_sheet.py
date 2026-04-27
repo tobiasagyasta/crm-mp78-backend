@@ -181,11 +181,15 @@ class ClosingSheet(BaseSheet):
     def _get_platform_grand_total_with_fallback(self, report_type, header):
         if report_type == 'mpr':
             return self._get_mpr_display_value(header)
+        if self._uses_mp78_management_ac():
+            return self._get_mp78_display_value(header)
         return self._get_grand_total_with_fallback(header)
 
     def _get_platform_daily_value_with_fallback(self, report_type, date, header):
         if report_type == 'mpr':
             return self._get_mpr_display_value(header, date)
+        if self._uses_mp78_management_ac():
+            return self._get_mp78_display_value(header, date)
         return self._get_report_value_with_fallback(self.data, header, date)
 
     def _write_grand_total_section(self):
@@ -210,13 +214,13 @@ class ClosingSheet(BaseSheet):
         self.ws.cell(row=row_start + 1, column=col_start).fill = BLUE_FILL
 
         total_income = (
-            self._get_grand_total_with_fallback('Gojek_Mutation') +
-            self._get_grand_total_with_fallback('Grab_Net') +
-            self._get_grand_total_with_fallback('Shopee_Net') +
-            self._get_grand_total_with_fallback('ShopeePay_Net') +
-            self._get_grand_total_with_fallback('Tiktok_Net') +
-            self._get_grand_total_with_fallback('Qpon_Net') +
-            self._get_grand_total_with_fallback('Webshop_Net') +
+            self._get_platform_grand_total_with_fallback('main', 'Gojek_Mutation') +
+            self._get_platform_grand_total_with_fallback('main', 'Grab_Net') +
+            self._get_platform_grand_total_with_fallback('main', 'Shopee_Net') +
+            self._get_platform_grand_total_with_fallback('main', 'ShopeePay_Net') +
+            self._get_platform_grand_total_with_fallback('main', 'Tiktok_Net') +
+            self._get_platform_grand_total_with_fallback('main', 'Qpon_Net') +
+            self._get_platform_grand_total_with_fallback('main', 'Webshop_Net') +
             (self._get_mpr_display_value('Gojek_Mutation') or 0) +
             (self._get_mpr_display_value('Grab_Net') or 0) +
             (self._get_mpr_display_value('Shopee_Net') or 0) +
@@ -233,7 +237,7 @@ class ClosingSheet(BaseSheet):
 
         total_expense = (
             sum(float(entry.amount) for entry, _, _ in manual_entries if entry.entry_type == 'expense') +
-            (self._get_grand_total_with_fallback('Grab_Net') * 1/74)
+            (0 if self._uses_mp78_management_ac() else self._get_grand_total_with_fallback('Grab_Net') * 1/74)
         )
         self.ws.cell(row=row_start + 1, column=col_start + 2, value=total_expense).font = HEADER_FONT
         self.ws.cell(row=row_start + 1, column=col_start + 2).alignment = RIGHT_ALIGN
@@ -253,11 +257,15 @@ class ClosingSheet(BaseSheet):
             label_row = row_start + 1 + final_i + 1
             self.ws.cell(row=label_row, column=col_start, value=platform_names[i-1]).alignment = LEFT_ALIGN
             self.ws.cell(row=label_row, column=col_start, value=platform_names[i-1]).font = HEADER_FONT
-            value_cell = self.ws.cell(row=label_row, column=col_start + 1, value=self._get_grand_total_with_fallback(header))
+            value_cell = self.ws.cell(
+                row=label_row,
+                column=col_start + 1,
+                value=self._get_platform_grand_total_with_fallback('main', header)
+            )
             value_cell.number_format = '#,##0'
             value_cell.alignment = RIGHT_ALIGN
             final_i += 1
-            if platform_names[i-1] == 'Grab':
+            if platform_names[i-1] == 'Grab' and not self._uses_mp78_management_ac():
                 grab_mgmt_row = label_row + 1
                 self.ws.cell(row=grab_mgmt_row, column=col_start, value="Grab Manag 1%").alignment = LEFT_ALIGN
                 self.ws.cell(row=grab_mgmt_row, column=col_start, value="Grab Manag 1%").font = HEADER_FONT
@@ -379,6 +387,23 @@ class ClosingSheet(BaseSheet):
             net_key = header.replace('_Mutation', '_Net')
             value = totals.get(net_key, 0)
         return value
+
+    def _is_mp78_brand(self):
+        return self.data['outlet'].brand == 'MP78'
+
+    def _uses_mp78_management_ac(self):
+        return self._is_mp78_brand() and mpr_calc.ENABLE_MP78_MANAGEMENT_AC
+
+    def _get_mp78_display_value(self, header, date=None):
+        totals = self.data.get('grand_totals', {})
+        if date is not None:
+            totals = self.data.get('daily_totals', {}).get(date, {})
+
+        ac_value = mpr_calc.mp78_ac_value_for_header(totals, header)
+        if ac_value is not None:
+            return ac_value
+
+        return self._get_report_value_with_fallback(self.data, header, date)
 
     def _get_mpr_display_value(self, header, date=None):
         report_data = self.data.get('mpr_report_data')

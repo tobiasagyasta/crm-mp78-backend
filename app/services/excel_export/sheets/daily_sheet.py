@@ -11,7 +11,6 @@ from app.services.excel_export.utils.excel_utils import (
 
 class DailySheet(BaseSheet):
     MPR_COMMISSION_RATE = 0.08
-    MANAGEMENT_COMMISSION_RATE = 1 / 74
     OPTIONAL_MPR_AC_HEADERS = {
         'Gojek Net (ac)',
         'Shopee Net (ac)',
@@ -101,6 +100,12 @@ class DailySheet(BaseSheet):
     def _is_mpr_brand(self):
         return self.data['outlet'].brand == 'MPR'
 
+    def _is_mp78_brand(self):
+        return self.data['outlet'].brand == 'MP78'
+
+    def _uses_mp78_management_ac(self):
+        return self._is_mp78_brand() and mpr_calc.ENABLE_MP78_MANAGEMENT_AC
+
     def _get_gofood_value(self, totals):
         return mpr_calc.gofood_value(totals, self._is_mpr_brand())
 
@@ -114,9 +119,8 @@ class DailySheet(BaseSheet):
         if self._is_mpr_brand() and self._current_outlet_has_mpr_mapping():
             return mpr_calc.gojek_net_ac_value(totals)
 
-        if self.data['outlet'].brand == 'MP78':
-            gojek_net = totals.get('Gojek_Net', 0)
-            return gojek_net - (gojek_net * self.MANAGEMENT_COMMISSION_RATE)
+        if self._uses_mp78_management_ac():
+            return mpr_calc.mp78_ac_value_for_header(totals, 'Gojek_Mutation')
 
         return self._get_value_with_mutation_fallback(totals, 'Gojek_Mutation', 'Gojek_Net')
 
@@ -136,6 +140,9 @@ class DailySheet(BaseSheet):
         if self._is_mpr_brand() and self._current_outlet_has_mpr_mapping():
             return mpr_calc.shopee_net_ac_value(totals)
 
+        if self._uses_mp78_management_ac():
+            return mpr_calc.mp78_ac_value_for_header(totals, 'Shopee_Net')
+
         return self._get_value_with_mutation_fallback(totals, 'Shopee_Mutation', 'Shopee_Net')
 
     def _get_shopeepay_net_value(self, totals):
@@ -144,6 +151,9 @@ class DailySheet(BaseSheet):
     def _get_shopeepay_net_ac_value(self, totals):
         if self._is_mpr_brand() and self._current_outlet_has_mpr_mapping():
             return mpr_calc.shopeepay_net_ac_value(totals)
+
+        if self._uses_mp78_management_ac():
+            return mpr_calc.mp78_ac_value_for_header(totals, 'ShopeePay_Net')
 
         return self._get_value_with_mutation_fallback(totals, 'ShopeePay_Mutation', 'ShopeePay_Net')
 
@@ -163,12 +173,16 @@ class DailySheet(BaseSheet):
         ):
             return mpr_calc.grab_net_ac_value(totals)
 
-        grab_net = totals.get('Grab_Net', 0)
-        management_commission = totals.get(
-            'Grab_Commission',
-            grab_net * self.MANAGEMENT_COMMISSION_RATE
-        )
-        return grab_net - management_commission
+        if self._uses_mp78_management_ac():
+            return mpr_calc.mp78_ac_value_for_header(totals, 'Grab_Net')
+
+        return mpr_calc.management_net_ac_value(totals, 'Grab_Net')
+
+    def _get_standard_net_ac_value(self, totals, net_key):
+        if self._uses_mp78_management_ac():
+            return mpr_calc.mp78_ac_value_for_header(totals, net_key)
+
+        return self._get_mpr_adjusted_value(totals, net_key)
 
     def _set_column_widths(self):
         widths = {
@@ -229,11 +243,11 @@ class DailySheet(BaseSheet):
             'ShopeePay Net (ac)': lambda totals, date, minusan_total: self._get_shopeepay_net_ac_value(totals),
             'ShopeePay Difference': lambda totals, date, minusan_total: totals.get('ShopeePay_Difference', 0),
             'Tiktok Net': lambda totals, date, minusan_total: totals.get('Tiktok_Net', 0),
-            'Tiktok Net (ac)': lambda totals, date, minusan_total: self._get_mpr_adjusted_value(totals, 'Tiktok_Net'),
+            'Tiktok Net (ac)': lambda totals, date, minusan_total: self._get_standard_net_ac_value(totals, 'Tiktok_Net'),
             'Qpon Net': lambda totals, date, minusan_total: totals.get('Qpon_Net', 0),
-            'Qpon Net (ac)': lambda totals, date, minusan_total: self._get_mpr_adjusted_value(totals, 'Qpon_Net'),
+            'Qpon Net (ac)': lambda totals, date, minusan_total: self._get_standard_net_ac_value(totals, 'Qpon_Net'),
             'Webshop Net': lambda totals, date, minusan_total: totals.get('Webshop_Net', 0),
-            'Webshop Net (ac)': lambda totals, date, minusan_total: self._get_mpr_adjusted_value(totals, 'Webshop_Net'),
+            'Webshop Net (ac)': lambda totals, date, minusan_total: self._get_standard_net_ac_value(totals, 'Webshop_Net'),
             'UV': lambda totals, date, minusan_total: totals.get('UV', 0),
             'Cash Income (Admin)': lambda totals, date, minusan_total: totals.get('Cash_Income', 0),
             'Cash Expense (Admin)': lambda totals, date, minusan_total: totals.get('Cash_Expense', 0),
@@ -291,11 +305,11 @@ class DailySheet(BaseSheet):
             'ShopeePay Net (ac)': lambda: self._get_shopeepay_net_ac_value(grand_totals),
             'ShopeePay Difference': lambda: grand_totals.get('ShopeePay_Difference', 0),
             'Tiktok Net': lambda: grand_totals.get('Tiktok_Net', 0),
-            'Tiktok Net (ac)': lambda: self._get_mpr_adjusted_value(grand_totals, 'Tiktok_Net'),
+            'Tiktok Net (ac)': lambda: self._get_standard_net_ac_value(grand_totals, 'Tiktok_Net'),
             'Qpon Net': lambda: grand_totals.get('Qpon_Net', 0),
-            'Qpon Net (ac)': lambda: self._get_mpr_adjusted_value(grand_totals, 'Qpon_Net'),
+            'Qpon Net (ac)': lambda: self._get_standard_net_ac_value(grand_totals, 'Qpon_Net'),
             'Webshop Net': lambda: grand_totals.get('Webshop_Net', 0),
-            'Webshop Net (ac)': lambda: self._get_mpr_adjusted_value(grand_totals, 'Webshop_Net'),
+            'Webshop Net (ac)': lambda: self._get_standard_net_ac_value(grand_totals, 'Webshop_Net'),
             'UV': lambda: grand_totals.get('UV', 0),
             'Cash Income (Admin)': lambda: grand_totals.get('Cash_Income', 0),
             'Cash Expense (Admin)': lambda: grand_totals.get('Cash_Expense', 0),
