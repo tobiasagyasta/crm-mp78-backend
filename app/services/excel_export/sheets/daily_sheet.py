@@ -99,6 +99,28 @@ class DailySheet(BaseSheet):
         )
         return display_value - (self.MPR_COMMISSION_RATE * totals.get(net_key, 0))
 
+    def _get_gofood_value(self, totals):
+        gofood = totals.get('Gojek_Net', 0) - totals.get('Gojek_QRIS', 0)
+
+        if self.data['outlet'].brand == 'MPR':
+            return gofood * self.MPR_GOFOOD_NET_RATE
+
+        return gofood
+
+    def _get_gojek_qris_value(self, totals):
+        gojek_qris = totals.get('Gojek_QRIS', 0)
+
+        if self.data['outlet'].brand == 'MPR':
+            return gojek_qris * self.MPR_GOJEK_QRIS_NET_RATE
+
+        return gojek_qris
+
+    def _get_gojek_net_value(self, totals):
+        if self.data['outlet'].brand == 'MPR':
+            return self._get_gofood_value(totals) + self._get_gojek_qris_value(totals)
+
+        return totals.get('Gojek_Net', 0)
+
     def _get_gojek_net_ac_value(self, totals):
         gojek_qris = totals.get('Gojek_QRIS', 0)
         gofood = totals.get('Gojek_Net', 0) - gojek_qris
@@ -179,9 +201,9 @@ class DailySheet(BaseSheet):
 
         header_value_map = {
             'Date': lambda totals, date, minusan_total: date,
-            'GoFood': lambda totals, date, minusan_total: totals.get('Gojek_Net', 0) - totals.get('Gojek_QRIS', 0),
-            'GO-PAY QRIS': lambda totals, date, minusan_total: totals.get('Gojek_QRIS', 0),
-            'Gojek Net': lambda totals, date, minusan_total: totals.get('Gojek_Net', 0),
+            'GoFood': lambda totals, date, minusan_total: self._get_gofood_value(totals),
+            'GO-PAY QRIS': lambda totals, date, minusan_total: self._get_gojek_qris_value(totals),
+            'Gojek Net': lambda totals, date, minusan_total: self._get_gojek_net_value(totals),
             'Gojek Mutation': lambda totals, date, minusan_total: totals.get('Gojek_Mutation', 0),
             'Gojek Net (ac)': lambda totals, date, minusan_total: self._get_gojek_net_ac_value(totals),
             'Gojek Difference': lambda totals, date, minusan_total: totals.get('Gojek_Difference', 0),
@@ -241,9 +263,9 @@ class DailySheet(BaseSheet):
 
         grand_total_value_map = {
             'Date': lambda: 'Grand Total',
-            'GoFood': lambda: grand_totals.get('Gojek_Net', 0) - grand_totals.get('Gojek_QRIS', 0),
-            'GO-PAY QRIS': lambda: grand_totals.get('Gojek_QRIS', 0),
-            'Gojek Net': lambda: grand_totals.get('Gojek_Net', 0),
+            'GoFood': lambda: self._get_gofood_value(grand_totals),
+            'GO-PAY QRIS': lambda: self._get_gojek_qris_value(grand_totals),
+            'Gojek Net': lambda: self._get_gojek_net_value(grand_totals),
             'Gojek Mutation': lambda: grand_totals.get('Gojek_Mutation', 0),
             'Gojek Net (ac)': lambda: self._get_gojek_net_ac_value(grand_totals),
             'Gojek Difference': lambda: grand_totals.get('Gojek_Difference', 0),
