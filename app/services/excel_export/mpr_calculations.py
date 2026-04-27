@@ -1,7 +1,7 @@
 MPR_STANDARD_NET_RATE = 0.92
 MPR_QRIS_OVO_NET_RATE = 0.98
 MANAGEMENT_COMMISSION_RATE = 1 / 74
-ENABLE_MP78_MANAGEMENT_AC = True
+ENABLE_MP78_MANAGEMENT_AC = False
 
 
 def value_with_mutation_fallback(totals, mutation_key, net_key):
