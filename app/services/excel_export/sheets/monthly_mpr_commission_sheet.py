@@ -69,7 +69,7 @@ class MonthlyMprCommissionSheet(BaseSheet):
             )
             self.ws.cell(row=1, column=current_col, value=self._period_label(period))
             self.ws.cell(row=2, column=current_col, value="Net Total")
-            self.ws.cell(row=2, column=current_col + 1, value="8% Commission")
+            self.ws.cell(row=2, column=current_col + 1, value="Commission")
             current_col += 2
 
         self.ws.merge_cells(

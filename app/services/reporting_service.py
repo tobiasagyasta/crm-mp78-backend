@@ -7,6 +7,8 @@ from app.models.gojek_reports import GojekReport
 from app.models.grabfood_reports import GrabFoodReport
 from app.models.outlet import Outlet
 from app.models.shopee_reports import ShopeeReport
+from app.models.shopeepay_reports import ShopeepayReport
+from app.services.excel_export import mpr_calculations as mpr_calc
 
 
 def _parse_opening_day(closing_date_str: str) -> int | None:
@@ -317,7 +319,7 @@ def generate_monthly_mpr_commission_data(
     """
     Generates aggregated monthly MPR commission data across all MPR outlets.
 
-    Data is sourced directly from the Gojek, Grab, and Shopee platform report tables
+    Data is sourced directly from the Gojek, Grab, Shopee, and ShopeePay platform report tables
     by filtering rows where brand_name == 'MPR' and grouping by calendar month.
     """
     outlets = Outlet.query.filter_by(brand='MPR', status='Active').all()
@@ -352,7 +354,7 @@ def generate_monthly_mpr_commission_data(
             }
         return data[outlet_code]
 
-    def _accumulate(outlet_code: str, transaction_date: date, amount: float):
+    def _accumulate(outlet_code: str, transaction_date: date, amount: float, commission: float):
         outlet_data = _ensure_outlet_data(outlet_code)
         if range_mode:
             period_key = (transaction_date.year, transaction_date.month)
@@ -363,15 +365,24 @@ def generate_monthly_mpr_commission_data(
                 {'net_total': 0, 'commission_total': 0},
             )
             period_totals['net_total'] += amount
+            period_totals['commission_total'] += commission
             return
 
         if transaction_date.year != year or not (1 <= transaction_date.month <= 12):
             return
         outlet_data['monthly_totals'][transaction_date.month]['net_total'] += amount
+        outlet_data['monthly_totals'][transaction_date.month]['commission_total'] += commission
+
+    def _standard_commission(amount: float) -> float:
+        return amount * (1 - mpr_calc.MPR_STANDARD_NET_RATE)
+
+    def _qris_ovo_commission(amount: float) -> float:
+        return amount * (1 - mpr_calc.MPR_QRIS_OVO_NET_RATE)
 
     gojek_query = GojekReport.query.filter(GojekReport.brand_name == 'MPR')
     grab_query = GrabFoodReport.query.filter(GrabFoodReport.brand_name == 'MPR')
     shopee_query = ShopeeReport.query.filter(ShopeeReport.brand_name == 'MPR')
+    shopeepay_query = ShopeepayReport.query.filter(ShopeepayReport.brand_name == 'MPR')
 
     if range_mode:
         gojek_query = gojek_query.filter(
@@ -385,6 +396,10 @@ def generate_monthly_mpr_commission_data(
         shopee_query = shopee_query.filter(
             db.func.cast(ShopeeReport.order_create_time, db.Date) >= start_date,
             db.func.cast(ShopeeReport.order_create_time, db.Date) <= end_date,
+        )
+        shopeepay_query = shopeepay_query.filter(
+            db.func.cast(ShopeepayReport.create_time, db.Date) >= start_date,
+            db.func.cast(ShopeepayReport.create_time, db.Date) <= end_date,
         )
     else:
         query_start_date = date(year, 1, 1)
@@ -401,19 +416,52 @@ def generate_monthly_mpr_commission_data(
             db.func.cast(ShopeeReport.order_create_time, db.Date) >= query_start_date,
             db.func.cast(ShopeeReport.order_create_time, db.Date) <= query_end_date,
         )
+        shopeepay_query = shopeepay_query.filter(
+            db.func.cast(ShopeepayReport.create_time, db.Date) >= query_start_date,
+            db.func.cast(ShopeepayReport.create_time, db.Date) <= query_end_date,
+        )
 
     for report in gojek_query.all():
-        _accumulate(report.outlet_code, report.transaction_date, float(report.nett_amount or 0))
+        amount = float(report.nett_amount or 0)
+        commission = (
+            _qris_ovo_commission(amount)
+            if report.payment_type == 'QRIS'
+            else _standard_commission(amount)
+        )
+        _accumulate(report.outlet_code, report.transaction_date, amount, commission)
 
     for report in grab_query.all():
         if not report.tanggal_dibuat:
             continue
-        _accumulate(report.outlet_code, report.tanggal_dibuat.date(), float(report.total or 0))
+        amount = float(report.total or 0)
+        commission = (
+            _qris_ovo_commission(amount)
+            if getattr(report, 'jenis', None) == 'OVO'
+            else _standard_commission(amount)
+        )
+        _accumulate(report.outlet_code, report.tanggal_dibuat.date(), amount, commission)
 
     for report in shopee_query.all():
         if report.order_status == "Cancelled" or not report.order_create_time:
             continue
-        _accumulate(report.outlet_code, report.order_create_time.date(), float(report.net_income or 0))
+        amount = float(report.net_income or 0)
+        _accumulate(
+            report.outlet_code,
+            report.order_create_time.date(),
+            amount,
+            _standard_commission(amount),
+        )
+
+    for report in shopeepay_query.all():
+        if report.transaction_type == "Withdrawal" or not report.create_time:
+            continue
+        amount = float(report.settlement_amount or 0)
+        _accumulate(
+            report.outlet_code,
+            report.create_time.date(),
+            amount,
+            _qris_ovo_commission(amount),
+        )
 
     if range_mode and periods_set is not None:
         periods = sorted(periods_set)
@@ -426,9 +474,6 @@ def generate_monthly_mpr_commission_data(
             total_commission = 0
             for period in periods:
                 period_totals = outlet_data['monthly_totals'][period]
-                period_totals['commission_total'] = (
-                    period_totals['net_total'] * commission_rate
-                )
                 total_commission += period_totals['commission_total']
             outlet_data['total_commission'] = total_commission
 
@@ -436,13 +481,16 @@ def generate_monthly_mpr_commission_data(
             'periods': periods,
             'outlets': data,
             'commission_rate': commission_rate,
+            'commission_rates': {
+                'standard': 1 - mpr_calc.MPR_STANDARD_NET_RATE,
+                'qris_ovo': 1 - mpr_calc.MPR_QRIS_OVO_NET_RATE,
+            },
         }
 
     for outlet_data in data.values():
         total_commission = 0
         for month in range(1, 13):
             period_totals = outlet_data['monthly_totals'][month]
-            period_totals['commission_total'] = period_totals['net_total'] * commission_rate
             total_commission += period_totals['commission_total']
         outlet_data['total_commission'] = total_commission
 
