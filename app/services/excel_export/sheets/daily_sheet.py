@@ -12,6 +12,8 @@ from app.services.excel_export.utils.excel_utils import (
 class DailySheet(BaseSheet):
     MPR_COMMISSION_RATE = 0.08
     OPTIONAL_MPR_AC_HEADERS = {
+        'GoFood (ac)',
+        'GO-PAY QRIS (ac)',
         'Gojek Net (ac)',
         'Shopee Net (ac)',
         'ShopeePay Net (ac)',
@@ -53,7 +55,8 @@ class DailySheet(BaseSheet):
         if outlet_brand == 'MPR':
             base_headers = [
                 'Date',
-                'GoFood', 'GO-PAY QRIS', 'Gojek Net', 'Gojek Mutation', 'Gojek Difference', 'Gojek Net (ac)',
+                'GoFood', 'GO-PAY QRIS', 'GoFood (ac)', 'GO-PAY QRIS (ac)',
+                'Gojek Net', 'Gojek Mutation', 'Gojek Difference', 'Gojek Net (ac)',
                 'GrabFood', 'GrabOVO', 'Grab Net', 'Grab Net (ac)',
                 'Shopee Net', 'Shopee Mutation', 'Shopee Net (ac)', 'Shopee Difference',
                 'ShopeePay Net', 'ShopeePay Mutation', 'ShopeePay Difference', 'ShopeePay Net (ac)',
@@ -107,9 +110,15 @@ class DailySheet(BaseSheet):
         return self._is_mp78_brand() and mpr_calc.ENABLE_MP78_MANAGEMENT_AC
 
     def _get_gofood_value(self, totals):
+        return mpr_calc.gofood_value(totals)
+
+    def _get_gofood_ac_value(self, totals):
         return mpr_calc.gofood_value(totals, self._is_mpr_brand())
 
     def _get_gojek_qris_value(self, totals):
+        return mpr_calc.gojek_qris_value(totals)
+
+    def _get_gojek_qris_ac_value(self, totals):
         return mpr_calc.gojek_qris_value(totals, self._is_mpr_brand())
 
     def _get_gojek_net_value(self, totals):
@@ -195,7 +204,8 @@ class DailySheet(BaseSheet):
     def _write_headers(self):
         headers = self._get_headers()
         header_colors = {
-            'Date': DATE_FILL, 'GoFood': GOJEK_FILL, 'GO-PAY QRIS': GOJEK_FILL, 'Gojek Net': GOJEK_FILL, 'Gojek Mutation': GOJEK_FILL,
+            'Date': DATE_FILL, 'GoFood': GOJEK_FILL, 'GO-PAY QRIS': GOJEK_FILL, 'GoFood (ac)': GOJEK_FILL,
+            'GO-PAY QRIS (ac)': GOJEK_FILL, 'Gojek Net': GOJEK_FILL, 'Gojek Mutation': GOJEK_FILL,
             'Gojek Difference': DIFFERENCE_FILL, 'GrabFood': GRAB_FILL, 'GrabOVO': GRAB_FILL, 'Grab Net': GRAB_FILL, 'Grab Net (ac)': GRAB_FILL,
             'Gojek Net (ac)': GOJEK_FILL, 'Grab Net (ac)': GRAB_FILL,
             'Shopee Net (ac)': SHOPEE_FILL, 'ShopeePay Net (ac)': SHOPEEPAY_FILL,
@@ -226,6 +236,8 @@ class DailySheet(BaseSheet):
             'Date': lambda totals, date, minusan_total: date,
             'GoFood': lambda totals, date, minusan_total: self._get_gofood_value(totals),
             'GO-PAY QRIS': lambda totals, date, minusan_total: self._get_gojek_qris_value(totals),
+            'GoFood (ac)': lambda totals, date, minusan_total: self._get_gofood_ac_value(totals),
+            'GO-PAY QRIS (ac)': lambda totals, date, minusan_total: self._get_gojek_qris_ac_value(totals),
             'Gojek Net': lambda totals, date, minusan_total: self._get_gojek_net_value(totals),
             'Gojek Mutation': lambda totals, date, minusan_total: totals.get('Gojek_Mutation', 0),
             'Gojek Net (ac)': lambda totals, date, minusan_total: self._get_gojek_net_ac_value(totals),
@@ -288,6 +300,8 @@ class DailySheet(BaseSheet):
             'Date': lambda: 'Grand Total',
             'GoFood': lambda: self._get_gofood_value(grand_totals),
             'GO-PAY QRIS': lambda: self._get_gojek_qris_value(grand_totals),
+            'GoFood (ac)': lambda: self._get_gofood_ac_value(grand_totals),
+            'GO-PAY QRIS (ac)': lambda: self._get_gojek_qris_ac_value(grand_totals),
             'Gojek Net': lambda: self._get_gojek_net_value(grand_totals),
             'Gojek Mutation': lambda: grand_totals.get('Gojek_Mutation', 0),
             'Gojek Net (ac)': lambda: self._get_gojek_net_ac_value(grand_totals),
