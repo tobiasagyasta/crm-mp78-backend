@@ -1,4 +1,5 @@
 from app.services.excel_export.base_sheet import BaseSheet
+from app.services.excel_export import mpr_calculations as mpr_calc
 from app.services.excel_export.utils.excel_utils import (
     HEADER_FONT, YELLOW_FILL, CENTER_ALIGN, GOJEK_FILL, GRAB_FILL, SHOPEE_FILL,GREY_FILL,
     TIKTOK_FILL, BLUE_FILL, DIFFERENCE_FILL, THIN_BORDER, auto_fit_columns, LEFT_ALIGN, RIGHT_ALIGN
@@ -7,8 +8,6 @@ from datetime import datetime
 import re
 
 class ClosingSheet(BaseSheet):
-    MPR_COMMISSION_RATE = 0.08
-
     def __init__(self, workbook, data):
         super().__init__(workbook, 'Closing Sheet', data)
         self.main_table_col_end = None
@@ -67,7 +66,7 @@ class ClosingSheet(BaseSheet):
                 cell.fill = GOJEK_FILL
             elif name in ['Grab', 'Grab MPR (ac)', 'Grab(OVO)']:
                 cell.fill = GRAB_FILL
-            elif name in ['ShopeeFood', 'ShopeePay', 'Shopee MPR (ac)']:
+            elif name in ['ShopeeFood', 'ShopeePay', 'Shopee MPR (ac)', 'ShopeePay MPR (ac)']:
                 cell.fill = SHOPEE_FILL
             elif name in ['Tiktok', 'Tiktok MPR (ac)', 'Qpon', 'Webshop']:
                 cell.fill = TIKTOK_FILL
@@ -146,6 +145,7 @@ class ClosingSheet(BaseSheet):
             ('Gojek MPR (ac)', 'Gojek_Mutation', 'mpr'),
             ('Grab MPR (ac)', 'Grab_Net', 'mpr'),
             ('Shopee MPR (ac)', 'Shopee_Net', 'mpr'),
+            ('ShopeePay MPR (ac)', 'ShopeePay_Net', 'mpr'),
             ('Tiktok MPR (ac)', 'Tiktok_Net', 'mpr'),
         ]
 
@@ -174,6 +174,7 @@ class ClosingSheet(BaseSheet):
             ('Gojek MPR (ac)', 'Gojek_Mutation', 'mpr'),
             ('Grab MPR (ac)', 'Grab_Net', 'mpr'),
             ('Shopee MPR (ac)', 'Shopee_Net', 'mpr'),
+            ('ShopeePay MPR (ac)', 'ShopeePay_Net', 'mpr'),
             ('Tiktok MPR (ac)', 'Tiktok_Net', 'mpr'),
         ]
 
@@ -219,6 +220,7 @@ class ClosingSheet(BaseSheet):
             (self._get_mpr_display_value('Gojek_Mutation') or 0) +
             (self._get_mpr_display_value('Grab_Net') or 0) +
             (self._get_mpr_display_value('Shopee_Net') or 0) +
+            (self._get_mpr_display_value('ShopeePay_Net') or 0) +
             (self._get_mpr_display_value('Tiktok_Net') or 0) +
             sum(float(entry.amount) for entry, _, _ in manual_entries if entry.entry_type == 'income') +
             self._get_grand_total_with_fallback('UV')
@@ -378,16 +380,20 @@ class ClosingSheet(BaseSheet):
             value = totals.get(net_key, 0)
         return value
 
-    def _is_mpr_adjusted_header(self, header):
-        return header in {'Gojek_Mutation', 'Grab_Net', 'Shopee_Net', 'Tiktok_Net'}
-
     def _get_mpr_display_value(self, header, date=None):
-        value = self._get_report_value_with_fallback(self.data.get('mpr_report_data'), header, date)
-        if value is None:
+        report_data = self.data.get('mpr_report_data')
+        if not report_data:
             return None
-        if self._is_mpr_adjusted_header(header):
-            return value * (1 - self.MPR_COMMISSION_RATE)
-        return value
+
+        totals = report_data.get('grand_totals', {})
+        if date is not None:
+            totals = report_data.get('daily_totals', {}).get(date, {})
+
+        ac_value = mpr_calc.mpr_ac_value_for_header(totals, header)
+        if ac_value is not None:
+            return ac_value
+
+        return self._get_report_value_with_fallback(report_data, header, date)
 
     def _apply_styles(self):
         # Apply borders to the main table
