@@ -3,6 +3,7 @@ MPR_QRIS_OVO_NET_RATE = 0.98
 MANAGEMENT_COMMISSION_RATE = 1 / 74
 ENABLE_MP78_MANAGEMENT_AC = False
 
+## Reminder : Make sure to add shopee_net_ac_value
 
 def value_with_mutation_fallback(totals, mutation_key, net_key):
     return totals.get(mutation_key) or totals.get(net_key, 0)

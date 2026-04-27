@@ -21,6 +21,14 @@ class DailySheet(BaseSheet):
         'Qpon Net (ac)',
         'Webshop Net (ac)',
     }
+    MP78_MANAGEMENT_AC_HEADERS = {
+        'Gojek Net (ac)',
+        'Shopee Net (ac)',
+        'ShopeePay Net (ac)',
+        'Tiktok Net (ac)',
+        'Qpon Net (ac)',
+        'Webshop Net (ac)',
+    }
 
     def __init__(self, workbook, data, sheet_name='Daily'):
         super().__init__(workbook, sheet_name, data)
@@ -82,6 +90,15 @@ class DailySheet(BaseSheet):
             if 'Grab Net' in base_headers:
                 base_headers.remove('Grab Net')
 
+        if outlet_brand == 'MP78':
+            if mpr_calc.ENABLE_MP78_MANAGEMENT_AC:
+                base_headers = self._add_mp78_management_ac_headers(base_headers)
+            else:
+                base_headers = [
+                    header for header in base_headers
+                    if header not in self.MP78_MANAGEMENT_AC_HEADERS
+                ]
+
         if outlet_brand == 'MPR' and not self._current_outlet_has_mpr_mapping():
             base_headers = [
                 header for header in base_headers
@@ -89,6 +106,20 @@ class DailySheet(BaseSheet):
             ]
 
         return base_headers
+
+    def _add_mp78_management_ac_headers(self, headers):
+        header_positions = [
+            ('Shopee Difference', 'Shopee Net (ac)'),
+            ('Tiktok Net', 'Tiktok Net (ac)'),
+            ('Qpon Net', 'Qpon Net (ac)'),
+            ('Webshop Net', 'Webshop Net (ac)'),
+        ]
+
+        for anchor, header in header_positions:
+            if header not in headers and anchor in headers:
+                headers.insert(headers.index(anchor) + 1, header)
+
+        return headers
 
     def _get_value_with_mutation_fallback(self, totals, mutation_key, net_key):
         return mpr_calc.value_with_mutation_fallback(totals, mutation_key, net_key)
