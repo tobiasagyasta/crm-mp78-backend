@@ -10,6 +10,8 @@ from app.services.excel_export.utils.excel_utils import (
 
 class DailySheet(BaseSheet):
     MPR_COMMISSION_RATE = 0.08
+    MPR_GOFOOD_NET_RATE = 0.92
+    MPR_GOJEK_QRIS_NET_RATE = 0.98
     MANAGEMENT_COMMISSION_RATE = 1 / 74
     OPTIONAL_MPR_AC_HEADERS = {
         'Gojek Net (ac)',
@@ -43,7 +45,7 @@ class DailySheet(BaseSheet):
         outlet_brand = self.data['outlet'].brand
 
         base_headers = [
-            'Date', 'GoFood', 'GO-PAY QRIS', 'Gojek Net', 'Gojek Mutation', 'Gojek Difference',
+            'Date', 'GoFood', 'GO-PAY QRIS', 'Gojek Net', 'Gojek Mutation', 'Gojek Difference', 'Gojek Net (ac)',
             'GrabFood', 'GrabOVO', 'Grab Net (ac)', 'Shopee Net', 'Shopee Mutation', 'Shopee Difference',
             'ShopeePay Net', 'ShopeePay Mutation', 'ShopeePay Difference',
             'Tiktok Net', 'Qpon Net', 'Webshop Net', 'UV'
@@ -53,7 +55,7 @@ class DailySheet(BaseSheet):
         if outlet_brand == 'MPR':
             base_headers = [
                 'Date',
-                'GoFood', 'GO-PAY QRIS', 'Gojek Net', 'Gojek Mutation', 'Gojek Net (ac)', 'Gojek Difference',
+                'GoFood', 'GO-PAY QRIS', 'Gojek Net', 'Gojek Mutation', 'Gojek Difference', 'Gojek Net (ac)',
                 'GrabFood', 'GrabOVO', 'Grab Net', 'Grab Net (ac)',
                 'Shopee Net', 'Shopee Mutation', 'Shopee Net (ac)', 'Shopee Difference',
                 'ShopeePay Net', 'ShopeePay Mutation', 'ShopeePay Net (ac)', 'ShopeePay Difference',
@@ -96,6 +98,23 @@ class DailySheet(BaseSheet):
             if mutation_key else totals.get(net_key, 0)
         )
         return display_value - (self.MPR_COMMISSION_RATE * totals.get(net_key, 0))
+
+    def _get_gojek_net_ac_value(self, totals):
+        gojek_qris = totals.get('Gojek_QRIS', 0)
+        gofood = totals.get('Gojek_Net', 0) - gojek_qris
+
+        if self.data['outlet'].brand == 'MPR' and self._current_outlet_has_mpr_mapping():
+            return (
+                (gojek_qris * self.MPR_GOJEK_QRIS_NET_RATE)
+                + (gofood * self.MPR_GOFOOD_NET_RATE)
+                + (totals.get('Gojek_Difference') or 0)
+            )
+
+        if self.data['outlet'].brand == 'MP78':
+            gojek_net = totals.get('Gojek_Net', 0)
+            return gojek_net - (gojek_net * self.MANAGEMENT_COMMISSION_RATE)
+
+        return self._get_value_with_mutation_fallback(totals, 'Gojek_Mutation', 'Gojek_Net')
 
     def _current_outlet_has_mpr_mapping(self):
         if self._has_mpr_mapping is None:
@@ -164,7 +183,7 @@ class DailySheet(BaseSheet):
             'GO-PAY QRIS': lambda totals, date, minusan_total: totals.get('Gojek_QRIS', 0),
             'Gojek Net': lambda totals, date, minusan_total: totals.get('Gojek_Net', 0),
             'Gojek Mutation': lambda totals, date, minusan_total: totals.get('Gojek_Mutation', 0),
-            'Gojek Net (ac)': lambda totals, date, minusan_total: self._get_mpr_adjusted_value(totals, 'Gojek_Net', 'Gojek_Mutation'),
+            'Gojek Net (ac)': lambda totals, date, minusan_total: self._get_gojek_net_ac_value(totals),
             'Gojek Difference': lambda totals, date, minusan_total: totals.get('Gojek_Difference', 0),
             'GrabFood': lambda totals, date, minusan_total: totals.get('Grab_Net', 0) - totals.get('GrabOVO_Net', 0),
             'GrabOVO': lambda totals, date, minusan_total: totals.get('GrabOVO_Net', 0),
@@ -226,7 +245,7 @@ class DailySheet(BaseSheet):
             'GO-PAY QRIS': lambda: grand_totals.get('Gojek_QRIS', 0),
             'Gojek Net': lambda: grand_totals.get('Gojek_Net', 0),
             'Gojek Mutation': lambda: grand_totals.get('Gojek_Mutation', 0),
-            'Gojek Net (ac)': lambda: self._get_mpr_adjusted_value(grand_totals, 'Gojek_Net', 'Gojek_Mutation'),
+            'Gojek Net (ac)': lambda: self._get_gojek_net_ac_value(grand_totals),
             'Gojek Difference': lambda: grand_totals.get('Gojek_Difference', 0),
             'GrabFood': lambda: grand_totals.get('Grab_Net', 0) - grand_totals.get('GrabOVO_Net', 0),
             'GrabOVO': lambda: grand_totals.get('GrabOVO_Net', 0),
