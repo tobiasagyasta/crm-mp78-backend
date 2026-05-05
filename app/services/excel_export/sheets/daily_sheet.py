@@ -25,11 +25,16 @@ class DailySheet(BaseSheet):
     }
     MP78_MANAGEMENT_AC_HEADERS = {
         'Gojek Net (ac)',
+        'Grab Net (ac)',
         'Shopee Net (ac)',
         'ShopeePay Net (ac)',
         'Tiktok Net (ac)',
         'Qpon Net (ac)',
         'Webshop Net (ac)',
+    }
+    MP78_ENABLED_AC_HEADERS = {
+        'Gojek Net (ac)',
+        'Grab Net (ac)',
     }
 
     def __init__(self, workbook, data, sheet_name='Daily'):
@@ -95,6 +100,13 @@ class DailySheet(BaseSheet):
         if outlet_brand == 'MP78':
             if mpr_calc.ENABLE_MP78_MANAGEMENT_AC:
                 base_headers = self._add_mp78_management_ac_headers(base_headers)
+                base_headers = [
+                    header for header in base_headers
+                    if (
+                        header not in self.MP78_MANAGEMENT_AC_HEADERS
+                        or header in self.MP78_ENABLED_AC_HEADERS
+                    )
+                ]
             else:
                 base_headers = [
                     header for header in base_headers

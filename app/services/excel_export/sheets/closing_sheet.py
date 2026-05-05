@@ -62,13 +62,19 @@ class ClosingSheet(BaseSheet):
             cell.value = name
             cell.font = HEADER_FONT
             cell.alignment = CENTER_ALIGN
-            if name in ['Gojek', 'Gojek MPR (ac)']:
+            if name in ['Gojek', 'Gojek (ac)', 'Gojek MPR (ac)']:
                 cell.fill = GOJEK_FILL
-            elif name in ['Grab', 'Grab MPR (ac)', 'Grab(OVO)']:
+            elif name in ['Grab', 'Grab (ac)', 'Grab MPR (ac)', 'Grab(OVO)']:
                 cell.fill = GRAB_FILL
-            elif name in ['ShopeeFood', 'ShopeePay', 'Shopee MPR (ac)', 'ShopeePay MPR (ac)']:
+            elif name in [
+                'ShopeeFood', 'ShopeeFood (ac)', 'ShopeePay', 'ShopeePay (ac)',
+                'Shopee MPR (ac)', 'ShopeePay MPR (ac)'
+            ]:
                 cell.fill = SHOPEE_FILL
-            elif name in ['Tiktok', 'Tiktok MPR (ac)', 'Qpon', 'Webshop']:
+            elif name in [
+                'Tiktok', 'Tiktok (ac)', 'Tiktok MPR (ac)',
+                'Qpon', 'Qpon (ac)', 'Webshop', 'Webshop (ac)'
+            ]:
                 cell.fill = TIKTOK_FILL
 
         closing_row += 2
@@ -113,7 +119,7 @@ class ClosingSheet(BaseSheet):
         if report_type not in ['main', 'mpr'] or start_col > end_col:
             return
 
-        label = 'MP78' if report_type == 'main' else 'MPR'
+        label = 'MP78 (ac)' if report_type == 'main' else 'MPR (ac)'
         self.ws.merge_cells(start_row=row, start_column=start_col, end_row=row, end_column=end_col)
         cell = self.ws.cell(row=row, column=start_col, value=label)
         cell.font = HEADER_FONT
@@ -150,27 +156,12 @@ class ClosingSheet(BaseSheet):
         ]
 
     def _get_main_table_platforms(self):
-        platform_definitions = [
-            ('Gojek', 'Gojek_Mutation', 'main'),
-            ('Grab', 'Grab_Net', 'main'),
-            ('ShopeeFood', 'Shopee_Net', 'main'),
-            ('ShopeePay', 'ShopeePay_Net', 'main'),
-            ('Tiktok', 'Tiktok_Net', 'main'),
-            ('Qpon', 'Qpon_Net', 'main'),
-            ('Webshop', 'Webshop_Net', 'main'),
-        ]
+        platform_definitions = self._get_main_platform_definitions_for_grand_total()
 
         if not self.data.get('mpr_report_data'):
             return platform_definitions
 
-        return [
-            ('Gojek', 'Gojek_Mutation', 'main'),
-            ('Grab', 'Grab_Net', 'main'),
-            ('ShopeeFood', 'Shopee_Net', 'main'),
-            ('ShopeePay', 'ShopeePay_Net', 'main'),
-            ('Tiktok', 'Tiktok_Net', 'main'),
-            ('Qpon', 'Qpon_Net', 'main'),
-            ('Webshop', 'Webshop_Net', 'main'),
+        return platform_definitions + [
             ('Gojek MPR (ac)', 'Gojek_Mutation', 'mpr'),
             ('Grab MPR (ac)', 'Grab_Net', 'mpr'),
             ('Shopee MPR (ac)', 'Shopee_Net', 'mpr'),
@@ -198,7 +189,10 @@ class ClosingSheet(BaseSheet):
         end_date = self.data['end_date']
         manual_entries = self.data['manual_entries']
         platform_columns = ['Gojek_Mutation', 'Grab_Net', 'Shopee_Net', 'ShopeePay_Net', 'Tiktok_Net', 'Qpon_Net', 'Webshop_Net']
-        platform_names = ['Gojek', 'Grab', 'ShopeeFood', 'ShopeePay', 'Tiktok', 'Qpon', 'Webshop']
+        platform_names = [
+            label
+            for label, _, _ in self._get_main_platform_definitions_for_grand_total()
+        ]
 
         col_start = self.ws.max_column + 3
         row_start = 3
@@ -420,6 +414,28 @@ class ClosingSheet(BaseSheet):
 
         return self._get_report_value_with_fallback(report_data, header, date)
 
+    def _get_main_platform_definitions_for_grand_total(self):
+        if self._uses_mp78_management_ac():
+            return [
+                ('Gojek (ac)', 'Gojek_Mutation', 'main'),
+                ('Grab (ac)', 'Grab_Net', 'main'),
+                ('ShopeeFood', 'Shopee_Net', 'main'),
+                ('ShopeePay', 'ShopeePay_Net', 'main'),
+                ('Tiktok', 'Tiktok_Net', 'main'),
+                ('Qpon', 'Qpon_Net', 'main'),
+                ('Webshop', 'Webshop_Net', 'main'),
+            ]
+
+        return [
+            ('Gojek', 'Gojek_Mutation', 'main'),
+            ('Grab', 'Grab_Net', 'main'),
+            ('ShopeeFood', 'Shopee_Net', 'main'),
+            ('ShopeePay', 'ShopeePay_Net', 'main'),
+            ('Tiktok', 'Tiktok_Net', 'main'),
+            ('Qpon', 'Qpon_Net', 'main'),
+            ('Webshop', 'Webshop_Net', 'main'),
+        ]
+
     def _apply_styles(self):
         # Apply borders to the main table
         if self.main_table_col_end:
@@ -431,6 +447,7 @@ class ClosingSheet(BaseSheet):
             ):
                 for cell in row:
                     cell.border = THIN_BORDER
+
         # Apply borders to the grand total section only.
         if self.grand_total_col_start and self.grand_total_col_end and self.grand_total_row_start:
             for row in self.ws.iter_rows(

@@ -115,16 +115,6 @@ def mp78_ac_value_for_header(totals, header):
         return management_net_ac_value(totals, 'Gojek_Net', 'Gojek_Difference')
     if header == 'Grab_Net':
         return management_net_ac_value(totals, 'Grab_Net', 'Grab_Difference')
-    # if header == 'Shopee_Net':
-    #     return management_net_ac_value(totals, 'Shopee_Net', 'Shopee_Difference')
-    # if header == 'ShopeePay_Net':
-    #     return management_net_ac_value(totals, 'ShopeePay_Net', 'ShopeePay_Difference')
-    # if header == 'Tiktok_Net':
-    #     return management_net_ac_value(totals, 'Tiktok_Net')
-    # if header == 'Qpon_Net':
-    #     return management_net_ac_value(totals, 'Qpon_Net')
-    # if header == 'Webshop_Net':
-    #     return management_net_ac_value(totals, 'Webshop_Net')
 
     return None
 
