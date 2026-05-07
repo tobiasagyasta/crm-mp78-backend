@@ -207,9 +207,11 @@ class ClosingSheet(BaseSheet):
         self.ws.cell(row=row_start + 1, column=col_start).alignment = CENTER_ALIGN
         self.ws.cell(row=row_start + 1, column=col_start).fill = BLUE_FILL
 
+        grab_net_total = self._get_grand_total_with_fallback('Grab_Net') or 0
+        grab_management_expense = grab_net_total * mpr_calc.MANAGEMENT_COMMISSION_RATE
         total_income = (
             self._get_platform_grand_total_with_fallback('main', 'Gojek_Mutation') +
-            self._get_platform_grand_total_with_fallback('main', 'Grab_Net') +
+            self._get_closing_grand_total_income_value('Grab_Net', grab_net_total) +
             self._get_platform_grand_total_with_fallback('main', 'Shopee_Net') +
             self._get_platform_grand_total_with_fallback('main', 'ShopeePay_Net') +
             self._get_platform_grand_total_with_fallback('main', 'Tiktok_Net') +
@@ -231,7 +233,7 @@ class ClosingSheet(BaseSheet):
 
         total_expense = (
             sum(float(entry.amount) for entry, _, _ in manual_entries if entry.entry_type == 'expense') +
-            (0 if self._uses_mp78_management_ac() else self._get_grand_total_with_fallback('Grab_Net') * 1/74)
+            grab_management_expense
         )
         self.ws.cell(row=row_start + 1, column=col_start + 2, value=total_expense).font = HEADER_FONT
         self.ws.cell(row=row_start + 1, column=col_start + 2).alignment = RIGHT_ALIGN
@@ -249,21 +251,26 @@ class ClosingSheet(BaseSheet):
         final_i = 0
         for i, header in enumerate(platform_columns, 1):
             label_row = row_start + 1 + final_i + 1
-            self.ws.cell(row=label_row, column=col_start, value=platform_names[i-1]).alignment = LEFT_ALIGN
-            self.ws.cell(row=label_row, column=col_start, value=platform_names[i-1]).font = HEADER_FONT
+            platform_label = self._get_closing_grand_total_platform_label(platform_names[i-1], header)
+            self.ws.cell(row=label_row, column=col_start, value=platform_label).alignment = LEFT_ALIGN
+            self.ws.cell(row=label_row, column=col_start, value=platform_label).font = HEADER_FONT
             value_cell = self.ws.cell(
                 row=label_row,
                 column=col_start + 1,
-                value=self._get_platform_grand_total_with_fallback('main', header)
+                value=self._get_closing_grand_total_income_value(header, grab_net_total)
             )
             value_cell.number_format = '#,##0'
             value_cell.alignment = RIGHT_ALIGN
             final_i += 1
-            if platform_names[i-1] == 'Grab' and not self._uses_mp78_management_ac():
+            if header == 'Grab_Net':
                 grab_mgmt_row = label_row + 1
                 self.ws.cell(row=grab_mgmt_row, column=col_start, value="Grab Manag 1%").alignment = LEFT_ALIGN
                 self.ws.cell(row=grab_mgmt_row, column=col_start, value="Grab Manag 1%").font = HEADER_FONT
-                management_cell_value = self.ws.cell(row=grab_mgmt_row, column=col_start + 2, value=self.data['grand_totals']['Grab_Net'] * 1/74)
+                management_cell_value = self.ws.cell(
+                    row=grab_mgmt_row,
+                    column=col_start + 2,
+                    value=grab_management_expense
+                )
                 management_cell_value.number_format = '#,##0'
                 management_cell_value.alignment = RIGHT_ALIGN
                 final_i += 1
@@ -413,6 +420,20 @@ class ClosingSheet(BaseSheet):
             return ac_value
 
         return self._get_report_value_with_fallback(report_data, header, date)
+
+    def _get_closing_grand_total_income_value(self, header, grab_net_total=None):
+        if header == 'Grab_Net':
+            if grab_net_total is not None:
+                return grab_net_total
+            return self._get_grand_total_with_fallback(header)
+
+        return self._get_platform_grand_total_with_fallback('main', header)
+
+    def _get_closing_grand_total_platform_label(self, label, header):
+        if header == 'Grab_Net':
+            return 'Grab'
+
+        return label
 
     def _get_main_platform_definitions_for_grand_total(self):
         if self._uses_mp78_management_ac():
