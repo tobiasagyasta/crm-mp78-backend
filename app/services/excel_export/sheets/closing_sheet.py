@@ -4,6 +4,7 @@ from app.services.excel_export.utils.excel_utils import (
     HEADER_FONT, YELLOW_FILL, CENTER_ALIGN, GOJEK_FILL, GRAB_FILL, SHOPEE_FILL,GREY_FILL,
     TIKTOK_FILL, BLUE_FILL, DIFFERENCE_FILL, THIN_BORDER, auto_fit_columns, LEFT_ALIGN, RIGHT_ALIGN
 )
+from app.models.rekening import Rekening
 from datetime import datetime
 import re
 
@@ -328,6 +329,10 @@ class ClosingSheet(BaseSheet):
         outlet = self.data['outlet']
         mpr_report_data = self.data.get('mpr_report_data')
         mpr_outlet = mpr_report_data.get('outlet') if mpr_report_data else None
+        rekening = self._get_outlet_rekening(outlet)
+        rekening_value = "-"
+        if rekening:
+            rekening_value = f"{rekening.name} - {rekening.rekening_number}"
 
         row = 3
         start_column = 20  # Column T
@@ -336,6 +341,7 @@ class ClosingSheet(BaseSheet):
             ('Grab', outlet.store_id_grab, GRAB_FILL),
             ('ShopeeFood', outlet.store_id_shopee, SHOPEE_FILL),
             ('ShopeePay', outlet.store_id_shopee, SHOPEE_FILL),
+            ('Rekening', rekening_value, GREY_FILL),
         ]
 
         if mpr_outlet:
@@ -374,6 +380,12 @@ class ClosingSheet(BaseSheet):
             value_cell.font = HEADER_FONT
             value_cell.alignment = CENTER_ALIGN
             value_cell.fill = fill
+
+    def _get_outlet_rekening(self, outlet):
+        rekening_id = getattr(outlet, 'rekening_id', None)
+        if not rekening_id:
+            return None
+        return Rekening.query.get(rekening_id)
 
     def _get_report_value_with_fallback(self, report_data, header, date=None):
         if not report_data:
