@@ -90,6 +90,10 @@ from app.services.reporting_service import (
     generate_monthly_mpr_commission_data,
     generate_monthly_net_income_data,
 )
+from app.services.mpr_totals_service import (
+    calculate_mpr_totals,
+    get_mpr_mapping_for_outlet,
+)
 from app.utils.report_generator import generate_daily_report
 # from app.services.excel_export.data_service import (
 #     get_kas_transactions, create_kas_transaction,
@@ -1480,6 +1484,7 @@ def get_reports_totals():
         webshop_query = WebshopReport.query
         cash_query = CashReport.query
         manual_entries_query = ManualEntry.query
+        mpr_totals = None
         # Return error if outlet_code is not provided
         if not outlet_code:
             return jsonify({'error': 'outlet_code is required'}), 400
@@ -1563,6 +1568,19 @@ def get_reports_totals():
                 ManualEntry.start_date >= start_date,
                 ManualEntry.end_date <= end_date_inclusive
             )
+        else:
+            start_date = None
+            end_date_inclusive = None
+
+        if outlet_code.upper() != "ALL":
+            outlet, mapping = get_mpr_mapping_for_outlet(outlet_code)
+            if outlet and outlet.brand in ("MP78", "MPR") and mapping:
+                mpr_outlet_code = mapping.mpr_outlet_code
+                mpr_totals = calculate_mpr_totals(
+                    mpr_outlet_code,
+                    start_date,
+                    end_date_inclusive,
+                )
 
         # Calculate totals for each platform
         gojek_total = sum(float(report.nett_amount or 0) for report in gojek_query.all())
@@ -1617,6 +1635,8 @@ def get_reports_totals():
                 # 'mp78_grab_total': round(mp78_grab_total, 2)  # Added for reference
             }
         }
+        if mpr_totals:
+            response['totals']['mpr_totals'] = mpr_totals
         return jsonify(response), 200
 
     except ValueError as e:
