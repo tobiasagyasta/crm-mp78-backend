@@ -20,6 +20,7 @@ from app.extensions import db
 import sys
 from app.services.consolidation_service import update_daily_total_for_outlet
 
+import calendar
 from datetime import datetime
 from flask_cors import cross_origin
 
@@ -64,6 +65,69 @@ def parse_date_range(args):
         return None, None, "start_date must be less than or equal to end_date"
 
     return start_date, end_date, None
+
+
+def _month_last_day(year, month):
+    return calendar.monthrange(year, month)[1]
+
+
+def _add_month(year, month):
+    if month == 12:
+        return year + 1, 1
+    return year, month + 1
+
+
+def _previous_month(year, month):
+    if month == 1:
+        return year - 1, 12
+    return year, month - 1
+
+
+def _date_with_clamped_day(year, month, day):
+    return datetime(year, month, min(day, _month_last_day(year, month))).date()
+
+
+def _parse_closing_date_range(closing_date):
+    if not closing_date or '-' not in str(closing_date):
+        return None
+
+    start_day_str, end_day_str = str(closing_date).split('-', 1)
+    try:
+        start_day = int(start_day_str.strip())
+        end_day = int(end_day_str.strip())
+    except ValueError:
+        return None
+
+    if not (1 <= start_day <= 31 and 1 <= end_day <= 31):
+        return None
+
+    return start_day, end_day
+
+
+def resolve_upload_manual_entry_date_range(outlet, entry_date):
+    if hasattr(entry_date, 'date'):
+        entry_date = entry_date.date()
+
+    closing_range = _parse_closing_date_range(
+        outlet.closing_date if outlet else None
+    )
+    if not closing_range:
+        return entry_date, entry_date
+
+    start_day, end_day = closing_range
+    start_year, start_month = _previous_month(entry_date.year, entry_date.month)
+    start_date = _date_with_clamped_day(start_year, start_month, start_day)
+    end_date = _date_with_clamped_day(entry_date.year, entry_date.month, end_day)
+
+    if start_date <= entry_date <= end_date:
+        return start_date, end_date
+
+    next_end_year, next_end_month = _add_month(entry_date.year, entry_date.month)
+    next_start_date = _date_with_clamped_day(entry_date.year, entry_date.month, start_day)
+    next_end_date = _date_with_clamped_day(next_end_year, next_end_month, end_day)
+    return next_start_date, next_end_date
+
+
 # import pdfkit
 import csv
 from io import StringIO
@@ -907,14 +971,17 @@ def upload_manual_entry():
                         skipped_entries += 1
                         continue
 
-                      # Create manual entry
-                    entry_date = parse_date(date_str, default_year=datetime.now().year)
                     outlet_code = row[6].strip()
+                    outlet = Outlet.query.filter_by(outlet_code=outlet_code).first()
+                    start_date, end_date = resolve_upload_manual_entry_date_range(
+                        outlet, entry_date
+                    )
                     category_id = category.id if category else None
 
                     # Check for existing entry
                     existing_entry = ManualEntry.query.filter(
-                        ManualEntry.start_date == entry_date,
+                        ManualEntry.start_date == start_date,
+                        ManualEntry.end_date == end_date,
                         ManualEntry.outlet_code == outlet_code,
                         ManualEntry.category_id == category_id,
                         ManualEntry.amount == amount,
@@ -932,8 +999,8 @@ def upload_manual_entry():
                         entry_type=entry_type,
                         amount=amount,
                         description=row[5].strip(),
-                        start_date=entry_date,
-                        end_date=entry_date,
+                        start_date=start_date,
+                        end_date=end_date,
                         category_id=category_id
                     )
                     entries.append(entry)
