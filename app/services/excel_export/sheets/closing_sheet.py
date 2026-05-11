@@ -442,7 +442,7 @@ class ClosingSheet(BaseSheet):
                 ('Grab (ac)', 'Grab_Net', 'main'),
                 ('ShopeeFood', 'Shopee_Net', 'main'),
                 ('ShopeePay', 'ShopeePay_Net', 'main'),
-                ('Tiktok', 'Tiktok_Net', 'main'),
+                ('Tiktok (ac)', 'Tiktok_Net', 'main'),
                 ('Qpon', 'Qpon_Net', 'main'),
                 ('Webshop', 'Webshop_Net', 'main'),
             ]
