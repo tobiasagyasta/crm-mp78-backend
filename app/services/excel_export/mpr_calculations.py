@@ -65,6 +65,13 @@ def grab_net_value(totals, is_mpr=False):
 
     return totals.get('Grab_Net', 0)
 
+def tiktok_net_ac_value(totals, is_mpr=False):
+    net = totals.get('Tiktok_Net', 0)
+    if is_mpr:
+        return net * MPR_STANDARD_NET_RATE
+
+    return net - (net * MANAGEMENT_COMMISSION_RATE)
+
 
 def grab_net_ac_value(totals):
     return grab_net_value(totals, is_mpr=True)
@@ -115,6 +122,8 @@ def mp78_ac_value_for_header(totals, header):
         return management_net_ac_value(totals, 'Gojek_Net', 'Gojek_Difference')
     if header == 'Grab_Net':
         return management_net_ac_value(totals, 'Grab_Net', 'Grab_Difference')
+    if header == 'Tiktok_Net':
+        return tiktok_net_ac_value(totals)
 
     return None
 
@@ -129,6 +138,6 @@ def mpr_ac_value_for_header(totals, header):
     if header == 'ShopeePay_Net':
         return shopeepay_net_ac_value(totals)
     if header == 'Tiktok_Net':
-        return standard_net_ac_value(totals, 'Tiktok_Net')
+        return tiktok_net_ac_value(totals, is_mpr=True)
 
     return None
