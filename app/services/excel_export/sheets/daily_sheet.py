@@ -35,6 +35,7 @@ class DailySheet(BaseSheet):
     MP78_ENABLED_AC_HEADERS = {
         'Gojek Net (ac)',
         'Grab Net (ac)',
+        'Tiktok Net (ac)',
     }
 
     def __init__(self, workbook, data, sheet_name='Daily'):
