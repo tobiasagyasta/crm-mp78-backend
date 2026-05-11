@@ -7,73 +7,212 @@ from app.models.outlet import Outlet
 
 auth_bp = Blueprint('auth_bp', __name__)
 
+VALID_ROLES = {'user', 'admin', 'superadmin', 'management'}
+ACCESS_MANAGER_ROLES = {'admin', 'superadmin', 'management'}
+
+
+def _json_error(message, status_code=400):
+    return jsonify({'error': message}), status_code
+
+
+def _parse_id_list(data, *keys):
+    for key in keys:
+        if key not in data or data.get(key) in (None, ''):
+            continue
+
+        raw_value = data.get(key)
+        if not isinstance(raw_value, list):
+            return None, f'{key} must be a list of IDs'
+
+        ids = []
+        for value in raw_value:
+            try:
+                ids.append(int(value))
+            except (TypeError, ValueError):
+                return None, f'{key} must contain only numeric IDs'
+
+        return list(dict.fromkeys(ids)), None
+
+    return [], None
+
+
+def _fetch_by_ids(model, ids, label):
+    if not ids:
+        return [], None
+
+    rows = model.query.filter(model.id.in_(ids)).all()
+    found_ids = {row.id for row in rows}
+    missing_ids = sorted(set(ids).difference(found_ids))
+    if missing_ids:
+        return None, f'Invalid {label} IDs: {missing_ids}'
+
+    rows_by_id = {row.id: row for row in rows}
+    return [rows_by_id[id_] for id_ in ids], None
+
+
+def _outlets_for_products(products):
+    if not products:
+        return []
+
+    product_names = [product.name for product in products]
+    return Outlet.query.filter(Outlet.brand.in_(product_names)).all()
+
+
+def _serialize_user(user):
+    return {
+        'id': user.id,
+        'username': user.username,
+        'email': user.email,
+        'role': user.role,
+        'product_ids': [product.id for product in user.allowed_brands],
+        'products': [product.name for product in user.allowed_brands],
+        'outlet_ids': [outlet.id for outlet in user.allowed_outlets],
+        'outlets': [outlet.outlet_code for outlet in user.allowed_outlets],
+        'is_active': user.is_active,
+    }
+
+
 @auth_bp.route('/auth/register', methods=['POST'])
 def register():
-    data = request.get_json()
-    
-    if User.query.filter_by(username=data['username']).first():
-        return jsonify({'error': 'Username already exists'}), 400
-    
-    if User.query.filter_by(email=data['email']).first():
-        return jsonify({'error': 'Email already exists'}), 400
-    
-    # Create user with required role
+    data = request.get_json(silent=True) or {}
+
+    required_fields = ('username', 'email', 'password')
+    missing_fields = [field for field in required_fields if not str(data.get(field, '')).strip()]
+    if missing_fields:
+        return _json_error(f'Missing required fields: {", ".join(missing_fields)}')
+
+    username = str(data['username']).strip()
+    email = str(data['email']).strip().lower()
+    role = str(data.get('role', 'user')).strip().lower()
+
+    if role not in VALID_ROLES:
+        return _json_error(f'Invalid role. Allowed roles: {", ".join(sorted(VALID_ROLES))}')
+
+    if User.query.filter_by(username=username).first():
+        return _json_error('Username already exists')
+
+    if User.query.filter_by(email=email).first():
+        return _json_error('Email already exists')
+
+    product_ids, error = _parse_id_list(data, 'product_ids', 'brand_ids')
+    if error:
+        return _json_error(error)
+
+    outlet_ids, error = _parse_id_list(data, 'outlet_ids', 'admin_outlet_ids')
+    if error:
+        return _json_error(error)
+
+    if product_ids:
+        products, error = _fetch_by_ids(Product, product_ids, 'product')
+        if error:
+            return _json_error(error)
+    elif role in {'management', 'superadmin'}:
+        products = Product.query.order_by(Product.id.asc()).all()
+    else:
+        products = []
+
+    if outlet_ids:
+        outlets, error = _fetch_by_ids(Outlet, outlet_ids, 'outlet')
+        if error:
+            return _json_error(error)
+    elif products:
+        outlets = _outlets_for_products(products)
+    elif role in {'management', 'superadmin'}:
+        outlets = Outlet.query.all()
+    else:
+        outlets = []
+
     user = User(
-        username=data['username'], 
-        email=data['email'],
-        role=data.get('role', 'user')  # Default to 'user' if not specified
+        username=username,
+        email=email,
+        role=role
     )
     user.set_password(data['password'])
-    
-    # If role is 'management', grant access to all brands and outlets
-    if data.get('role') == 'management':
-        all_brands = Product.query.all()
-        all_outlets = Outlet.query.all()
-        user.allowed_brands.extend(all_brands)
-        user.allowed_outlets.extend(all_outlets)
-    # If role is 'admin', grant access to brand ID 48 and specified outlets
-    elif data.get('role') == 'admin' or data.get('role') == 'superadmin':
-        # Get brands with ID 25 and 33
-        brands = Product.query.filter(Product.id.in_([25])).all()
-        if brands:
-            for brand in brands:
-                user.allowed_brands.append(brand)
-            
-            # If specific outlet IDs are provided for admin, use those
-            if 'admin_outlet_ids' in data and data['admin_outlet_ids']:
-                admin_outlets = Outlet.query.filter(Outlet.id.in_(data['admin_outlet_ids'])).all()
-                user.allowed_outlets.extend(admin_outlets)
-            else:
-                brand_names = [brand.name for brand in brands]
-                brand_outlets = Outlet.query.filter(Outlet.brand.in_(brand_names)).all()
-                user.allowed_outlets.extend(brand_outlets)
-    else:
-        # Add brand access if provided
-        if 'brand_ids' in data and data['brand_ids']:
-            # Get brands with ID 25 and 33
-            brands = Product.query.filter(Product.id.in_([25, 33])).all()
-            if brands:
-                for brand in brands:
-                    user.allowed_brands.append(brand)
-                
-                # If specific outlet IDs are provided for admin, use those
-                if 'admin_outlet_ids' in data and data['admin_outlet_ids']:
-                    admin_outlets = Outlet.query.filter(Outlet.id.in_(data['admin_outlet_ids'])).all()
-                    user.allowed_outlets.extend(admin_outlets)
-                else:
-                    brand_names = [brand.name for brand in brands]
-                    brand_outlets = Outlet.query.filter(Outlet.brand.in_(brand_names)).all()
-                    user.allowed_outlets.extend(brand_outlets)
-        
-        # Add outlet access if provided
-        if 'outlet_ids' in data and data['outlet_ids']:
-            outlets = Outlet.query.filter(Outlet.id.in_(data['outlet_ids'])).all()
-            user.allowed_outlets.extend(outlets)
-    
+
+    user.allowed_brands.extend(products)
+    user.allowed_outlets.extend(outlets)
+
     db.session.add(user)
     db.session.commit()
-    
-    return jsonify({'message': 'User created successfully'}), 201
+
+    return jsonify({
+        'message': 'User created successfully',
+        'user': _serialize_user(user)
+    }), 201
+
+
+@auth_bp.route('/auth/users/<int:user_id>', methods=['PATCH', 'PUT'])
+@jwt_required()
+def update_user(user_id):
+    data = request.get_json(silent=True) or {}
+    user = User.query.get(user_id)
+
+    if not user:
+        return _json_error('User not found', 404)
+
+    current_user_id = get_jwt_identity()
+    current_user = User.query.get(current_user_id)
+    if not current_user or not current_user.is_active:
+        return _json_error('Unauthorized', 401)
+
+    is_self_update = current_user.id == user.id
+    can_manage_access = current_user.role in ACCESS_MANAGER_ROLES
+    access_fields = {'role', 'product_ids', 'brand_ids', 'outlet_ids', 'admin_outlet_ids'}
+    requested_access_changes = access_fields.intersection(data.keys())
+
+    if requested_access_changes and not can_manage_access:
+        return _json_error('Only admin, superadmin, or management users can change role or access', 403)
+
+    if not is_self_update and not can_manage_access:
+        return _json_error('You can only update your own account', 403)
+
+    if 'password' in data:
+        password = str(data.get('password') or '').strip()
+        if not password:
+            return _json_error('password cannot be empty')
+        user.set_password(password)
+
+    if 'role' in data:
+        role = str(data.get('role') or '').strip().lower()
+        if role not in VALID_ROLES:
+            return _json_error(f'Invalid role. Allowed roles: {", ".join(sorted(VALID_ROLES))}')
+        user.role = role
+
+    product_ids, error = _parse_id_list(data, 'product_ids', 'brand_ids')
+    if error:
+        return _json_error(error)
+
+    outlet_ids, error = _parse_id_list(data, 'outlet_ids', 'admin_outlet_ids')
+    if error:
+        return _json_error(error)
+
+    if 'product_ids' in data or 'brand_ids' in data:
+        products, error = _fetch_by_ids(Product, product_ids, 'product')
+        if error:
+            return _json_error(error)
+
+        user.allowed_brands = products
+
+        outlets_by_id = {outlet.id: outlet for outlet in _outlets_for_products(products)}
+        if outlet_ids:
+            explicit_outlets, error = _fetch_by_ids(Outlet, outlet_ids, 'outlet')
+            if error:
+                return _json_error(error)
+            outlets_by_id.update({outlet.id: outlet for outlet in explicit_outlets})
+
+        user.allowed_outlets = list(outlets_by_id.values())
+    elif 'outlet_ids' in data or 'admin_outlet_ids' in data:
+        outlets, error = _fetch_by_ids(Outlet, outlet_ids, 'outlet')
+        if error:
+            return _json_error(error)
+        user.allowed_outlets = outlets
+
+    db.session.commit()
+
+    return jsonify({
+        'message': 'User updated successfully',
+        'user': _serialize_user(user)
+    })
 
 @auth_bp.route('/auth/login', methods=['POST'])
 def login():
