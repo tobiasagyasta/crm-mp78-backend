@@ -65,7 +65,7 @@ class ClosingSheet(BaseSheet):
             cell.alignment = CENTER_ALIGN
             if name in ['Gojek', 'Gojek (ac)', 'Gojek MPR (ac)']:
                 cell.fill = GOJEK_FILL
-            elif name in ['Grab', 'Grab Net', 'Grab Commission', 'Grab (ac)', 'Grab MPR (ac)', 'Grab(OVO)']:
+            elif name in ['Grab', 'Grab Net', 'Grab (ac)', 'Grab MPR (ac)', 'Grab(OVO)']:
                 cell.fill = GRAB_FILL
             elif name in [
                 'ShopeeFood', 'ShopeeFood (ac)', 'ShopeePay', 'ShopeePay (ac)',
@@ -163,7 +163,6 @@ class ClosingSheet(BaseSheet):
                 platform_definitions[:1] +
                 [
                     ('Grab Net', 'Grab_Net_Raw', 'main'),
-                    ('Grab Commission', 'Grab_Commission', 'main'),
                 ] +
                 platform_definitions[1:]
             )
@@ -423,12 +422,6 @@ class ClosingSheet(BaseSheet):
 
         if header == 'Grab_Net_Raw':
             return totals.get('Grab_Net', 0)
-
-        if header == 'Grab_Commission':
-            return totals.get(
-                'Grab_Commission',
-                totals.get('Grab_Net', 0) * mpr_calc.MANAGEMENT_COMMISSION_RATE
-            )
 
         return None
 
