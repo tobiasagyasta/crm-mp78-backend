@@ -65,7 +65,7 @@ class ClosingSheet(BaseSheet):
             cell.alignment = CENTER_ALIGN
             if name in ['Gojek', 'Gojek (ac)', 'Gojek MPR (ac)']:
                 cell.fill = GOJEK_FILL
-            elif name in ['Grab', 'Grab (ac)', 'Grab MPR (ac)', 'Grab(OVO)']:
+            elif name in ['Grab', 'Grab Net', 'Grab Commission', 'Grab (ac)', 'Grab MPR (ac)', 'Grab(OVO)']:
                 cell.fill = GRAB_FILL
             elif name in [
                 'ShopeeFood', 'ShopeeFood (ac)', 'ShopeePay', 'ShopeePay (ac)',
@@ -158,6 +158,15 @@ class ClosingSheet(BaseSheet):
 
     def _get_main_table_platforms(self):
         platform_definitions = self._get_main_platform_definitions_for_grand_total()
+        if self._uses_mp78_management_ac():
+            platform_definitions = (
+                platform_definitions[:1] +
+                [
+                    ('Grab Net', 'Grab_Net_Raw', 'main'),
+                    ('Grab Commission', 'Grab_Commission', 'main'),
+                ] +
+                platform_definitions[1:]
+            )
 
         if not self.data.get('mpr_report_data'):
             return platform_definitions
@@ -173,6 +182,9 @@ class ClosingSheet(BaseSheet):
     def _get_platform_grand_total_with_fallback(self, report_type, header):
         if report_type == 'mpr':
             return self._get_mpr_display_value(header)
+        special_value = self._get_main_table_special_value(header)
+        if special_value is not None:
+            return special_value
         if self._uses_mp78_management_ac():
             return self._get_mp78_display_value(header)
         return self._get_grand_total_with_fallback(header)
@@ -180,6 +192,9 @@ class ClosingSheet(BaseSheet):
     def _get_platform_daily_value_with_fallback(self, report_type, date, header):
         if report_type == 'mpr':
             return self._get_mpr_display_value(header, date)
+        special_value = self._get_main_table_special_value(header, date)
+        if special_value is not None:
+            return special_value
         if self._uses_mp78_management_ac():
             return self._get_mp78_display_value(header, date)
         return self._get_report_value_with_fallback(self.data, header, date)
@@ -400,6 +415,22 @@ class ClosingSheet(BaseSheet):
             net_key = header.replace('_Mutation', '_Net')
             value = totals.get(net_key, 0)
         return value
+
+    def _get_main_table_special_value(self, header, date=None):
+        totals = self.data.get('grand_totals', {})
+        if date is not None:
+            totals = self.data.get('daily_totals', {}).get(date, {})
+
+        if header == 'Grab_Net_Raw':
+            return totals.get('Grab_Net', 0)
+
+        if header == 'Grab_Commission':
+            return totals.get(
+                'Grab_Commission',
+                totals.get('Grab_Net', 0) * mpr_calc.MANAGEMENT_COMMISSION_RATE
+            )
+
+        return None
 
     def _is_mp78_brand(self):
         return self.data['outlet'].brand == 'MP78'
