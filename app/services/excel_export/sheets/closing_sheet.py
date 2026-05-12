@@ -350,7 +350,7 @@ class ClosingSheet(BaseSheet):
             rekening_value = f"{rekening.name} - {rekening.rekening_number}"
 
         row = 3
-        start_column = 20  # Column T
+        start_column = (self.grand_total_col_end + 2) if self.grand_total_col_end else 20
         store_id_rows = [
             ('Gojek', outlet.store_id_gojek, GOJEK_FILL),
             ('Grab', outlet.store_id_grab, GRAB_FILL),
