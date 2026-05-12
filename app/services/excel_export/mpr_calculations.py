@@ -1,6 +1,7 @@
 MPR_STANDARD_NET_RATE = 0.92
 MPR_QRIS_OVO_NET_RATE = 0.98
 MANAGEMENT_COMMISSION_RATE = 1 / 74
+TIKTOK_MANAGEMENT_COMMISSION_RATE = 0.01
 ENABLE_MP78_MANAGEMENT_AC = True
 
 ## Reminder : Make sure to add shopee_net_ac_value
@@ -70,7 +71,7 @@ def tiktok_net_ac_value(totals, is_mpr=False):
     if is_mpr:
         return net * MPR_STANDARD_NET_RATE
 
-    return net - (net * MANAGEMENT_COMMISSION_RATE)
+    return net - (net * TIKTOK_MANAGEMENT_COMMISSION_RATE)
 
 
 def grab_net_ac_value(totals):

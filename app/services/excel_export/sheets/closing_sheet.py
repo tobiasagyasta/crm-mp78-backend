@@ -164,7 +164,10 @@ class ClosingSheet(BaseSheet):
                 [
                     ('Grab Net', 'Grab_Net_Raw', 'main'),
                 ] +
-                platform_definitions[1:]
+                [
+                    definition for definition in platform_definitions[1:]
+                    if definition[0] != 'Grab (ac)'
+                ]
             )
 
         if not self.data.get('mpr_report_data'):
