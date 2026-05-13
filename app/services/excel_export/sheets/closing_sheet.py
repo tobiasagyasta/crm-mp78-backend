@@ -4,7 +4,8 @@ from app.services.excel_export.utils.excel_utils import (
     HEADER_FONT, YELLOW_FILL, CENTER_ALIGN, GOJEK_FILL, GRAB_FILL, SHOPEE_FILL,GREY_FILL,
     TIKTOK_FILL, BLUE_FILL, DIFFERENCE_FILL, THIN_BORDER, auto_fit_columns, LEFT_ALIGN, RIGHT_ALIGN
 )
-from app.models.rekening import Rekening
+from app.models.mpr_mapping import MprMapping
+from app.models.outlet import Outlet
 from datetime import datetime
 import re
 
@@ -19,11 +20,16 @@ class ClosingSheet(BaseSheet):
         self.store_id_col_end = None
         self.store_id_row = None
         self.store_id_row_end = None
+        self.rekening_col_start = None
+        self.rekening_col_end = None
+        self.rekening_row = None
+        self.rekening_row_end = None
 
     def generate(self):
         self._write_main_table()
         self._write_grand_total_section()
         self._write_store_id_table()
+        self._write_rekening_table()
         self._apply_styles()
         auto_fit_columns(self.ws)
 
@@ -344,12 +350,7 @@ class ClosingSheet(BaseSheet):
 
     def _write_store_id_table(self):
         outlet = self.data['outlet']
-        mpr_report_data = self.data.get('mpr_report_data')
-        mpr_outlet = mpr_report_data.get('outlet') if mpr_report_data else None
-        rekening = self._get_outlet_rekening(outlet)
-        rekening_value = "-"
-        if rekening:
-            rekening_value = f"{rekening.name} - {rekening.rekening_number}"
+        mpr_outlet = self._get_mapped_mpr_outlet()
 
         row = 3
         start_column = (self.grand_total_col_end + 2) if self.grand_total_col_end else 20
@@ -358,7 +359,6 @@ class ClosingSheet(BaseSheet):
             ('Grab', outlet.store_id_grab, GRAB_FILL),
             ('ShopeeFood', outlet.store_id_shopee, SHOPEE_FILL),
             ('ShopeePay', outlet.store_id_shopee, SHOPEE_FILL),
-            ('Rekening', rekening_value, GREY_FILL),
         ]
 
         if mpr_outlet:
@@ -398,11 +398,74 @@ class ClosingSheet(BaseSheet):
             value_cell.alignment = CENTER_ALIGN
             value_cell.fill = fill
 
-    def _get_outlet_rekening(self, outlet):
-        rekening_id = getattr(outlet, 'rekening_id', None)
-        if not rekening_id:
+    def _write_rekening_table(self):
+        outlet = self.data['outlet']
+        mpr_outlet = self._get_mapped_mpr_outlet()
+
+        row = 3
+        start_column = (self.store_id_col_end + 2) if self.store_id_col_end else 22
+        rekening_rows = [
+            (self._get_rekening_table_outlet_label(outlet), outlet.rekening_id, GREY_FILL),
+        ]
+
+        if mpr_outlet:
+            rekening_rows.append(
+                (self._get_rekening_table_outlet_label(mpr_outlet), mpr_outlet.rekening_id, GREY_FILL)
+            )
+
+        self.rekening_col_start = start_column
+        self.rekening_col_end = start_column + 1
+        self.rekening_row = row
+        self.rekening_row_end = row + len(rekening_rows)
+        self.ws.row_dimensions[row].height = 18
+
+        header_cells = [
+            (start_column, 'Outlet'),
+            (start_column + 1, 'Rekening ID'),
+        ]
+        for column, value in header_cells:
+            cell = self.ws.cell(row=row, column=column, value=value)
+            cell.font = HEADER_FONT
+            cell.alignment = CENTER_ALIGN
+            cell.fill = BLUE_FILL
+
+        for offset, (label, rekening_id, fill) in enumerate(rekening_rows, start=1):
+            data_row = row + offset
+            self.ws.row_dimensions[data_row].height = 18
+
+            label_cell = self.ws.cell(row=data_row, column=start_column, value=label)
+            label_cell.font = HEADER_FONT
+            label_cell.alignment = CENTER_ALIGN
+            label_cell.fill = fill
+
+            value_cell = self.ws.cell(row=data_row, column=start_column + 1, value=rekening_id or "-")
+            value_cell.font = HEADER_FONT
+            value_cell.alignment = CENTER_ALIGN
+            value_cell.fill = fill
+
+    def _get_mapped_mpr_outlet(self):
+        if not self._is_mp78_brand():
             return None
-        return Rekening.query.get(rekening_id)
+
+        mpr_report_data = self.data.get('mpr_report_data')
+        if mpr_report_data and mpr_report_data.get('outlet'):
+            return mpr_report_data['outlet']
+
+        outlet = self.data['outlet']
+        mapping = MprMapping.query.filter_by(mp78_outlet_code=outlet.outlet_code).first()
+        if not mapping or not mapping.mpr_outlet_code:
+            return None
+
+        return Outlet.query.filter_by(outlet_code=mapping.mpr_outlet_code).first()
+
+    def _get_rekening_table_outlet_label(self, outlet):
+        if not outlet:
+            return "-"
+        outlet_code = getattr(outlet, 'outlet_code', None)
+        brand = getattr(outlet, 'brand', None)
+        if brand and outlet_code:
+            return f"{brand} - {outlet_code}"
+        return outlet_code or getattr(outlet, 'outlet_name_gojek', None) or "-"
 
     def _get_report_value_with_fallback(self, report_data, header, date=None):
         if not report_data:
@@ -526,6 +589,17 @@ class ClosingSheet(BaseSheet):
                 max_row=self.store_id_row_end,
                 min_col=self.store_id_col_start,
                 max_col=self.store_id_col_end,
+            ):
+                for cell in row:
+                    cell.border = THIN_BORDER
+
+        # Apply borders to the rekening table separately.
+        if self.rekening_col_start and self.rekening_col_end and self.rekening_row and self.rekening_row_end:
+            for row in self.ws.iter_rows(
+                min_row=self.rekening_row,
+                max_row=self.rekening_row_end,
+                min_col=self.rekening_col_start,
+                max_col=self.rekening_col_end,
             ):
                 for cell in row:
                     cell.border = THIN_BORDER
