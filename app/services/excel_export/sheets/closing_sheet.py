@@ -6,6 +6,7 @@ from app.services.excel_export.utils.excel_utils import (
 )
 from app.models.mpr_mapping import MprMapping
 from app.models.outlet import Outlet
+from app.models.rekening import Rekening
 from datetime import datetime
 import re
 
@@ -421,7 +422,7 @@ class ClosingSheet(BaseSheet):
 
         header_cells = [
             (start_column, 'Outlet'),
-            (start_column + 1, 'Rekening ID'),
+            (start_column + 1, 'Rekening'),
         ]
         for column, value in header_cells:
             cell = self.ws.cell(row=row, column=column, value=value)
@@ -438,10 +439,24 @@ class ClosingSheet(BaseSheet):
             label_cell.alignment = CENTER_ALIGN
             label_cell.fill = fill
 
-            value_cell = self.ws.cell(row=data_row, column=start_column + 1, value=rekening_id or "-")
+            value_cell = self.ws.cell(
+                row=data_row,
+                column=start_column + 1,
+                value=self._get_rekening_display_value(rekening_id),
+            )
             value_cell.font = HEADER_FONT
             value_cell.alignment = CENTER_ALIGN
             value_cell.fill = fill
+
+    def _get_rekening_display_value(self, rekening_id):
+        if not rekening_id:
+            return "-"
+
+        rekening = Rekening.query.get(rekening_id)
+        if not rekening:
+            return f"ID {rekening_id}"
+
+        return f"{rekening.name} - {rekening.rekening_number}"
 
     def _get_mapped_mpr_outlet(self):
         if not self._is_mp78_brand():
