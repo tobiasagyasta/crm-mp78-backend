@@ -26,6 +26,8 @@ class Outlet(db.Model):
     store_id_shopee = db.Column(db.String(50), nullable=True, unique=True)
     outlet_code_tiktok_webshop = db.Column(db.String(100), nullable=True)
 
+    mp78_code = db.Column(db.String(10), nullable=True, unique=True)
+
     #PKB
     pkb_code = db.Column(db.String(10), nullable=True, unique=True)
     is_global = db.Column(db.Boolean, default = False)
