@@ -12,6 +12,7 @@ class TiktokReport(db.Model):
     outlet_order_id = db.Column(db.String, nullable=False)
     store_name = db.Column(db.String, nullable=True)
     order_time = db.Column(db.DateTime, nullable=False)
+    settlement_time = db.Column(db.DateTime, nullable=True)
     gross_amount = db.Column(db.Numeric, nullable=True)
     net_amount = db.Column(db.Numeric, nullable=True)
 
@@ -32,7 +33,8 @@ class TiktokReport(db.Model):
         - brand_name and outlet_code: looked up from Outlet via "Kode WEBSHOP dan Tiktok" (last column)
         - outlet_order_id: column 1 (index 1)
         - store_name: column 9 (index 9)
-        - order_time: column 21 (index 20, format yyyy-mm-dd)
+        - order_time: column 5 (index 4, format yyyy-mm-dd)
+        - settlement_time: column 21 (index 20, format yyyy-mm-dd)
         - gross_amount: column 14 (index 14)
         - net_amount: column 19 (index 19)
         """
@@ -46,8 +48,10 @@ class TiktokReport(db.Model):
             outlet_code = outlet.outlet_code if outlet else None
 
             store_name = row[9].strip()
-            order_time_str = row[20].strip()
+            order_time_str = row[4].strip()
             order_time = datetime.strptime(order_time_str, '%Y-%m-%d')
+            settlement_time_str = row[20].strip()
+            settlement_time = datetime.strptime(settlement_time_str, '%Y-%m-%d')
             gross_amount = TiktokReport._parse_amount(row[14])
             net_amount = TiktokReport._parse_amount(row[19])
 
@@ -58,6 +62,7 @@ class TiktokReport(db.Model):
                 'outlet_order_id': row[1].strip(),
                 'store_name': store_name,
                 'order_time': order_time,
+                'settlement_time': settlement_time,
                 'gross_amount': gross_amount,
                 'net_amount': net_amount
             }

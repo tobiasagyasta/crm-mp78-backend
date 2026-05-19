@@ -854,7 +854,6 @@ def upload_report_tiktok():
             reports = []
             for idx, row in enumerate(reader):
                 parsed = TiktokReport.parse_tiktok_row(row)
-                print(f"DEBUG Parsed Row {idx+1}: {parsed}") 
 
                 if parsed:
                      # Duplicate check: adjust fields as needed for your business logic
@@ -862,6 +861,7 @@ def upload_report_tiktok():
                         store_name=parsed['store_name'],
                         outlet_order_id=parsed['outlet_order_id'],
                         order_time=parsed['order_time'],
+                        settlement_time = parsed['settlement_time'],
                         gross_amount=parsed['gross_amount'],
                         net_amount=parsed['net_amount']
                     ).first()

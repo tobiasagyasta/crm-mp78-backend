@@ -11,6 +11,9 @@ from datetime import datetime
 import re
 
 class ClosingSheet(BaseSheet):
+    TIKTOK_NET_HEADER = 'Tiktok_Net'
+    TIKTOK_CLOSING_NET_HEADER = 'Tiktok_Closing_Net'
+
     def __init__(self, workbook, data):
         super().__init__(workbook, 'Closing Sheet', data)
         self.main_table_col_end = None
@@ -189,6 +192,8 @@ class ClosingSheet(BaseSheet):
         ]
 
     def _get_platform_grand_total_with_fallback(self, report_type, header):
+        if header == self.TIKTOK_NET_HEADER:
+            return self._get_tiktok_closing_display_value(report_type)
         if report_type == 'mpr':
             return self._get_mpr_display_value(header)
         special_value = self._get_main_table_special_value(header)
@@ -199,6 +204,8 @@ class ClosingSheet(BaseSheet):
         return self._get_grand_total_with_fallback(header)
 
     def _get_platform_daily_value_with_fallback(self, report_type, date, header):
+        if header == self.TIKTOK_NET_HEADER:
+            return self._get_tiktok_closing_display_value(report_type, date)
         if report_type == 'mpr':
             return self._get_mpr_display_value(header, date)
         special_value = self._get_main_table_special_value(header, date)
@@ -246,7 +253,7 @@ class ClosingSheet(BaseSheet):
             (self._get_mpr_display_value('Grab_Net') or 0) +
             (self._get_mpr_display_value('Shopee_Net') or 0) +
             (self._get_mpr_display_value('ShopeePay_Net') or 0) +
-            (self._get_mpr_display_value('Tiktok_Net') or 0) +
+            (self._get_tiktok_closing_display_value('mpr') or 0) +
             sum(float(entry.amount) for entry, _, _ in manual_entries if entry.entry_type == 'income') +
             self._get_grand_total_with_fallback('UV')
         )
@@ -305,7 +312,10 @@ class ClosingSheet(BaseSheet):
             for label, header, _ in self._get_platform_definitions_for_mpr()
         ]
         for label, header in mpr_rows:
-            mpr_value = self._get_mpr_display_value(header)
+            if header == self.TIKTOK_NET_HEADER:
+                mpr_value = self._get_tiktok_closing_display_value('mpr')
+            else:
+                mpr_value = self._get_mpr_display_value(header)
             if mpr_value is None:
                 continue
 
@@ -537,6 +547,26 @@ class ClosingSheet(BaseSheet):
             return ac_value
 
         return self._get_report_value_with_fallback(report_data, header, date)
+
+    def _get_tiktok_closing_display_value(self, report_type, date=None):
+        report_data = self.data.get('mpr_report_data') if report_type == 'mpr' else self.data
+        if not report_data:
+            return None
+
+        totals = report_data.get('grand_totals', {})
+        if date is not None:
+            totals = report_data.get('daily_totals', {}).get(date, {})
+
+        closing_net = totals.get(self.TIKTOK_CLOSING_NET_HEADER, 0)
+        closing_totals = {self.TIKTOK_NET_HEADER: closing_net}
+
+        if report_type == 'mpr':
+            return mpr_calc.tiktok_net_ac_value(closing_totals, is_mpr=True)
+
+        if self._uses_mp78_management_ac():
+            return mpr_calc.tiktok_net_ac_value(closing_totals)
+
+        return closing_net
 
     def _get_closing_grand_total_income_value(self, header, grab_net_total=None):
         if header == 'Grab_Net':
