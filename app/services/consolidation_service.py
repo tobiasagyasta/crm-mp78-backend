@@ -17,7 +17,10 @@ REPORT_CONFIG = {
     },
     'grab': {
         'model': GrabFoodReport,
-        'date_col': func.cast(GrabFoodReport.tanggal_dibuat, db.Date),
+        'date_col': func.cast(
+            func.coalesce(GrabFoodReport.diperbarui_pada, GrabFoodReport.tanggal_dibuat),
+            db.Date,
+        ),
         'gross_col': GrabFoodReport.amount,
         'net_col': GrabFoodReport.total,
         'filters': [],

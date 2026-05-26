@@ -1086,11 +1086,14 @@ def upload_report_grab():
 
                 try:
                     date_str = row.get('Tanggal dibuat', '')
+                    date_made_str = row.get('Diperbarui Pada', '')
                     try:
                         tanggal_dibuat = datetime.strptime(date_str, '%d %b %Y %I:%M %p')
+                        tanggal_diperbarui = datetime.strptime(date_made_str, '%d %b %Y %I:%M %p')
+
                     except ValueError:
                         tanggal_dibuat = datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S')
-
+                        tanggal_diperbarui = datetime.strptime(date_made_str, '%Y-%m-%d %H:%M:%S')
                     def safe_float(value):
                         if not value:
                             return 0
@@ -1105,6 +1108,7 @@ def upload_report_grab():
                         nama_toko=store_name,
                         id_toko=store_id,
                         tanggal_dibuat=tanggal_dibuat,
+                        diperbarui_pada=tanggal_diperbarui,
                         jenis=row.get('Jenis', ''),
                         kategori=row.get('Kategori', ''),
                         subkategori=row.get('Subkategori', ''),
@@ -1116,7 +1120,7 @@ def upload_report_grab():
                         penjualan_bersih=safe_float(row.get('Penjualan bersih'))
                     )
                     reports.append(report)
-                    affected_outlets.add((outlet.outlet_code, tanggal_dibuat.date()))
+                    affected_outlets.add((outlet.outlet_code, tanggal_diperbarui.date()))
                     total_reports += 1
                 except (ValueError, TypeError) as e:
                     print(f"Error processing row: {e}")

@@ -16,7 +16,14 @@ from app.models.income_category import IncomeCategory
 from app.models.expense_category import ExpenseCategory
 from app.utils.transaction_matcher import TransactionMatcher
 from app.utils.pkb_mutation import get_minus_manual_entries
+from sqlalchemy import func
 from sqlalchemy.orm import aliased
+
+def _grab_report_datetime_col():
+    return func.coalesce(GrabFoodReport.diperbarui_pada, GrabFoodReport.tanggal_dibuat)
+
+def _grab_report_date(report):
+    return report.diperbarui_pada or report.tanggal_dibuat
 
 def get_report_data(outlet_code: str, start_date: datetime, end_date: datetime) -> dict:
     """
@@ -39,7 +46,8 @@ def get_report_data(outlet_code: str, start_date: datetime, end_date: datetime) 
 
     # Fetch all reports
     gojek_reports = GojekReport.query.filter(GojekReport.outlet_code == outlet_code, GojekReport.transaction_date >= start_date, GojekReport.transaction_date <= end_date_inclusive).all()
-    grab_reports = GrabFoodReport.query.filter(GrabFoodReport.outlet_code == outlet_code, GrabFoodReport.tanggal_dibuat >= start_date, GrabFoodReport.tanggal_dibuat <= end_date_inclusive).all()
+    grab_date_col = _grab_report_datetime_col()
+    grab_reports = GrabFoodReport.query.filter(GrabFoodReport.outlet_code == outlet_code, grab_date_col >= start_date, grab_date_col <= end_date_inclusive).all()
     shopee_reports = ShopeeReport.query.filter(ShopeeReport.outlet_code == outlet_code, ShopeeReport.order_create_time >= start_date, ShopeeReport.order_create_time <= end_date_inclusive).all()
     shopeepay_reports = ShopeepayReport.query.filter(ShopeepayReport.outlet_code == outlet_code, ShopeepayReport.create_time >= start_date, ShopeepayReport.create_time <= end_date_inclusive).all()
     tiktok_reports = TiktokReport.query.filter(TiktokReport.outlet_code == outlet_code, TiktokReport.order_time >= start_date, TiktokReport.order_time <= end_date_inclusive).all()
@@ -144,7 +152,14 @@ def _aggregate_grab(daily_totals, reports, brand):
     grabfood_net_total = 0
     grabovo_net_total = 0
     for report in reports:
-        date = report.tanggal_dibuat.date()
+        report_datetime = _grab_report_date(report)
+        if not report_datetime:
+            continue
+
+        date = report_datetime.date()
+        if date not in daily_totals:
+            continue
+
         daily_totals[date]['Grab_Net'] += float(report.total or 0)
         daily_totals[date]['Grab_Gross'] += float(report.amount or 0)
         if hasattr(report, 'jenis'):

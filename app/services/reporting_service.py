@@ -11,6 +11,15 @@ from app.models.shopeepay_reports import ShopeepayReport
 from app.services.excel_export import mpr_calculations as mpr_calc
 
 
+def _grab_report_datetime_col():
+    return db.func.coalesce(GrabFoodReport.diperbarui_pada, GrabFoodReport.tanggal_dibuat)
+
+
+def _grab_report_date(report) -> date | None:
+    report_datetime = report.diperbarui_pada or report.tanggal_dibuat
+    return report_datetime.date() if report_datetime else None
+
+
 def _parse_opening_day(closing_date_str: str) -> int | None:
     """Parses an opening day from a string like '25-24'."""
     if not closing_date_str or '-' not in closing_date_str:
@@ -212,8 +221,8 @@ def generate_monthly_net_income_data_from_closing_anchor(
 
     grab_reports = GrabFoodReport.query.filter(
         GrabFoodReport.brand_name == brand_name,
-        db.func.cast(GrabFoodReport.tanggal_dibuat, db.Date) >= query_start_date,
-        db.func.cast(GrabFoodReport.tanggal_dibuat, db.Date) <= query_end_date,
+        db.func.cast(_grab_report_datetime_col(), db.Date) >= query_start_date,
+        db.func.cast(_grab_report_datetime_col(), db.Date) <= query_end_date,
     ).all()
 
     data = {}
@@ -228,7 +237,8 @@ def generate_monthly_net_income_data_from_closing_anchor(
         }
 
     for report in grab_reports:
-        if not report.tanggal_dibuat:
+        transaction_date = _grab_report_date(report)
+        if not transaction_date:
             continue
 
         outlet = outlet_map.get(str(report.outlet_code))
@@ -236,7 +246,7 @@ def generate_monthly_net_income_data_from_closing_anchor(
             continue
 
         financial_year, financial_month = _resolve_financial_period(
-            report.tanggal_dibuat.date(),
+            transaction_date,
             outlet.closing_date,
         )
         period_key = (financial_year, financial_month)
@@ -283,19 +293,19 @@ def generate_monthly_grab_net_income_data(
     query_end_date = date(year + 1, 1, 31)
     grab_reports = GrabFoodReport.query.filter(
         GrabFoodReport.brand_name == brand_name,
-        db.func.cast(GrabFoodReport.tanggal_dibuat, db.Date) >= query_start_date,
-        db.func.cast(GrabFoodReport.tanggal_dibuat, db.Date) <= query_end_date,
+        db.func.cast(_grab_report_datetime_col(), db.Date) >= query_start_date,
+        db.func.cast(_grab_report_datetime_col(), db.Date) <= query_end_date,
     ).all()
 
     for report in grab_reports:
-        if not report.tanggal_dibuat:
+        transaction_date = _grab_report_date(report)
+        if not transaction_date:
             continue
 
         outlet = outlet_map.get(report.outlet_code)
         if not outlet:
             continue
 
-        transaction_date = report.tanggal_dibuat.date()
         financial_year, financial_month = _resolve_financial_period(
             transaction_date,
             outlet.closing_date,
@@ -390,8 +400,8 @@ def generate_monthly_mpr_commission_data(
             GojekReport.transaction_date <= end_date,
         )
         grab_query = grab_query.filter(
-            db.func.cast(GrabFoodReport.tanggal_dibuat, db.Date) >= start_date,
-            db.func.cast(GrabFoodReport.tanggal_dibuat, db.Date) <= end_date,
+            db.func.cast(_grab_report_datetime_col(), db.Date) >= start_date,
+            db.func.cast(_grab_report_datetime_col(), db.Date) <= end_date,
         )
         shopee_query = shopee_query.filter(
             db.func.cast(ShopeeReport.order_create_time, db.Date) >= start_date,
@@ -409,8 +419,8 @@ def generate_monthly_mpr_commission_data(
             GojekReport.transaction_date <= query_end_date,
         )
         grab_query = grab_query.filter(
-            db.func.cast(GrabFoodReport.tanggal_dibuat, db.Date) >= query_start_date,
-            db.func.cast(GrabFoodReport.tanggal_dibuat, db.Date) <= query_end_date,
+            db.func.cast(_grab_report_datetime_col(), db.Date) >= query_start_date,
+            db.func.cast(_grab_report_datetime_col(), db.Date) <= query_end_date,
         )
         shopee_query = shopee_query.filter(
             db.func.cast(ShopeeReport.order_create_time, db.Date) >= query_start_date,
@@ -431,7 +441,8 @@ def generate_monthly_mpr_commission_data(
         _accumulate(report.outlet_code, report.transaction_date, amount, commission)
 
     for report in grab_query.all():
-        if not report.tanggal_dibuat:
+        transaction_date = _grab_report_date(report)
+        if not transaction_date:
             continue
         amount = float(report.total or 0)
         commission = (
@@ -439,7 +450,7 @@ def generate_monthly_mpr_commission_data(
             if getattr(report, 'jenis', None) == 'OVO'
             else _standard_commission(amount)
         )
-        _accumulate(report.outlet_code, report.tanggal_dibuat.date(), amount, commission)
+        _accumulate(report.outlet_code, transaction_date, amount, commission)
 
     for report in shopee_query.all():
         if report.order_status == "Cancelled" or not report.order_create_time:
