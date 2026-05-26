@@ -25,6 +25,9 @@ def _grab_report_datetime_col():
 def _grab_report_date(report):
     return report.diperbarui_pada or report.tanggal_dibuat
 
+def _is_transferred_grab_report(report):
+    return (report.status or '').strip() in ('Transferred', 'Ditransfer')
+
 def get_report_data(outlet_code: str, start_date: datetime, end_date: datetime) -> dict:
     """
     Fetches and prepares all data required for the Excel report.
@@ -47,7 +50,12 @@ def get_report_data(outlet_code: str, start_date: datetime, end_date: datetime) 
     # Fetch all reports
     gojek_reports = GojekReport.query.filter(GojekReport.outlet_code == outlet_code, GojekReport.transaction_date >= start_date, GojekReport.transaction_date <= end_date_inclusive).all()
     grab_date_col = _grab_report_datetime_col()
-    grab_reports = GrabFoodReport.query.filter(GrabFoodReport.outlet_code == outlet_code, grab_date_col >= start_date, grab_date_col <= end_date_inclusive).all()
+    grab_reports = GrabFoodReport.query.filter(
+        GrabFoodReport.outlet_code == outlet_code,
+        grab_date_col >= start_date,
+        grab_date_col <= end_date_inclusive,
+        GrabFoodReport.status.in_(('Transferred', 'Ditransfer')),
+    ).all()
     shopee_reports = ShopeeReport.query.filter(ShopeeReport.outlet_code == outlet_code, ShopeeReport.order_create_time >= start_date, ShopeeReport.order_create_time <= end_date_inclusive).all()
     shopeepay_reports = ShopeepayReport.query.filter(ShopeepayReport.outlet_code == outlet_code, ShopeepayReport.create_time >= start_date, ShopeepayReport.create_time <= end_date_inclusive).all()
     tiktok_reports = TiktokReport.query.filter(TiktokReport.outlet_code == outlet_code, TiktokReport.order_time >= start_date, TiktokReport.order_time <= end_date_inclusive).all()
@@ -152,6 +160,9 @@ def _aggregate_grab(daily_totals, reports, brand):
     grabfood_net_total = 0
     grabovo_net_total = 0
     for report in reports:
+        if not _is_transferred_grab_report(report):
+            continue
+
         report_datetime = _grab_report_date(report)
         if not report_datetime:
             continue
