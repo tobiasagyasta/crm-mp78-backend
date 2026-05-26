@@ -67,6 +67,25 @@ def parse_date_range(args):
     return start_date, end_date, None
 
 
+def parse_date_range_from_body(data):
+    start_date_param = data.get("start_date")
+    end_date_param = data.get("end_date")
+
+    if not start_date_param or not end_date_param:
+        return None, None, "start_date and end_date are required"
+
+    try:
+        start_date = datetime.strptime(start_date_param, "%Y-%m-%d").date()
+        end_date = datetime.strptime(end_date_param, "%Y-%m-%d").date()
+    except (TypeError, ValueError):
+        return None, None, "start_date and end_date must be in YYYY-MM-DD format"
+
+    if start_date > end_date:
+        return None, None, "start_date must be less than or equal to end_date"
+
+    return start_date, end_date, None
+
+
 def _month_last_day(year, month):
     return calendar.monthrange(year, month)[1]
 
@@ -150,6 +169,7 @@ from app.services.excel_export.sheets.monthly_mpr_commission_sheet import (
     MonthlyMprCommissionSheet,
 )
 from app.services.reporting_service import (
+    generate_monthly_management_commission_data_custom_range,
     generate_monthly_management_commission_data,
     generate_monthly_mpr_commission_data,
     generate_monthly_net_income_data,
@@ -2172,6 +2192,65 @@ def monthly_management_commission_report():
             )
         else:
             download_name = f"Monthly_management_commission_{brand_name}_{year}.xlsx"
+
+        response = send_file(
+            output,
+            as_attachment=True,
+            download_name=download_name,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        response.headers['Access-Control-Expose-Headers'] = 'Content-Disposition'
+        response.headers['Referrer-Policy'] = 'no-referrer-when-downgrade'
+        return response
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@reports_bp.route("/monthly-management-commission-custom", methods=["POST", "OPTIONS"])
+@cross_origin(expose_headers=["Content-Disposition"])
+def monthly_management_commission_report_custom():
+    """
+    Generates an Excel report of monthly management commission totals using the
+    literal start_date/end_date range from the request body.
+    """
+    if request.method == 'OPTIONS':
+        return jsonify({'status': 'OK'}), 200
+
+    json_data = request.get_json(silent=True) or {}
+    brand_name = (json_data.get("brand_name") or "").strip()
+    if not brand_name:
+        return jsonify({"error": "brand_name is required"}), 400
+    if brand_name.upper() == "MPR":
+        return jsonify({"error": "brand_name must be a non-MPR brand"}), 400
+
+    start_date, end_date, date_range_error = parse_date_range_from_body(json_data)
+    if date_range_error:
+        return jsonify({"error": date_range_error}), 400
+
+    try:
+        data = generate_monthly_management_commission_data_custom_range(
+            brand_name,
+            start_date,
+            end_date,
+        )
+        if not data or not data.get("outlets"):
+            return jsonify({"error": "No data found for the given criteria"}), 404
+
+        workbook = openpyxl.Workbook()
+        if "Sheet" in workbook.sheetnames:
+            workbook.remove(workbook["Sheet"])
+
+        sheet = MonthlyManagementCommissionSheet(workbook, data)
+        sheet.generate()
+
+        output = io.BytesIO()
+        workbook.save(output)
+        output.seek(0)
+
+        download_name = (
+            f"Monthly_management_commission_custom_{brand_name}_"
+            f"{start_date.isoformat()}_to_{end_date.isoformat()}.xlsx"
+        )
 
         response = send_file(
             output,

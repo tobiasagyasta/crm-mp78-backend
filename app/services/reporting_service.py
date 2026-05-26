@@ -1,13 +1,16 @@
 from collections import defaultdict
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from app.extensions import db
 from app.models.daily_merchant_totals import DailyMerchantTotal
 from app.models.gojek_reports import GojekReport
 from app.models.grabfood_reports import GrabFoodReport
 from app.models.outlet import Outlet
+from app.models.qpon_reports import QponReport
 from app.models.shopee_reports import ShopeeReport
 from app.models.shopeepay_reports import ShopeepayReport
+from app.models.tiktok_reports import TiktokReport
+from app.models.webshop_report import WebshopReport
 from app.services.excel_export import mpr_calculations as mpr_calc
 
 
@@ -579,4 +582,172 @@ def generate_monthly_management_commission_data(
         "outlets": transformed_outlets,
         "commission_divisor": commission_divisor,
         "commission_rate": (1 / commission_divisor) if commission_divisor else 0,
+    }
+
+
+def generate_monthly_management_commission_data_custom_range(
+    brand_name: str,
+    start_date: date,
+    end_date: date,
+    commission_divisor: float = 74,
+) -> dict:
+    """
+    Generates management commission data using the literal request date range.
+
+    Unlike the regular management commission report, this does not expand or
+    group by each outlet's ``closing_date`` window.
+    """
+    normalized_brand_name = (brand_name or "").strip()
+    if not normalized_brand_name or normalized_brand_name.upper() == "MPR":
+        return {}
+
+    outlets = Outlet.query.filter_by(brand=normalized_brand_name, status='Active').all()
+    if not outlets:
+        return {}
+
+    periods = _month_range(start_date, end_date)
+    outlet_codes = [str(outlet.outlet_code) for outlet in outlets]
+    period_set = set(periods)
+    standard_rate = (1 / commission_divisor) if commission_divisor else 0
+    webshop_rate = 0.03
+
+    def _empty_period_totals() -> dict:
+        return {
+            "net_total": 0,
+            "commission_total": 0,
+            "net_after_commission": 0,
+            "tiktok_net": 0,
+            "tiktok_commission": 0,
+            "tiktok_net_after_commission": 0,
+            "qpon_net": 0,
+            "qpon_commission": 0,
+            "qpon_net_after_commission": 0,
+            "webshop_net": 0,
+            "webshop_commission": 0,
+            "webshop_net_after_commission": 0,
+        }
+
+    data = {}
+    for outlet in outlets:
+        data[str(outlet.outlet_code)] = {
+            "name": outlet.outlet_name_gojek or outlet.outlet_name_grab or outlet.outlet_code,
+            "closing_day": "Custom Range",
+            "monthly_totals": {
+                period: _empty_period_totals()
+                for period in periods
+            },
+            "total_commission": 0,
+            "total_after_commission": 0,
+        }
+
+    def _accumulate(
+        outlet_code: str,
+        transaction_date: date,
+        amount: float,
+        net_key: str,
+        commission_key: str,
+        after_key: str,
+        rate: float,
+    ):
+        outlet_data = data.get(str(outlet_code))
+        if not outlet_data:
+            return
+
+        period = (transaction_date.year, transaction_date.month)
+        if period not in period_set:
+            return
+
+        commission = amount * rate
+        after_commission = amount - commission
+        period_totals = outlet_data["monthly_totals"][period]
+        period_totals[net_key] += amount
+        period_totals[commission_key] += commission
+        period_totals[after_key] += after_commission
+        outlet_data["total_commission"] += commission
+        outlet_data["total_after_commission"] += after_commission
+
+    start_dt = datetime.combine(start_date, datetime.min.time())
+    end_dt = datetime.combine(end_date, datetime.max.time())
+
+    grab_reports = GrabFoodReport.query.filter(
+        GrabFoodReport.brand_name == normalized_brand_name,
+        GrabFoodReport.outlet_code.in_(outlet_codes),
+        db.func.cast(_grab_report_datetime_col(), db.Date) >= start_date,
+        db.func.cast(_grab_report_datetime_col(), db.Date) <= end_date,
+    ).all()
+    for report in grab_reports:
+        transaction_date = _grab_report_date(report)
+        if not transaction_date:
+            continue
+        _accumulate(
+            report.outlet_code,
+            transaction_date,
+            float(report.total or 0),
+            "net_total",
+            "commission_total",
+            "net_after_commission",
+            standard_rate,
+        )
+
+    tiktok_reports = TiktokReport.query.filter(
+        TiktokReport.outlet_code.in_(outlet_codes),
+        TiktokReport.order_time >= start_dt,
+        TiktokReport.order_time <= end_dt,
+    ).all()
+    for report in tiktok_reports:
+        if not report.order_time:
+            continue
+        _accumulate(
+            report.outlet_code,
+            report.order_time.date(),
+            float(report.net_amount or 0),
+            "tiktok_net",
+            "tiktok_commission",
+            "tiktok_net_after_commission",
+            standard_rate,
+        )
+
+    qpon_reports = QponReport.query.filter(
+        QponReport.outlet_code.in_(outlet_codes),
+        QponReport.bill_created_at >= start_dt,
+        QponReport.bill_created_at <= end_dt,
+    ).all()
+    for report in qpon_reports:
+        if not report.bill_created_at:
+            continue
+        amount = QponReport.apply_nett_fallback(report.gross_amount, report.nett_amount)
+        _accumulate(
+            report.outlet_code,
+            report.bill_created_at.date(),
+            float(amount or 0),
+            "qpon_net",
+            "qpon_commission",
+            "qpon_net_after_commission",
+            standard_rate,
+        )
+
+    webshop_reports = WebshopReport.query.filter(
+        WebshopReport.outlet_code.in_(outlet_codes),
+        WebshopReport.created_at >= start_dt,
+        WebshopReport.created_at <= end_dt,
+    ).all()
+    for report in webshop_reports:
+        if not report.created_at:
+            continue
+        _accumulate(
+            report.outlet_code,
+            report.created_at.date(),
+            float(report.nett_value or 0),
+            "webshop_net",
+            "webshop_commission",
+            "webshop_net_after_commission",
+            webshop_rate,
+        )
+
+    return {
+        "brand_name": normalized_brand_name,
+        "periods": periods,
+        "outlets": data,
+        "commission_divisor": commission_divisor,
+        "commission_rate": standard_rate,
     }
