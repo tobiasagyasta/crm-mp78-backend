@@ -13,6 +13,8 @@ import re
 class ClosingSheet(BaseSheet):
     TIKTOK_NET_HEADER = 'Tiktok_Net'
     TIKTOK_CLOSING_NET_HEADER = 'Tiktok_Closing_Net'
+    QPON_NET_HEADER = 'Qpon_Net'
+    QPON_CLOSING_NET_HEADER = 'Qpon_Closing_Net'
 
     def __init__(self, workbook, data):
         super().__init__(workbook, 'Closing Sheet', data)
@@ -194,6 +196,8 @@ class ClosingSheet(BaseSheet):
     def _get_platform_grand_total_with_fallback(self, report_type, header):
         if header == self.TIKTOK_NET_HEADER:
             return self._get_tiktok_closing_display_value(report_type)
+        if header == self.QPON_NET_HEADER:
+            return self._get_qpon_closing_display_value(report_type)
         if report_type == 'mpr':
             return self._get_mpr_display_value(header)
         special_value = self._get_main_table_special_value(header)
@@ -206,6 +210,8 @@ class ClosingSheet(BaseSheet):
     def _get_platform_daily_value_with_fallback(self, report_type, date, header):
         if header == self.TIKTOK_NET_HEADER:
             return self._get_tiktok_closing_display_value(report_type, date)
+        if header == self.QPON_NET_HEADER:
+            return self._get_qpon_closing_display_value(report_type, date)
         if report_type == 'mpr':
             return self._get_mpr_display_value(header, date)
         special_value = self._get_main_table_special_value(header, date)
@@ -567,6 +573,17 @@ class ClosingSheet(BaseSheet):
             return mpr_calc.tiktok_net_ac_value(closing_totals)
 
         return closing_net
+
+    def _get_qpon_closing_display_value(self, report_type, date=None):
+        report_data = self.data.get('mpr_report_data') if report_type == 'mpr' else self.data
+        if not report_data:
+            return None
+
+        totals = report_data.get('grand_totals', {})
+        if date is not None:
+            totals = report_data.get('daily_totals', {}).get(date, {})
+
+        return totals.get(self.QPON_CLOSING_NET_HEADER, 0)
 
     def _get_closing_grand_total_income_value(self, header, grab_net_total=None):
         if header == 'Grab_Net':

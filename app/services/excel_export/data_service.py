@@ -61,6 +61,7 @@ def get_report_data(outlet_code: str, start_date: datetime, end_date: datetime) 
     tiktok_reports = TiktokReport.query.filter(TiktokReport.outlet_code == outlet_code, TiktokReport.order_time >= start_date, TiktokReport.order_time <= end_date_inclusive).all()
     tiktok_closing_reports = TiktokReport.query.filter(TiktokReport.outlet_code == outlet_code, TiktokReport.order_time >= start_date - timedelta(days=7), TiktokReport.order_time <= end_date_inclusive - timedelta(days=7)).all()
     qpon_reports = QponReport.query.filter(QponReport.outlet_code == outlet_code, QponReport.bill_created_at >= start_date, QponReport.bill_created_at <= end_date_inclusive).all()
+    qpon_closing_reports = QponReport.query.filter(QponReport.outlet_code == outlet_code, QponReport.bill_created_at >= start_date - timedelta(days=7), QponReport.bill_created_at <= end_date_inclusive - timedelta(days=7)).all()
     webshop_reports = WebshopReport.query.filter(WebshopReport.outlet_code == outlet_code, WebshopReport.created_at >= start_date, WebshopReport.created_at <= end_date_inclusive).all()
     uv_reports = VoucherReport.query.filter(VoucherReport.outlet_code == outlet_code, VoucherReport.order_date >= start_date, VoucherReport.order_date <= end_date_inclusive).all()
     cash_income_reports = CashReport.query.filter(CashReport.outlet_code == outlet_code, CashReport.type == 'income', CashReport.tanggal >= start_date, CashReport.tanggal <= end_date_inclusive).all()
@@ -79,6 +80,7 @@ def get_report_data(outlet_code: str, start_date: datetime, end_date: datetime) 
     _aggregate_tiktok(daily_totals, tiktok_reports)
     _aggregate_tiktok_closing(daily_totals, tiktok_closing_reports)
     _aggregate_qpon(daily_totals, qpon_reports)
+    _aggregate_qpon_closing(daily_totals, qpon_closing_reports)
     _aggregate_webshop(daily_totals, webshop_reports)
     _aggregate_cash(daily_totals, cash_income_reports, cash_expense_reports)
 
@@ -132,7 +134,8 @@ def _init_daily_total():
         'ShopeePay_Gross': 0, 'ShopeePay_Net': 0, 'Shopee_Gross': 0, 'Shopee_Net': 0,
         'Tiktok_Gross': 0, 'Tiktok_Net': 0, 'Tiktok_Settlement_Time': set(),
         'Tiktok_Closing_Gross': 0, 'Tiktok_Closing_Net': 0,
-        'Qpon_Gross': 0, 'Qpon_Net': 0, 'Webshop_Gross': 0, 'Webshop_Net': 0,
+        'Qpon_Gross': 0, 'Qpon_Net': 0, 'Qpon_Closing_Gross': 0, 'Qpon_Closing_Net': 0,
+        'Webshop_Gross': 0, 'Webshop_Net': 0,
         'Cash_Income': 0, 'Cash_Expense': 0,
         'Gojek_Mutation': None, 'Gojek_Difference': 0, 'Grab_Difference': 0,
         'Grab_Commission': 0, 'Shopee_Mutation': None, 'Shopee_Difference': 0,
@@ -238,6 +241,22 @@ def _aggregate_qpon(daily_totals, reports):
 
         daily_totals[date]['Qpon_Net'] += float(net_amount or 0)
         daily_totals[date]['Qpon_Gross'] += float(report.gross_amount or 0)
+
+def _aggregate_qpon_closing(daily_totals, reports):
+    for report in reports:
+        if not report.bill_created_at:
+            continue
+
+        date = report.bill_created_at.date() + timedelta(days=7)
+        if date not in daily_totals:
+            continue
+
+        net_amount = getattr(report, "net_amount", None)
+        if net_amount is None:
+            net_amount = getattr(report, "nett_amount", 0)
+
+        daily_totals[date]['Qpon_Closing_Net'] += float(net_amount or 0)
+        daily_totals[date]['Qpon_Closing_Gross'] += float(report.gross_amount or 0)
 
 def _aggregate_webshop(daily_totals, reports):
     for report in reports:
