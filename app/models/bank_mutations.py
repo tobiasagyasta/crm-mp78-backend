@@ -1,5 +1,5 @@
 from app.extensions import db
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from app.models.outlet import Outlet
 import re
 import csv
@@ -150,6 +150,8 @@ class BankMutation(db.Model):
         """
         Helper to convert a currency string like "135,000.00 CR" to a float.
         """
+        if isinstance(value_str, (int, float, Decimal)):
+            return float(value_str)
         if not isinstance(value_str, str):
             return 0.0
         # Remove all non-numeric characters except the decimal point
@@ -162,6 +164,83 @@ class BankMutation(db.Model):
             return 0.0
 
     @staticmethod
+    def _row_value(row, index, default=''):
+        return row[index] if len(row) > index else default
+
+    @staticmethod
+    def _as_text(value):
+        if value is None:
+            return ''
+        return str(value).strip()
+
+    @staticmethod
+    def _row_text(row):
+        return " ".join(BankMutation._as_text(value) for value in row)
+
+    @staticmethod
+    def _parse_transaction_date(value):
+        if isinstance(value, datetime):
+            return value.date()
+        if isinstance(value, date):
+            return value
+        if isinstance(value, (int, float)):
+            return (datetime(1899, 12, 30) + timedelta(days=int(value))).date()
+
+        date_str = BankMutation._as_text(value).replace("'", "")
+        if not date_str:
+            return None
+        if re.fullmatch(r'\d+(\.0+)?', date_str):
+            return (datetime(1899, 12, 30) + timedelta(days=int(float(date_str)))).date()
+
+        for fmt in ('%d/%m/%Y', '%m/%d/%Y', '%d-%m-%Y', '%Y-%m-%d', '%d-%b-%y', '%d-%b-%Y'):
+            try:
+                return datetime.strptime(date_str, fmt).date()
+            except ValueError:
+                continue
+        return None
+
+    @staticmethod
+    def _is_statement_mutation_row(row):
+        return (
+            len(row) >= 4
+            and BankMutation._parse_transaction_date(BankMutation._row_value(row, 0)) is not None
+            and bool(BankMutation._as_text(BankMutation._row_value(row, 1)))
+            and BankMutation._parse_currency(BankMutation._row_value(row, 3)) > 0
+        )
+
+    @staticmethod
+    def _parse_statement_mutation_row(row, platform_name, platform_code=None):
+        tanggal = BankMutation._parse_transaction_date(row[0])
+        amount_str = BankMutation._as_text(BankMutation._row_value(row, 3))
+        transaction_type = 'DB' if 'DB' in amount_str.upper() else 'CR' if 'CR' in amount_str.upper() else None
+        transaction_amount = BankMutation._parse_currency(amount_str)
+        transaksi = BankMutation._as_text(BankMutation._row_value(row, 1))
+
+        return {
+            'tanggal': tanggal,
+            'transaction_type': transaction_type,
+            'transaction_id': None,
+            'transaction_amount': transaction_amount,
+            'platform_code': platform_code,
+            'platform_name': platform_name,
+            'transaksi': BankMutation._row_text(row) or transaksi
+        }
+
+    @staticmethod
+    def _extract_gojek_platform_code(text):
+        match = re.search(r'\b[GM][A-Z0-9][A-Z0-9-]*\b', text.upper())
+        return match.group(0) if match else None
+
+    @staticmethod
+    def _extract_shopee_statement_info(text):
+        match = re.search(r'\b(MC|SF)\s+\d{4}\s+(\d{4,})\b', text.upper())
+        if not match:
+            return None, None
+
+        platform_name = 'ShopeeFood' if match.group(1) == 'SF' else 'Shopee'
+        return platform_name, match.group(2)
+
+    @staticmethod
     def parse_gojek_row(row):
         """
         Parse a Gojek CSV row (list of strings) into a dict suitable for BankMutation.
@@ -172,14 +251,23 @@ class BankMutation(db.Model):
         - tanggal: from column 1
         """
         try:
+            if BankMutation._is_statement_mutation_row(row):
+                row_text = BankMutation._row_text(row)
+                if 'BANGSA' not in row_text.upper() and 'GOJEK' not in row_text.upper():
+                    return None
+                return BankMutation._parse_statement_mutation_row(
+                    row,
+                    'Gojek',
+                    BankMutation._extract_gojek_platform_code(row_text)
+                )
+
             # Check if col 10 is 'BANGSA'
-            if row[9].strip().upper() != "BANGSA":
+            if BankMutation._as_text(BankMutation._row_value(row, 9)).upper() != "BANGSA":
                 return None
 
-            tanggal = datetime.strptime(row[0].strip().replace("'", ""), '%d/%m/%Y').date()
+            tanggal = BankMutation._parse_transaction_date(row[0])
             # Extract platform_code from column 6 (index 5), from first 'G' to end
-            col6 = row[5].strip()
-            col6 = row[5].strip()
+            col6 = BankMutation._as_text(BankMutation._row_value(row, 5))
             # Find the first occurrence of 'G' or 'M'
             g_idx = col6.find('G')
             m_idx = col6.find('M')
@@ -189,8 +277,7 @@ class BankMutation(db.Model):
             platform_code = col6[start_idx:] if start_idx != float('inf') else col6
 
             # Transaction amount from column 12 (index 11)
-            amount_str = row[11].replace(',', '').replace('"', '').strip()
-            transaction_amount = float(amount_str)
+            transaction_amount = BankMutation._parse_currency(BankMutation._row_value(row, 11))
 
             return {
                 'tanggal': tanggal,
@@ -199,7 +286,7 @@ class BankMutation(db.Model):
                 'transaction_amount': transaction_amount,
                 'platform_code': platform_code,
                 'platform_name': 'Gojek',
-                'transaksi': ",".join(row)
+                'transaksi': ",".join(BankMutation._as_text(value) for value in row)
             }
         except Exception as e:
             return None
@@ -214,13 +301,18 @@ class BankMutation(db.Model):
         - tanggal: from column 1 (index 0)
         """
         try:
+            if BankMutation._is_statement_mutation_row(row):
+                row_text = BankMutation._row_text(row)
+                if 'VISIONET' not in row_text.upper():
+                    return None
+                return BankMutation._parse_statement_mutation_row(row, 'Grab')
+
             # Only parse if col 8 is 'VISIONET'
-            if row[7].strip().upper() != 'VISIONET':
+            if BankMutation._as_text(BankMutation._row_value(row, 7)).upper() != 'VISIONET':
                 return None
 
-            tanggal = datetime.strptime(row[0].strip().replace("'", ""), '%d/%m/%Y').date()
-            amount_str = row[10].replace(',', '').replace('"', '').strip()
-            transaction_amount = float(amount_str)
+            tanggal = BankMutation._parse_transaction_date(row[0])
+            transaction_amount = BankMutation._parse_currency(BankMutation._row_value(row, 10))
 
             return {
                 'tanggal': tanggal,
@@ -229,7 +321,7 @@ class BankMutation(db.Model):
                 'transaction_amount': transaction_amount,
                 'platform_code': None,
                 'platform_name': 'Grab',
-                'transaksi': ",".join(row)
+                'transaksi': ",".join(BankMutation._as_text(value) for value in row)
             }
         except Exception as e:
             return None
@@ -244,17 +336,26 @@ class BankMutation(db.Model):
         - tanggal: from column 1 (index 0)
         """
         try:
+            if BankMutation._is_statement_mutation_row(row):
+                row_text = BankMutation._row_text(row)
+                row_text_upper = row_text.upper()
+                if 'SHOPEE' not in row_text_upper and 'INTERNATION' not in row_text_upper:
+                    return None
+                platform_name, platform_code = BankMutation._extract_shopee_statement_info(row_text)
+                if not platform_name:
+                    platform_name = 'ShopeeFood' if ' SHOPEEFOOD' in row_text_upper else 'Shopee'
+                return BankMutation._parse_statement_mutation_row(row, platform_name, platform_code)
+
             # Only parse if col 10 (index 9) is 'INTERNATION'
-            if row[9].strip().upper() != 'INTERNATION':
+            if BankMutation._as_text(BankMutation._row_value(row, 9)).upper() != 'INTERNATION':
                 return None
 
-            tanggal = datetime.strptime(row[0].strip().replace("'", ""), '%d/%m/%Y').date()
-            platform_code = row[7].strip()  # column 8 (index 7)
-            amount_str = row[11].replace(',', '').replace('"', '').replace(".00",'').strip()
-            transaction_amount = float(amount_str)
+            tanggal = BankMutation._parse_transaction_date(row[0])
+            platform_code = BankMutation._as_text(BankMutation._row_value(row, 7))  # column 8 (index 7)
+            transaction_amount = BankMutation._parse_currency(BankMutation._row_value(row, 11))
 
             # Determine platform_name from column 6 (index 5)
-            col6 = row[5].strip()
+            col6 = BankMutation._as_text(BankMutation._row_value(row, 5))
             if col6.endswith('MC'):
                 platform_name = 'Shopee'
             elif col6.endswith('SF'):
@@ -269,7 +370,7 @@ class BankMutation(db.Model):
                 'transaction_amount': transaction_amount,
                 'platform_code': platform_code,
                 'platform_name': platform_name,
-                'transaksi': ",".join(row)
+                'transaksi': ",".join(BankMutation._as_text(value) for value in row)
             }
         except Exception as e:
             return None
@@ -279,14 +380,21 @@ class BankMutation(db.Model):
         """
         Detects the platform for a given CSV row and returns the corresponding parser function.
         """
+        row_text = BankMutation._row_text(row).upper()
         # Gojek: Only parse if col 10 (index 9) is 'BANGSA'
-        if row[9].strip().upper() == "BANGSA":
+        if BankMutation._as_text(BankMutation._row_value(row, 9)).upper() == "BANGSA":
             return BankMutation.parse_gojek_row
         # Grab: Only parse if col 8 (index 7) is 'VISIONET'
-        if row[7].strip().upper() == 'VISIONET':
+        if BankMutation._as_text(BankMutation._row_value(row, 7)).upper() == 'VISIONET':
             return BankMutation.parse_grab_row
         # Shopee: Only parse if col 10 (index 9) is 'INTERNATION'
-        if row[9].strip().upper() == 'INTERNATION':
+        if BankMutation._as_text(BankMutation._row_value(row, 9)).upper() == 'INTERNATION':
+            return BankMutation.parse_shopee_row
+        if 'VISIONET' in row_text:
+            return BankMutation.parse_grab_row
+        if 'BANGSA' in row_text or 'GOJEK' in row_text:
+            return BankMutation.parse_gojek_row
+        if 'SHOPEE' in row_text or 'INTERNATION' in row_text:
             return BankMutation.parse_shopee_row
         # Add more platform checks here as needed
         return None

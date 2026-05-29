@@ -480,23 +480,91 @@ def upload_report_mutation():
     skipped_mutations = 0
     debug_skipped = []
 
+    def _is_blank_row(row):
+        return not row or not any(str(value).strip() for value in row if value is not None)
+
+    def _is_mutation_table_header(row):
+        row_text = " ".join(str(value).strip().upper() for value in row if value is not None)
+        return (
+            'TANGGAL' in row_text
+            and 'TRANSAKSI' in row_text
+            and 'KETERANGAN' in row_text
+            and 'JUMLAH' in row_text
+            and 'SALDO' in row_text
+        )
+
+    def _debug_row(row):
+        return [
+            value.isoformat() if hasattr(value, 'isoformat') else value
+            for value in row
+        ]
+
+    def _mutation_rows_from_excel(file_bytes):
+        workbook = openpyxl.load_workbook(BytesIO(file_bytes), data_only=True, read_only=True)
+        rows = []
+
+        for worksheet in workbook.worksheets:
+            rows.extend(
+                _mutation_rows_from_table(
+                    enumerate(worksheet.iter_rows(values_only=True), start=1)
+                )
+            )
+
+        return rows
+
+    def _mutation_rows_from_table(numbered_rows, min_header_row=1):
+        rows = []
+        in_mutation_table = False
+
+        for row_number, row in numbered_rows:
+            row = list(row)
+            if _is_blank_row(row):
+                continue
+            if row_number >= min_header_row and _is_mutation_table_header(row):
+                in_mutation_table = True
+                continue
+            if not in_mutation_table:
+                continue
+
+            first_cell = str(row[0]).strip().upper() if row[0] is not None else ''
+            if first_cell.startswith(('SALDO', 'MUTASI')):
+                break
+
+            rows.append((row_number, row))
+
+        return rows
+
+    def _mutation_rows_from_upload(file):
+        file_bytes = file.read()
+        filename = (file.filename or '').lower()
+        if filename.endswith(('.xlsx', '.xlsm')):
+            return _mutation_rows_from_excel(file_bytes)
+
+        file_contents = file_bytes.decode('utf-8-sig')
+        csv_file = StringIO(file_contents)
+        reader = csv.reader(csv_file)
+        rows = _mutation_rows_from_table(enumerate(reader, start=1), min_header_row=7)
+        if rows:
+            return rows
+
+        csv_file.seek(0)
+        reader = csv.reader(csv_file)
+        next(reader, None)  # Skip legacy CSV header
+        return [(idx, row) for idx, row in enumerate(reader, start=2)]
+
     try:
         for file in files:
-            file_contents = file.read().decode('utf-8')
-            csv_file = StringIO(file_contents)
-            reader = csv.reader(csv_file)
-            next(reader, None)  # Skip header
-
             mutations = []
-            for idx, row in enumerate(reader):
+            for row_number, row in _mutation_rows_from_upload(file):
                 try:
                     # Skip if the date column is 'PEND'
-                    if row and row[0].strip().upper() == 'PEND':
+                    first_cell = str(row[0]).strip().upper() if row and row[0] is not None else ''
+                    if first_cell == 'PEND':
                         skipped_mutations += 1
                         debug_skipped.append({
-                            'row_number': idx + 2,
+                            'row_number': row_number,
                             'reason': "Date column is 'PEND'",
-                            'row': row
+                            'row': _debug_row(row)
                         })
                         continue
 
@@ -504,21 +572,21 @@ def upload_report_mutation():
                     if not parser:
                         skipped_mutations += 1
                         debug_skipped.append({
-                            'row_number': idx + 2,
+                            'row_number': row_number,
                             'reason': 'Unknown platform',
-                            'row': row
+                            'row': _debug_row(row)
                         })
                         continue
 
                     parsed = parser(row)
-                    # if not parsed:
-                    #     skipped_mutations += 1
-                    #     debug_skipped.append({
-                    #         'row_number': idx + 2,
-                    #         'reason': 'Parse failed (parser returned None)',
-                    #         'row': row
-                    #     })
-                    #     continue
+                    if not parsed:
+                        skipped_mutations += 1
+                        debug_skipped.append({
+                            'row_number': row_number,
+                            'reason': 'Parse failed (parser returned None)',
+                            'row': _debug_row(row)
+                        })
+                        continue
 
                     mutation = BankMutation(
                         rekening_number=rekening_number,
@@ -534,9 +602,9 @@ def upload_report_mutation():
                     if exists:
                         skipped_mutations += 1
                         debug_skipped.append({
-                            'row_number': idx + 2,
+                            'row_number': row_number,
                             'reason': 'Duplicate mutation entry',
-                            'row': row
+                            'row': _debug_row(row)
                         })
                         continue
 
@@ -546,9 +614,9 @@ def upload_report_mutation():
                 except Exception as e:
                     skipped_mutations += 1
                     debug_skipped.append({
-                        'row_number': idx + 2,
+                        'row_number': row_number,
                         'reason': f'Exception: {str(e)}',
-                        'row': row
+                        'row': _debug_row(row)
                     })
 
             # Bulk save mutations for this file
