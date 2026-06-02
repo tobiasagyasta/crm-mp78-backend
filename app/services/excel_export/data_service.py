@@ -19,6 +19,9 @@ from app.utils.pkb_mutation import get_minus_manual_entries
 from sqlalchemy import func
 from sqlalchemy.orm import aliased
 
+GRAB_REPORTS_TRANSFERRED_ONLY = False
+GRAB_TRANSFERRED_STATUSES = ('Transferred', 'Ditransfer')
+
 def _grab_report_datetime_col():
     return func.coalesce(GrabFoodReport.diperbarui_pada, GrabFoodReport.tanggal_dibuat)
 
@@ -26,7 +29,7 @@ def _grab_report_date(report):
     return report.diperbarui_pada or report.tanggal_dibuat
 
 def _is_transferred_grab_report(report):
-    return (report.status or '').strip() in ('Transferred', 'Ditransfer')
+    return (report.status or '').strip() in GRAB_TRANSFERRED_STATUSES
 
 def get_report_data(outlet_code: str, start_date: datetime, end_date: datetime) -> dict:
     """
@@ -50,12 +53,14 @@ def get_report_data(outlet_code: str, start_date: datetime, end_date: datetime) 
     # Fetch all reports
     gojek_reports = GojekReport.query.filter(GojekReport.outlet_code == outlet_code, GojekReport.transaction_date >= start_date, GojekReport.transaction_date <= end_date_inclusive).all()
     grab_date_col = _grab_report_datetime_col()
-    grab_reports = GrabFoodReport.query.filter(
+    grab_query = GrabFoodReport.query.filter(
         GrabFoodReport.outlet_code == outlet_code,
         grab_date_col >= start_date,
         grab_date_col <= end_date_inclusive,
-        GrabFoodReport.status.in_(('Transferred', 'Ditransfer')),
-    ).all()
+    )
+    if GRAB_REPORTS_TRANSFERRED_ONLY:
+        grab_query = grab_query.filter(GrabFoodReport.status.in_(GRAB_TRANSFERRED_STATUSES))
+    grab_reports = grab_query.all()
     shopee_reports = ShopeeReport.query.filter(ShopeeReport.outlet_code == outlet_code, ShopeeReport.order_create_time >= start_date, ShopeeReport.order_create_time <= end_date_inclusive).all()
     shopeepay_reports = ShopeepayReport.query.filter(ShopeepayReport.outlet_code == outlet_code, ShopeepayReport.create_time >= start_date, ShopeepayReport.create_time <= end_date_inclusive).all()
     tiktok_reports = TiktokReport.query.filter(TiktokReport.outlet_code == outlet_code, TiktokReport.order_time >= start_date, TiktokReport.order_time <= end_date_inclusive).all()
@@ -131,6 +136,7 @@ def get_report_data(outlet_code: str, start_date: datetime, end_date: datetime) 
 def _init_daily_total():
     return {
         'Gojek_QRIS' : 0,'Gojek_Gross': 0, 'Gojek_Net': 0, 'Grab_Gross': 0, 'Grab_Net': 0, 'GrabOVO_Gross': 0, 'GrabOVO_Net': 0,
+        'Grab_Status': set(),
         'ShopeePay_Gross': 0, 'ShopeePay_Net': 0, 'Shopee_Gross': 0, 'Shopee_Net': 0,
         'Tiktok_Gross': 0, 'Tiktok_Net': 0, 'Tiktok_Settlement_Time': set(),
         'Tiktok_Closing_Gross': 0, 'Tiktok_Closing_Net': 0,
@@ -163,7 +169,7 @@ def _aggregate_grab(daily_totals, reports, brand):
     grabfood_net_total = 0
     grabovo_net_total = 0
     for report in reports:
-        if not _is_transferred_grab_report(report):
+        if GRAB_REPORTS_TRANSFERRED_ONLY and not _is_transferred_grab_report(report):
             continue
 
         report_datetime = _grab_report_date(report)
@@ -176,6 +182,9 @@ def _aggregate_grab(daily_totals, reports, brand):
 
         daily_totals[date]['Grab_Net'] += float(report.total or 0)
         daily_totals[date]['Grab_Gross'] += float(report.amount or 0)
+        status = (report.status or '').strip()
+        if status:
+            daily_totals[date]['Grab_Status'].add(status)
         if hasattr(report, 'jenis'):
             if report.jenis == 'OVO':
                 grabovo_gross_total += float(report.amount or 0)

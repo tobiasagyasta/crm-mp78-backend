@@ -62,7 +62,7 @@ class DailySheet(BaseSheet):
 
         base_headers = [
             'Date', 'GoFood', 'GO-PAY QRIS', 'Gojek Net', 'Gojek Mutation', 'Gojek Difference', 'Gojek Net (ac)',
-            'GrabFood', 'GrabOVO', 'Grab Net (ac)', 'Shopee Net', 'Shopee Mutation', 'Shopee Difference',
+            'GrabFood', 'GrabOVO', 'Grab Status', 'Grab Net (ac)', 'Shopee Net', 'Shopee Mutation', 'Shopee Difference',
             'ShopeePay Net', 'ShopeePay Mutation', 'ShopeePay Difference', 'ShopeePay Net (ac)',
             'Tiktok Net', 'Tiktok Settlement Time', 'Qpon Net', 'Webshop Net', 'UV'
         ]
@@ -73,7 +73,7 @@ class DailySheet(BaseSheet):
                 'Date',
                 'GoFood', 'GO-PAY QRIS', 'GoFood (ac)', 'GO-PAY QRIS (ac)',
                 'Gojek Net', 'Gojek Mutation', 'Gojek Difference', 'Gojek Net (ac)',
-                'GrabFood', 'GrabOVO', 'GrabFood (ac)', 'GrabOVO (ac)', 'Grab Net', 'Grab Net (ac)',
+                'GrabFood', 'GrabOVO', 'Grab Status', 'GrabFood (ac)', 'GrabOVO (ac)', 'Grab Net', 'Grab Net (ac)',
                 'Shopee Net', 'Shopee Mutation', 'Shopee Difference', 'Shopee Net (ac)',
                 'ShopeePay Net', 'ShopeePay Mutation', 'ShopeePay Difference', 'ShopeePay Net (ac)',
                 'Tiktok Net', 'Tiktok Settlement Time', 'Tiktok Net (ac)',
@@ -255,6 +255,17 @@ class DailySheet(BaseSheet):
             for settlement_time in sorted(settlement_times)
         )
 
+    def _get_grab_status_value(self, totals):
+        statuses = totals.get('Grab_Status')
+        if not statuses:
+            return None
+
+        transferred_statuses = {'Transferred', 'Ditransfer'}
+        if all(status in transferred_statuses for status in statuses):
+            return 'Transferred' if 'Transferred' in statuses else 'Ditransfer'
+
+        return ', '.join(sorted(statuses))
+
     def _set_column_widths(self):
         widths = {
             get_column_letter(col): 15
@@ -269,6 +280,7 @@ class DailySheet(BaseSheet):
             'Date': DATE_FILL, 'GoFood': GOJEK_FILL, 'GO-PAY QRIS': GOJEK_FILL, 'GoFood (ac)': GOJEK_FILL,
             'GO-PAY QRIS (ac)': GOJEK_FILL, 'Gojek Net': GOJEK_FILL, 'Gojek Mutation': GOJEK_FILL,
             'Gojek Difference': DIFFERENCE_FILL, 'GrabFood': GRAB_FILL, 'GrabOVO': GRAB_FILL,
+            'Grab Status': GRAB_FILL,
             'GrabFood (ac)': GRAB_FILL, 'GrabOVO (ac)': GRAB_FILL, 'Grab Net': GRAB_FILL, 'Grab Net (ac)': GRAB_FILL,
             'Gojek Net (ac)': GOJEK_FILL, 'Grab Net (ac)': GRAB_FILL,
             'Shopee Net (ac)': SHOPEE_FILL, 'ShopeePay Net (ac)': SHOPEEPAY_FILL,
@@ -308,6 +320,7 @@ class DailySheet(BaseSheet):
             'Gojek Difference': lambda totals, date, minusan_total: totals.get('Gojek_Difference', 0),
             'GrabFood': lambda totals, date, minusan_total: self._get_grabfood_value(totals),
             'GrabOVO': lambda totals, date, minusan_total: self._get_grab_ovo_value(totals),
+            'Grab Status': lambda totals, date, minusan_total: self._get_grab_status_value(totals),
             'GrabFood (ac)': lambda totals, date, minusan_total: self._get_grabfood_ac_value(totals),
             'GrabOVO (ac)': lambda totals, date, minusan_total: self._get_grab_ovo_ac_value(totals),
             'Grab Net': lambda totals, date, minusan_total: self._get_grab_net_value(totals),
@@ -375,6 +388,7 @@ class DailySheet(BaseSheet):
             'Gojek Difference': lambda: grand_totals.get('Gojek_Difference', 0),
             'GrabFood': lambda: self._get_grabfood_value(grand_totals),
             'GrabOVO': lambda: self._get_grab_ovo_value(grand_totals),
+            'Grab Status': lambda: None,
             'GrabFood (ac)': lambda: self._get_grabfood_ac_value(grand_totals),
             'GrabOVO (ac)': lambda: self._get_grab_ovo_ac_value(grand_totals),
             'Grab Net': lambda: self._get_grab_net_value(grand_totals),
