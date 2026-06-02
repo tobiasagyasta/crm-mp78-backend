@@ -61,6 +61,11 @@ def get_report_data(outlet_code: str, start_date: datetime, end_date: datetime) 
     if GRAB_REPORTS_TRANSFERRED_ONLY:
         grab_query = grab_query.filter(GrabFoodReport.status.in_(GRAB_TRANSFERRED_STATUSES))
     grab_reports = grab_query.all()
+    grab_status_reports = GrabFoodReport.query.filter(
+        GrabFoodReport.outlet_code == outlet_code,
+        grab_date_col >= start_date,
+        grab_date_col <= end_date_inclusive,
+    ).all()
     shopee_reports = ShopeeReport.query.filter(ShopeeReport.outlet_code == outlet_code, ShopeeReport.order_create_time >= start_date, ShopeeReport.order_create_time <= end_date_inclusive).all()
     shopeepay_reports = ShopeepayReport.query.filter(ShopeepayReport.outlet_code == outlet_code, ShopeepayReport.create_time >= start_date, ShopeepayReport.create_time <= end_date_inclusive).all()
     tiktok_reports = TiktokReport.query.filter(TiktokReport.outlet_code == outlet_code, TiktokReport.order_time >= start_date, TiktokReport.order_time <= end_date_inclusive).all()
@@ -79,6 +84,7 @@ def get_report_data(outlet_code: str, start_date: datetime, end_date: datetime) 
     # Aggregate data
     _aggregate_gojek(daily_totals, gojek_reports)
     _aggregate_uv(daily_totals, uv_reports)
+    _aggregate_grab_statuses(daily_totals, grab_status_reports)
     grab_totals = _aggregate_grab(daily_totals, grab_reports, outlet.brand)
     _aggregate_shopee(daily_totals, shopee_reports)
     _aggregate_shopeepay(daily_totals, shopeepay_reports)
@@ -163,6 +169,20 @@ def _aggregate_uv(daily_totals, reports):
         date = report.order_date.date()
         daily_totals[date]['UV'] += float(report.nominal or 0) - 5000
 
+def _aggregate_grab_statuses(daily_totals, reports):
+    for report in reports:
+        report_datetime = _grab_report_date(report)
+        if not report_datetime:
+            continue
+
+        date = report_datetime.date()
+        if date not in daily_totals:
+            continue
+
+        status = (report.status or '').strip()
+        if status:
+            daily_totals[date]['Grab_Status'].add(status)
+
 def _aggregate_grab(daily_totals, reports, brand):
     grabfood_gross_total = 0
     grabovo_gross_total = 0
@@ -182,9 +202,6 @@ def _aggregate_grab(daily_totals, reports, brand):
 
         daily_totals[date]['Grab_Net'] += float(report.total or 0)
         daily_totals[date]['Grab_Gross'] += float(report.amount or 0)
-        status = (report.status or '').strip()
-        if status:
-            daily_totals[date]['Grab_Status'].add(status)
         if hasattr(report, 'jenis'):
             if report.jenis == 'OVO':
                 grabovo_gross_total += float(report.amount or 0)
