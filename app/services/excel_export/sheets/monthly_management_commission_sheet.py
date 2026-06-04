@@ -5,6 +5,7 @@ from flask import has_app_context, has_request_context, request
 from openpyxl.styles import Alignment, Font, NamedStyle, PatternFill
 from openpyxl.utils import get_column_letter
 
+from app.models.gojek_reports import GojekReport
 from app.models.qpon_reports import QponReport
 from app.models.tiktok_reports import TiktokReport
 from app.models.webshop_report import WebshopReport
@@ -13,6 +14,14 @@ from app.services.excel_export.base_sheet import BaseSheet
 
 class MonthlyManagementCommissionSheet(BaseSheet):
     PLATFORM_GROUPS = (
+        {
+            "key": "gojek",
+            "label": "Gojek",
+            "net_key": "gojek_net",
+            "commission_key": "gojek_commission",
+            "after_key": "gojek_net_after_commission",
+            "rate": 1 / 74,
+        },
         {
             "key": "grab",
             "label": "Grab",
@@ -177,10 +186,21 @@ class MonthlyManagementCommissionSheet(BaseSheet):
         end_dt = datetime.combine(query_end, time.max)
 
         platform_nets = {
-            period: {"tiktok": 0, "qpon": 0, "webshop": 0}
+            period: {"gojek": 0, "tiktok": 0, "qpon": 0, "webshop": 0}
             for period in periods
         }
         period_set = set(periods)
+
+        for report in GojekReport.query.filter(
+            GojekReport.outlet_code == outlet_code,
+            GojekReport.transaction_date >= query_start,
+            GojekReport.transaction_date <= query_end,
+        ).all():
+            if not report.transaction_date:
+                continue
+            period = self._resolve_period(report.transaction_date, periods, closing_day)
+            if period in period_set:
+                platform_nets[period]["gojek"] += float(report.nett_amount or 0)
 
         for report in TiktokReport.query.filter(
             TiktokReport.outlet_code == outlet_code,

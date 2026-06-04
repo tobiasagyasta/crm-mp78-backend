@@ -613,6 +613,9 @@ def generate_monthly_management_commission_data_custom_range(
 
     def _empty_period_totals() -> dict:
         return {
+            "gojek_net": 0,
+            "gojek_commission": 0,
+            "gojek_net_after_commission": 0,
             "net_total": 0,
             "commission_total": 0,
             "net_after_commission": 0,
@@ -668,6 +671,25 @@ def generate_monthly_management_commission_data_custom_range(
 
     start_dt = datetime.combine(start_date, datetime.min.time())
     end_dt = datetime.combine(end_date, datetime.max.time())
+
+    gojek_reports = GojekReport.query.filter(
+        GojekReport.brand_name == normalized_brand_name,
+        GojekReport.outlet_code.in_(outlet_codes),
+        GojekReport.transaction_date >= start_date,
+        GojekReport.transaction_date <= end_date,
+    ).all()
+    for report in gojek_reports:
+        if not report.transaction_date:
+            continue
+        _accumulate(
+            report.outlet_code,
+            report.transaction_date,
+            float(report.nett_amount or 0),
+            "gojek_net",
+            "gojek_commission",
+            "gojek_net_after_commission",
+            standard_rate,
+        )
 
     grab_reports = GrabFoodReport.query.filter(
         GrabFoodReport.brand_name == normalized_brand_name,
