@@ -36,7 +36,7 @@ class MonthlyManagementCommissionSheet(BaseSheet):
             "net_key": "tiktok_net",
             "commission_key": "tiktok_commission",
             "after_key": "tiktok_net_after_commission",
-            "rate": 1 / 74,
+            "rate": 0.05,
         },
         {
             "key": "qpon",

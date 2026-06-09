@@ -1,10 +1,10 @@
 MPR_STANDARD_NET_RATE = 0.92
 MPR_QRIS_OVO_NET_RATE = 0.98
+MPR_SHOPEE_NET_RATE = 0.92
+MPR_TIKTOK_NET_RATE = 0.95
 MANAGEMENT_COMMISSION_RATE = 1 / 74
 TIKTOK_MANAGEMENT_COMMISSION_RATE = 0.03
 ENABLE_MP78_MANAGEMENT_AC = True
-
-## Reminder : Make sure to add shopee_net_ac_value
 
 def value_with_mutation_fallback(totals, mutation_key, net_key):
     return totals.get(mutation_key) or totals.get(net_key, 0)
@@ -73,7 +73,7 @@ def grab_net_value(totals, is_mpr=False):
 def tiktok_net_ac_value(totals, is_mpr=False):
     net = totals.get('Tiktok_Net', 0)
     if is_mpr:
-        return net * MPR_STANDARD_NET_RATE
+        return net * MPR_TIKTOK_NET_RATE
 
     return net - (net * TIKTOK_MANAGEMENT_COMMISSION_RATE)
 
@@ -86,13 +86,13 @@ def shopee_net_value(totals, is_mpr=False):
     return rated_value(
         totals.get('Shopee_Net', 0),
         is_mpr,
-        MPR_STANDARD_NET_RATE
+        MPR_SHOPEE_NET_RATE
     )
 
 
 def shopee_net_ac_value(totals):
     return (
-        (totals.get('Shopee_Net', 0) * MPR_STANDARD_NET_RATE)
+        (totals.get('Shopee_Net', 0) * MPR_SHOPEE_NET_RATE)
         + (totals.get('Shopee_Difference') or 0)
     )
 
