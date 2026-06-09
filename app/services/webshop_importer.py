@@ -1,4 +1,5 @@
 import csv
+import io
 import re
 from dataclasses import dataclass
 from difflib import SequenceMatcher
@@ -52,6 +53,7 @@ SOURCE_MATCH_FIELDS = (
     "outlet_name_grab",
     "outlet_name_gojek",
 )
+CSV_ENCODINGS = ("utf-8-sig", "cp1252", "latin-1")
 
 
 def _clean_str(value) -> str:
@@ -116,12 +118,28 @@ def _resolve_csv_path(csv_path: str) -> Path:
     )
 
 
+def _open_csv_text(csv_path: Path) -> io.StringIO:
+    csv_bytes = csv_path.read_bytes()
+    last_error: UnicodeDecodeError | None = None
+
+    for encoding in CSV_ENCODINGS:
+        try:
+            return io.StringIO(csv_bytes.decode(encoding), newline="")
+        except UnicodeDecodeError as exc:
+            last_error = exc
+
+    if last_error:
+        raise last_error
+
+    return io.StringIO("", newline="")
+
+
 def parse_webshop_csv_rows(csv_path: str) -> list[tuple[str | None, str]]:
     rows: list[tuple[str | None, str]] = []
     seen: set[tuple[str, str]] = set()
     resolved_csv_path = _resolve_csv_path(csv_path)
 
-    with open(resolved_csv_path, "r", newline="", encoding="utf-8-sig") as f:
+    with _open_csv_text(resolved_csv_path) as f:
         reader = csv.reader(f)
         first_row = next(reader, None)
         if not first_row:
