@@ -21,6 +21,7 @@ from sqlalchemy.orm import aliased
 
 GRAB_REPORTS_TRANSFERRED_ONLY = False
 GRAB_TRANSFERRED_STATUSES = ('Transferred', 'Ditransfer')
+SHOW_MUTATIONS_WITHOUT_PLATFORM_DATA = True
 
 def _grab_report_datetime_col():
     return func.coalesce(GrabFoodReport.diperbarui_pada, GrabFoodReport.tanggal_dibuat)
@@ -299,25 +300,33 @@ def _match_mutations(daily_totals, outlet_code, start_date, end_date):
             mutations = matcher.get_mutations_query(start_date.date(), end_date.date()).all()
             for date, totals in daily_totals.items():
                 net_key = f'{platform.capitalize()}_Net' if platform != 'shopeepay' else 'ShopeePay_Net'
-                if totals.get(net_key, 0) == 0:
-                    continue
-
-                class MockDailyTotal:
-                    def __init__(self, outlet_id, date, total_net):
-                        self.outlet_id = outlet_id
-                        self.date = date
-                        self.total_net = total_net
-
-                mock_total = MockDailyTotal(outlet_code, date, totals[net_key])
-                _, mutation_data = matcher.match_transactions(mock_total, mutations)
-
                 mutation_key = f'{platform.capitalize()}_Mutation' if platform != 'shopeepay' else 'ShopeePay_Mutation'
                 diff_key = f'{platform.capitalize()}_Difference' if platform != 'shopeepay' else 'ShopeePay_Difference'
+                net_amount = totals.get(net_key, 0)
+
+                if net_amount == 0:
+                    if not SHOW_MUTATIONS_WITHOUT_PLATFORM_DATA:
+                        continue
+
+                    mutation_data = matcher.match_mutation_without_daily_total(
+                        outlet_code,
+                        date,
+                        mutations,
+                    )
+                else:
+                    class MockDailyTotal:
+                        def __init__(self, outlet_id, date, total_net):
+                            self.outlet_id = outlet_id
+                            self.date = date
+                            self.total_net = total_net
+
+                    mock_total = MockDailyTotal(outlet_code, date, net_amount)
+                    _, mutation_data = matcher.match_transactions(mock_total, mutations)
 
                 if mutation_data:
                     mutation_amount = float(mutation_data.get('transaction_amount', 0))
                     totals[mutation_key] = mutation_amount
-                    totals[diff_key] = mutation_amount - float(totals[net_key])
+                    totals[diff_key] = mutation_amount - float(net_amount)
                 else:
                     totals[mutation_key] = None
                     totals[diff_key] = None

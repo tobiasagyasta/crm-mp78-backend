@@ -177,3 +177,46 @@ class TransactionMatcher:
             return platform_data, mutation_data
 
         return platform_data, None
+
+    def match_mutation_without_daily_total(
+        self,
+        outlet_code: str,
+        transaction_date,
+        mutations: List[BankMutation],
+    ) -> Optional[Dict]:
+        """
+        Match a mutation for a date/outlet when platform report data is missing.
+
+        Grab mutations are not supported here because the imported mutation rows do
+        not carry an outlet-specific platform code; existing Grab matching depends
+        on comparing the mutation amount with the platform net amount.
+        """
+        if self.platform == 'grab':
+            return None
+
+        outlet = db.session.query(Outlet).filter_by(outlet_code=outlet_code).first()
+        if not outlet:
+            return None
+
+        store_id = getattr(outlet, self.config['store_id_field'])
+        match_date = transaction_date + timedelta(days=self.config['days_offset'])
+        match_func = self.config['match_function']
+
+        mutation = next(
+            (
+                m for m in mutations
+                if m.platform_code
+                and match_func(store_id, m.platform_code)
+                and m.tanggal == match_date
+            ),
+            None,
+        )
+        if not mutation:
+            return None
+
+        return {
+            'transaction_id': mutation.transaction_id,
+            'platform_code': mutation.platform_code,
+            'transaction_date': mutation.tanggal,
+            'transaction_amount': float(mutation.transaction_amount or 0.0),
+        }
