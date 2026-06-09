@@ -10,6 +10,7 @@ from app.models.qpon_reports import QponReport
 from app.models.tiktok_reports import TiktokReport
 from app.models.webshop_report import WebshopReport
 from app.services.excel_export.base_sheet import BaseSheet
+from app.services.excel_export import mpr_calculations as mpr_calc
 
 
 class MonthlyManagementCommissionSheet(BaseSheet):
@@ -36,7 +37,7 @@ class MonthlyManagementCommissionSheet(BaseSheet):
             "net_key": "tiktok_net",
             "commission_key": "tiktok_commission",
             "after_key": "tiktok_net_after_commission",
-            "rate": 0.05,
+            "rate": mpr_calc.TIKTOK_MANAGEMENT_COMMISSION_RATE,
         },
         {
             "key": "qpon",

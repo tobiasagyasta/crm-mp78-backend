@@ -722,6 +722,7 @@ def generate_monthly_management_commission_data_custom_range(
     outlet_codes = [str(outlet.outlet_code) for outlet in outlets]
     period_set = set(periods)
     standard_rate = (1 / commission_divisor) if commission_divisor else 0
+    tiktok_rate = mpr_calc.TIKTOK_MANAGEMENT_COMMISSION_RATE
     webshop_rate = 0.03
 
     def _empty_period_totals() -> dict:
@@ -839,7 +840,7 @@ def generate_monthly_management_commission_data_custom_range(
             "tiktok_net",
             "tiktok_commission",
             "tiktok_net_after_commission",
-            standard_rate,
+            tiktok_rate,
         )
 
     qpon_reports = QponReport.query.filter(
@@ -885,4 +886,5 @@ def generate_monthly_management_commission_data_custom_range(
         "outlets": data,
         "commission_divisor": commission_divisor,
         "commission_rate": standard_rate,
+        "tiktok_commission_rate": tiktok_rate,
     }
