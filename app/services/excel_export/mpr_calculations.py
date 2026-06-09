@@ -5,6 +5,11 @@ MPR_TIKTOK_NET_RATE = 0.95
 MANAGEMENT_COMMISSION_RATE = 1 / 74
 TIKTOK_MANAGEMENT_COMMISSION_RATE = 0.05
 ENABLE_MP78_MANAGEMENT_AC = True
+MPR_BRANDS = ("MPR", "MPR Mandiri", "MPR Non MP78")
+
+
+def is_mpr_brand(brand):
+    return brand in MPR_BRANDS
 
 def value_with_mutation_fallback(totals, mutation_key, net_key):
     return totals.get(mutation_key) or totals.get(net_key, 0)

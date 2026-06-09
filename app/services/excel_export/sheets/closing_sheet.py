@@ -200,6 +200,8 @@ class ClosingSheet(BaseSheet):
             return self._get_qpon_closing_display_value(report_type)
         if report_type == 'mpr':
             return self._get_mpr_display_value(header)
+        if self._is_mpr_brand():
+            return self._get_direct_mpr_display_value(header)
         special_value = self._get_main_table_special_value(header)
         if special_value is not None:
             return special_value
@@ -214,6 +216,8 @@ class ClosingSheet(BaseSheet):
             return self._get_qpon_closing_display_value(report_type, date)
         if report_type == 'mpr':
             return self._get_mpr_display_value(header, date)
+        if self._is_mpr_brand():
+            return self._get_direct_mpr_display_value(header, date)
         special_value = self._get_main_table_special_value(header, date)
         if special_value is not None:
             return special_value
@@ -525,6 +529,9 @@ class ClosingSheet(BaseSheet):
     def _is_mp78_brand(self):
         return self.data['outlet'].brand == 'MP78'
 
+    def _is_mpr_brand(self):
+        return mpr_calc.is_mpr_brand(self.data['outlet'].brand)
+
     def _uses_mp78_management_ac(self):
         return self._is_mp78_brand() and mpr_calc.ENABLE_MP78_MANAGEMENT_AC
 
@@ -554,6 +561,17 @@ class ClosingSheet(BaseSheet):
 
         return self._get_report_value_with_fallback(report_data, header, date)
 
+    def _get_direct_mpr_display_value(self, header, date=None):
+        totals = self.data.get('grand_totals', {})
+        if date is not None:
+            totals = self.data.get('daily_totals', {}).get(date, {})
+
+        ac_value = mpr_calc.mpr_ac_value_for_header(totals, header)
+        if ac_value is not None:
+            return ac_value
+
+        return self._get_report_value_with_fallback(self.data, header, date)
+
     def _get_tiktok_closing_display_value(self, report_type, date=None):
         report_data = self.data.get('mpr_report_data') if report_type == 'mpr' else self.data
         if not report_data:
@@ -566,7 +584,7 @@ class ClosingSheet(BaseSheet):
         closing_net = totals.get(self.TIKTOK_CLOSING_NET_HEADER, 0)
         closing_totals = {self.TIKTOK_NET_HEADER: closing_net}
 
-        if report_type == 'mpr':
+        if report_type == 'mpr' or (report_type == 'main' and self._is_mpr_brand()):
             return mpr_calc.tiktok_net_ac_value(closing_totals, is_mpr=True)
 
         if self._uses_mp78_management_ac():

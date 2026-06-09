@@ -11,7 +11,7 @@ from app.services.excel_export import mpr_calculations as mpr_calc
 
 def get_mpr_mapping_for_outlet(outlet_code: str) -> tuple[Outlet | None, MprMapping | None]:
     outlet = Outlet.query.filter_by(outlet_code=outlet_code).first()
-    if not outlet or outlet.brand not in ("MP78", "MPR"):
+    if not outlet or (outlet.brand != "MP78" and not mpr_calc.is_mpr_brand(outlet.brand)):
         return outlet, None
 
     if outlet.brand == "MP78":

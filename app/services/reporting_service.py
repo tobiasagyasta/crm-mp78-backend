@@ -333,9 +333,12 @@ def generate_monthly_mpr_commission_data(
     Generates aggregated monthly MPR commission data across all MPR outlets.
 
     Data is sourced directly from the Gojek, Grab, Shopee, and ShopeePay platform report tables
-    by filtering rows where brand_name == 'MPR' and grouping by calendar month.
+    by filtering rows where brand_name is one of the configured MPR brands and grouping by calendar month.
     """
-    outlets = Outlet.query.filter_by(brand='MPR', status='Active').all()
+    outlets = Outlet.query.filter(
+        Outlet.brand.in_(mpr_calc.MPR_BRANDS),
+        Outlet.status == 'Active',
+    ).all()
     outlet_name_map = {
         outlet.outlet_code: (outlet.outlet_name_gojek or outlet.outlet_name_grab or outlet.outlet_code)
         for outlet in outlets
@@ -392,10 +395,10 @@ def generate_monthly_mpr_commission_data(
     def _qris_ovo_commission(amount: float) -> float:
         return amount * (1 - mpr_calc.MPR_QRIS_OVO_NET_RATE)
 
-    gojek_query = GojekReport.query.filter(GojekReport.brand_name == 'MPR')
-    grab_query = GrabFoodReport.query.filter(GrabFoodReport.brand_name == 'MPR')
-    shopee_query = ShopeeReport.query.filter(ShopeeReport.brand_name == 'MPR')
-    shopeepay_query = ShopeepayReport.query.filter(ShopeepayReport.brand_name == 'MPR')
+    gojek_query = GojekReport.query.filter(GojekReport.brand_name.in_(mpr_calc.MPR_BRANDS))
+    grab_query = GrabFoodReport.query.filter(GrabFoodReport.brand_name.in_(mpr_calc.MPR_BRANDS))
+    shopee_query = ShopeeReport.query.filter(ShopeeReport.brand_name.in_(mpr_calc.MPR_BRANDS))
+    shopeepay_query = ShopeepayReport.query.filter(ShopeepayReport.brand_name.in_(mpr_calc.MPR_BRANDS))
 
     if range_mode:
         gojek_query = gojek_query.filter(
@@ -525,7 +528,10 @@ def generate_monthly_management_commission_data(
     fall back to calendar months when no valid closing range is configured.
     """
     normalized_brand_name = (brand_name or "").strip()
-    if not normalized_brand_name or normalized_brand_name.upper() == "MPR":
+    if (
+        not normalized_brand_name
+        or normalized_brand_name.upper() in {brand.upper() for brand in mpr_calc.MPR_BRANDS}
+    ):
         return {}
 
     if start_date is None and end_date is None:
@@ -598,7 +604,10 @@ def generate_monthly_management_commission_data_custom_range(
     group by each outlet's ``closing_date`` window.
     """
     normalized_brand_name = (brand_name or "").strip()
-    if not normalized_brand_name or normalized_brand_name.upper() == "MPR":
+    if (
+        not normalized_brand_name
+        or normalized_brand_name.upper() in {brand.upper() for brand in mpr_calc.MPR_BRANDS}
+    ):
         return {}
 
     outlets = Outlet.query.filter_by(brand=normalized_brand_name, status='Active').all()

@@ -68,7 +68,7 @@ class DailySheet(BaseSheet):
         ]
         extra_headers = ['Cash Income (Admin)', 'Cash Expense (Admin)', 'Sisa Cash (Admin)', 'Minusan (Mutasi)']
 
-        if outlet_brand == 'MPR':
+        if mpr_calc.is_mpr_brand(outlet_brand):
             base_headers = [
                 'Date',
                 'GoFood', 'GO-PAY QRIS', 'GoFood (ac)', 'GO-PAY QRIS (ac)',
@@ -84,7 +84,8 @@ class DailySheet(BaseSheet):
 
         if (
             user_role == "management"
-            and outlet_brand not in ["MPR", "Pukis & Martabak Kota Baru", "Es Ce Hun Tiau & Bongko Wendy"]
+            and not mpr_calc.is_mpr_brand(outlet_brand)
+            and outlet_brand not in ["Pukis & Martabak Kota Baru", "Es Ce Hun Tiau & Bongko Wendy"]
         ):
             base_headers.insert(8, 'Grab Net')
 
@@ -114,7 +115,7 @@ class DailySheet(BaseSheet):
                     if header not in self.MP78_MANAGEMENT_AC_HEADERS
                 ]
 
-        if outlet_brand == 'MPR' and not self._current_outlet_has_mpr_mapping():
+        if mpr_calc.is_mpr_brand(outlet_brand) and not self._current_outlet_has_mpr_mapping():
             base_headers = [
                 header for header in base_headers
                 if header not in self.OPTIONAL_MPR_AC_HEADERS
@@ -147,7 +148,7 @@ class DailySheet(BaseSheet):
         return display_value - (self.MPR_COMMISSION_RATE * totals.get(net_key, 0))
 
     def _is_mpr_brand(self):
-        return self.data['outlet'].brand == 'MPR'
+        return mpr_calc.is_mpr_brand(self.data['outlet'].brand)
 
     def _is_mp78_brand(self):
         return self.data['outlet'].brand == 'MP78'
