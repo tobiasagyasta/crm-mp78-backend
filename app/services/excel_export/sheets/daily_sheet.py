@@ -211,7 +211,7 @@ class DailySheet(BaseSheet):
         return mpr_calc.grab_net_value(totals, self._is_mpr_brand())
 
     def _get_shopee_net_value(self, totals):
-        return mpr_calc.shopee_net_value(totals)
+        return mpr_calc.shopee_net_value(totals, self._is_mpr_brand())
 
     def _get_shopee_net_ac_value(self, totals):
         if self._is_mpr_brand() and self._current_outlet_has_mpr_mapping():
@@ -256,6 +256,9 @@ class DailySheet(BaseSheet):
         return mpr_calc.management_net_ac_value(totals, 'Grab_Net')
 
     def _get_standard_net_ac_value(self, totals, net_key):
+        if self._is_mpr_brand() and net_key == 'Tiktok_Net':
+            return mpr_calc.tiktok_net_ac_value(totals, is_mpr=True)
+
         if self._uses_mp78_management_ac():
             return mpr_calc.mp78_ac_value_for_header(totals, net_key)
 
