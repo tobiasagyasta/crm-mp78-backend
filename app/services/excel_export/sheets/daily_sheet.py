@@ -177,7 +177,7 @@ class DailySheet(BaseSheet):
         return value
 
     def _get_gojek_net_value(self, totals):
-        return mpr_calc.gojek_net_value(totals, self._is_mpr_brand())
+        return mpr_calc.gojek_net_value(totals)
 
     def _get_gojek_net_ac_value(self, totals):
         if self._is_mpr_brand() and self._current_outlet_has_mpr_mapping():
@@ -209,7 +209,7 @@ class DailySheet(BaseSheet):
         return value
 
     def _get_grab_net_value(self, totals):
-        return mpr_calc.grab_net_value(totals, self._is_mpr_brand())
+        return mpr_calc.grab_net_value(totals)
 
     def _get_shopee_net_value(self, totals):
         return mpr_calc.shopee_net_value(totals, self._is_mpr_brand())
