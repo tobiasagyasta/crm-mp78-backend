@@ -486,11 +486,11 @@ def upload_report_mutation():
     def _is_mutation_table_header(row):
         row_text = " ".join(str(value).strip().upper() for value in row if value is not None)
         return (
-            'TANGGAL' in row_text
-            and 'TRANSAKSI' in row_text
-            and 'KETERANGAN' in row_text
-            and 'JUMLAH' in row_text
-            and 'SALDO' in row_text
+            ('TANGGAL' in row_text or 'DATE' in row_text)
+            and ('KETERANGAN' in row_text or 'DESCRIPTION' in row_text)
+            and ('CABANG' in row_text or 'BRANCH' in row_text)
+            and ('JUMLAH' in row_text or 'AMOUNT' in row_text)
+            and ('SALDO' in row_text or 'BALANCE' in row_text)
         )
 
     def _debug_row(row):
@@ -515,6 +515,7 @@ def upload_report_mutation():
     def _mutation_rows_from_table(numbered_rows, min_header_row=1):
         rows = []
         in_mutation_table = False
+        header_row = None
 
         for row_number, row in numbered_rows:
             row = list(row)
@@ -522,6 +523,7 @@ def upload_report_mutation():
                 continue
             if row_number >= min_header_row and _is_mutation_table_header(row):
                 in_mutation_table = True
+                header_row = row
                 continue
             if not in_mutation_table:
                 continue
@@ -530,7 +532,7 @@ def upload_report_mutation():
             if first_cell.startswith(('SALDO', 'MUTASI')):
                 break
 
-            rows.append((row_number, row))
+            rows.append((row_number, header_row, row))
 
         return rows
 
@@ -543,19 +545,19 @@ def upload_report_mutation():
         file_contents = file_bytes.decode('utf-8-sig')
         csv_file = StringIO(file_contents)
         reader = csv.reader(csv_file)
-        rows = _mutation_rows_from_table(enumerate(reader, start=1), min_header_row=7)
+        rows = _mutation_rows_from_table(enumerate(reader, start=1))
         if rows:
             return rows
 
         csv_file.seek(0)
         reader = csv.reader(csv_file)
         next(reader, None)  # Skip legacy CSV header
-        return [(idx, row) for idx, row in enumerate(reader, start=2)]
+        return [(idx, None, row) for idx, row in enumerate(reader, start=2)]
 
     try:
         for file in files:
             mutations = []
-            for row_number, row in _mutation_rows_from_upload(file):
+            for row_number, header_row, row in _mutation_rows_from_upload(file):
                 try:
                     # Skip if the date column is 'PEND'
                     first_cell = str(row[0]).strip().upper() if row and row[0] is not None else ''
@@ -568,22 +570,13 @@ def upload_report_mutation():
                         })
                         continue
 
-                    parser = BankMutation.detect_platform(row)
-                    if not parser:
-                        skipped_mutations += 1
-                        debug_skipped.append({
-                            'row_number': row_number,
-                            'reason': 'Unknown platform',
-                            'row': _debug_row(row)
-                        })
-                        continue
-
-                    parsed = parser(row)
+                    parsed = BankMutation.parse_mutation_row(row)
                     if not parsed:
                         skipped_mutations += 1
                         debug_skipped.append({
                             'row_number': row_number,
-                            'reason': 'Parse failed (parser returned None)',
+                            'reason': 'Unknown platform or parse failed',
+                            'header': _debug_row(header_row) if header_row else None,
                             'row': _debug_row(row)
                         })
                         continue

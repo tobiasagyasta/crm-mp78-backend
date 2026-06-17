@@ -178,6 +178,14 @@ class BankMutation(db.Model):
         return " ".join(BankMutation._as_text(value) for value in row)
 
     @staticmethod
+    def _compact_row_text(row):
+        return " ".join(
+            BankMutation._as_text(value)
+            for value in row
+            if BankMutation._as_text(value)
+        )
+
+    @staticmethod
     def _parse_transaction_date(value):
         if isinstance(value, datetime):
             return value.date()
@@ -186,13 +194,16 @@ class BankMutation(db.Model):
         if isinstance(value, (int, float)):
             return (datetime(1899, 12, 30) + timedelta(days=int(value))).date()
 
-        date_str = BankMutation._as_text(value).replace("'", "")
+        raw_date_str = BankMutation._as_text(value)
+        has_excel_text_quote = raw_date_str.startswith("'")
+        date_str = raw_date_str.replace("'", "")
         if not date_str:
             return None
         if re.fullmatch(r'\d+(\.0+)?', date_str):
             return (datetime(1899, 12, 30) + timedelta(days=int(float(date_str)))).date()
 
-        for fmt in ('%d/%m/%Y', '%m/%d/%Y', '%d-%m-%Y', '%Y-%m-%d', '%d-%b-%y', '%d-%b-%Y'):
+        slash_formats = ('%d/%m/%Y', '%m/%d/%Y') if has_excel_text_quote else ('%m/%d/%Y', '%d/%m/%Y')
+        for fmt in (*slash_formats, '%d-%m-%Y', '%Y-%m-%d', '%d-%b-%y', '%d-%b-%Y'):
             try:
                 return datetime.strptime(date_str, fmt).date()
             except ValueError:
@@ -201,15 +212,77 @@ class BankMutation(db.Model):
 
     @staticmethod
     def _is_statement_mutation_row(row):
-        return (
-            len(row) >= 4
-            and BankMutation._parse_transaction_date(BankMutation._row_value(row, 0)) is not None
-            and bool(BankMutation._as_text(BankMutation._row_value(row, 1)))
+        return BankMutation._normalize_statement_mutation_row(row) is not None
+
+    @staticmethod
+    def _normalize_statement_mutation_row(row):
+        """
+        Normalize supported bank mutation exports into:
+        [Tanggal/Date, Keterangan/Description, Cabang/Branch, Jumlah/Amount, Saldo/Balance].
+
+        REY 0385 exports the five statement columns cleanly. REY 7777 and HK 107
+        split the description into many CSV cells, so the amount/direction/balance
+        fields need to be found from the right side of the row.
+        """
+        if len(row) < 5:
+            return None
+
+        tanggal = BankMutation._parse_transaction_date(BankMutation._row_value(row, 0))
+        if tanggal is None:
+            return None
+
+        if (
+            BankMutation._as_text(BankMutation._row_value(row, 1))
             and BankMutation._parse_currency(BankMutation._row_value(row, 3)) > 0
-        )
+            and BankMutation._parse_currency(BankMutation._row_value(row, 4)) > 0
+        ):
+            return [
+                BankMutation._row_value(row, 0),
+                BankMutation._as_text(BankMutation._row_value(row, 1)),
+                BankMutation._as_text(BankMutation._row_value(row, 2)),
+                BankMutation._as_text(BankMutation._row_value(row, 3)),
+                BankMutation._as_text(BankMutation._row_value(row, 4)),
+            ]
+
+        direction_index = None
+        for index in range(len(row) - 1, 1, -1):
+            value = BankMutation._as_text(row[index]).upper().replace("'", "")
+            if value in {"CR", "DB"}:
+                amount_value = BankMutation._as_text(BankMutation._row_value(row, index - 1))
+                balance_value = BankMutation._as_text(BankMutation._row_value(row, index + 1))
+                if BankMutation._parse_currency(amount_value) > 0 and BankMutation._parse_currency(balance_value) > 0:
+                    direction_index = index
+                    break
+
+        if direction_index is None:
+            return None
+
+        branch_index = direction_index - 2
+        branch = BankMutation._as_text(BankMutation._row_value(row, branch_index))
+        description_values = row[1:branch_index]
+        description = BankMutation._compact_row_text(description_values)
+        if not description:
+            return None
+
+        amount = (
+            f"{BankMutation._as_text(BankMutation._row_value(row, direction_index - 1))} "
+            f"{BankMutation._as_text(BankMutation._row_value(row, direction_index))}"
+        ).strip()
+
+        return [
+            BankMutation._row_value(row, 0),
+            description,
+            branch,
+            amount,
+            BankMutation._as_text(BankMutation._row_value(row, direction_index + 1)),
+        ]
 
     @staticmethod
     def _parse_statement_mutation_row(row, platform_name, platform_code=None):
+        row = BankMutation._normalize_statement_mutation_row(row)
+        if not row:
+            return None
+
         tanggal = BankMutation._parse_transaction_date(row[0])
         amount_str = BankMutation._as_text(BankMutation._row_value(row, 3))
         transaction_type = 'DB' if 'DB' in amount_str.upper() else 'CR' if 'CR' in amount_str.upper() else None
@@ -228,17 +301,21 @@ class BankMutation(db.Model):
 
     @staticmethod
     def _extract_gojek_platform_code(text):
+        match = re.search(r'([GM]\d{5,})\b', text.upper())
+        if match:
+            return match.group(1)
+
         match = re.search(r'\b[GM][A-Z0-9][A-Z0-9-]*\b', text.upper())
         return match.group(0) if match else None
 
     @staticmethod
     def _extract_shopee_statement_info(text):
-        match = re.search(r'\b(MC|SF)\s+\d{4}\s+(\d{4,})\b', text.upper())
+        match = re.search(r'(MC|SF)\s*(\d{1,4})\s+(\d{3,})\b', text.upper())
         if not match:
             return None, None
 
         platform_name = 'ShopeeFood' if match.group(1) == 'SF' else 'Shopee'
-        return platform_name, match.group(2)
+        return platform_name, match.group(3)
 
     @staticmethod
     def parse_gojek_row(row):
@@ -376,19 +453,37 @@ class BankMutation(db.Model):
             return None
 
     @staticmethod
+    def parse_mutation_row(row):
+        """
+        Main parser for supported bank mutation rows.
+        It first normalizes the mutation table shape, then dispatches to the
+        platform-specific parser.
+        """
+        normalized_row = BankMutation._normalize_statement_mutation_row(row)
+        if not normalized_row:
+            return None
+
+        parser = BankMutation.detect_platform(normalized_row)
+        if not parser:
+            return None
+
+        return parser(normalized_row)
+
+    @staticmethod
     def detect_platform(row):
         """
         Detects the platform for a given CSV row and returns the corresponding parser function.
         """
-        row_text = BankMutation._row_text(row).upper()
+        normalized_row = BankMutation._normalize_statement_mutation_row(row) or row
+        row_text = BankMutation._row_text(normalized_row).upper()
         # Gojek: Only parse if col 10 (index 9) is 'BANGSA'
-        if BankMutation._as_text(BankMutation._row_value(row, 9)).upper() == "BANGSA":
+        if BankMutation._as_text(BankMutation._row_value(normalized_row, 9)).upper() == "BANGSA":
             return BankMutation.parse_gojek_row
         # Grab: Only parse if col 8 (index 7) is 'VISIONET'
-        if BankMutation._as_text(BankMutation._row_value(row, 7)).upper() == 'VISIONET':
+        if BankMutation._as_text(BankMutation._row_value(normalized_row, 7)).upper() == 'VISIONET':
             return BankMutation.parse_grab_row
         # Shopee: Only parse if col 10 (index 9) is 'INTERNATION'
-        if BankMutation._as_text(BankMutation._row_value(row, 9)).upper() == 'INTERNATION':
+        if BankMutation._as_text(BankMutation._row_value(normalized_row, 9)).upper() == 'INTERNATION':
             return BankMutation.parse_shopee_row
         if 'VISIONET' in row_text:
             return BankMutation.parse_grab_row
