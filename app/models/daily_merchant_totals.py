@@ -12,5 +12,9 @@ class DailyMerchantTotal(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    __table_args__ = (
+        db.Index('ix_daily_merchant_totals_report_date_outlet', 'report_type', 'date', 'outlet_id'),
+    )
+
     def __repr__(self):
         return f"<DailyMerchantTotal {self.outlet_id} {self.date} {self.report_type}>"

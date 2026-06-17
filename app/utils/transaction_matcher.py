@@ -1,5 +1,6 @@
 from datetime import timedelta
 from typing import List, Dict, Tuple, Optional
+from collections import defaultdict
 from app.models.daily_merchant_totals import DailyMerchantTotal
 from app.models.bank_mutations import BankMutation
 from app.models.outlet import Outlet
@@ -67,7 +68,7 @@ class TransactionMatcher:
     
     def _match_grab(self, transaction_amount: float, daily_total_amount: float, tolerance: float = 10000.0) -> bool:
         """Grab matches only by transaction amount within a tolerance"""
-        return abs(transaction_amount - daily_total_amount) <= tolerance
+        return abs(float(transaction_amount or 0.0) - float(daily_total_amount or 0.0)) <= tolerance
 
     def get_daily_totals_query(self, start_date: str, end_date: str, platform_code: str = None) -> db.Query:
         """Get daily totals query with optional platform code filter"""
@@ -111,10 +112,73 @@ class TransactionMatcher:
             BankMutation.tanggal <= end_date + date_offset
         )
 
-    def match_transactions(self, daily_total: DailyMerchantTotal, 
-        mutations: List[BankMutation]) -> Tuple[Optional[Dict], Optional[Dict]]:
+    def build_match_context(
+        self,
+        daily_totals: List[DailyMerchantTotal] = None,
+        mutations: List[BankMutation] = None,
+        outlet_codes: List[str] = None,
+    ) -> Dict:
+        daily_totals = daily_totals or []
+        mutations = mutations or []
+        outlet_codes_set = {str(code) for code in (outlet_codes or []) if code}
+        outlet_codes_set.update(
+            str(total.outlet_id)
+            for total in daily_totals
+            if getattr(total, 'outlet_id', None)
+        )
+
+        outlets = []
+        if outlet_codes_set:
+            outlets = db.session.query(Outlet).filter(
+                Outlet.outlet_code.in_(sorted(outlet_codes_set))
+            ).all()
+
+        mutations_by_date_code = defaultdict(list)
+        mutations_by_date = defaultdict(list)
+        for mutation in mutations:
+            mutations_by_date[mutation.tanggal].append(mutation)
+            if mutation.platform_code:
+                mutations_by_date_code[(mutation.tanggal, mutation.platform_code.strip())].append(mutation)
+
+        return {
+            'outlets_by_code': {outlet.outlet_code: outlet for outlet in outlets},
+            'mutations_by_date_code': mutations_by_date_code,
+            'mutations_by_date': mutations_by_date,
+        }
+
+    def _mutation_data(self, mutation: BankMutation) -> Dict:
+        return {
+            'transaction_id': mutation.transaction_id,
+            'platform_code': mutation.platform_code,
+            'transaction_date': mutation.tanggal,
+            'transaction_amount': float(mutation.transaction_amount or 0.0)
+        }
+
+    def _find_code_match(self, context: Dict, match_date, store_id: str):
+        if not store_id:
+            return None
+
+        if self.platform in ('shopee', 'shopeepay'):
+            store_id = store_id.strip()
+            platform_codes = [store_id[-4:], store_id[-5:]]
+        else:
+            platform_codes = [store_id]
+
+        for platform_code in platform_codes:
+            if not platform_code:
+                continue
+            mutations = context['mutations_by_date_code'].get((match_date, platform_code.strip()))
+            if mutations:
+                return mutations[0]
+        return None
+
+    def match_transactions(self, daily_total: DailyMerchantTotal,
+        mutations: List[BankMutation], context: Dict = None) -> Tuple[Optional[Dict], Optional[Dict]]:
         """Match a single daily total with mutations using platform-specific matching"""
-        outlet = db.session.query(Outlet).filter_by(outlet_code=daily_total.outlet_id).first()
+        if context is None:
+            context = self.build_match_context([daily_total], mutations)
+
+        outlet = context['outlets_by_code'].get(str(daily_total.outlet_id))
         if not outlet:
             return None, None
 
@@ -129,14 +193,11 @@ class TransactionMatcher:
 
         match_date = daily_total.date + timedelta(days=self.config['days_offset'])
         
-        # Use platform-specific matching function
-        match_func = self.config['match_function']
         if self.platform == 'grab':
             # Match only by date and amount with tolerance
             mutation = next(
-                (m for m in mutations
-                if m.tanggal == match_date and
-                self._match_grab(m.transaction_amount or 0.0, daily_total.total_net)),
+                (m for m in context['mutations_by_date'].get(match_date, [])
+                if self._match_grab(m.transaction_amount or 0.0, daily_total.total_net)),
                 None
             )
            
@@ -144,21 +205,10 @@ class TransactionMatcher:
                 # NOTE: Platform code update is now handled by the calling function
                 # No longer doing individual commits here
                 
-                mutation_data = {
-                    'transaction_id': mutation.transaction_id,
-                    'platform_code': mutation.platform_code,
-                    'transaction_date': mutation.tanggal,
-                    'transaction_amount': float(mutation.transaction_amount or 0.0)
-                }
-                return platform_data, mutation_data
+                return platform_data, self._mutation_data(mutation)
         else:
             # Platform-specific logic for Shopee/Gojek
-            mutation = next(
-                (m for m in mutations
-                if m.platform_code and match_func(store_id, m.platform_code)
-                and m.tanggal == match_date),
-                None
-            )
+            mutation = self._find_code_match(context, match_date, store_id)
             # print(f"[DEBUG] Gojek match trial: store_id={store_id}, match_date={match_date}")
             # for m in mutations:
             #     if m.tanggal == match_date:
@@ -168,13 +218,7 @@ class TransactionMatcher:
             #         else:
             #             print("  ❌ Not matched")
         if mutation:
-            mutation_data = {
-                'transaction_id': mutation.transaction_id,
-                'platform_code': mutation.platform_code,
-                'transaction_date': mutation.tanggal,
-                'transaction_amount': float(mutation.transaction_amount or 0.0)
-            }
-            return platform_data, mutation_data
+            return platform_data, self._mutation_data(mutation)
 
         return platform_data, None
 
@@ -183,6 +227,7 @@ class TransactionMatcher:
         outlet_code: str,
         transaction_date,
         mutations: List[BankMutation],
+        context: Dict = None,
     ) -> Optional[Dict]:
         """
         Match a mutation for a date/outlet when platform report data is missing.
@@ -194,29 +239,17 @@ class TransactionMatcher:
         if self.platform == 'grab':
             return None
 
-        outlet = db.session.query(Outlet).filter_by(outlet_code=outlet_code).first()
+        if context is None:
+            context = self.build_match_context(mutations=mutations, outlet_codes=[outlet_code])
+
+        outlet = context['outlets_by_code'].get(str(outlet_code))
         if not outlet:
             return None
 
         store_id = getattr(outlet, self.config['store_id_field'])
         match_date = transaction_date + timedelta(days=self.config['days_offset'])
-        match_func = self.config['match_function']
-
-        mutation = next(
-            (
-                m for m in mutations
-                if m.platform_code
-                and match_func(store_id, m.platform_code)
-                and m.tanggal == match_date
-            ),
-            None,
-        )
+        mutation = self._find_code_match(context, match_date, store_id)
         if not mutation:
             return None
 
-        return {
-            'transaction_id': mutation.transaction_id,
-            'platform_code': mutation.platform_code,
-            'transaction_date': mutation.tanggal,
-            'transaction_amount': float(mutation.transaction_amount or 0.0),
-        }
+        return self._mutation_data(mutation)

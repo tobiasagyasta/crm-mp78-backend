@@ -23,6 +23,11 @@ class BankMutation(db.Model):
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)    
 
+    __table_args__ = (
+        db.Index('ix_bank_mutations_platform_date_code', 'platform_name', 'tanggal', 'platform_code'),
+        db.Index('ix_bank_mutations_platform_date_amount', 'platform_name', 'tanggal', 'transaction_amount'),
+    )
+
     @staticmethod
     def parse_pkb_report(report_content):
         """

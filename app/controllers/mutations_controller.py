@@ -82,6 +82,7 @@ def match_summary():
             
             # Get mutations
             mutations = matcher.get_mutations_query(start_date, end_date).all()
+            match_context = matcher.build_match_context(daily_totals, mutations)
             
             # Process matching
             matches = []
@@ -90,7 +91,7 @@ def match_summary():
             
             # Process each daily total
             for total in daily_totals:
-                platform_data, mutation_data = matcher.match_transactions(total, mutations)
+                platform_data, mutation_data = matcher.match_transactions(total, mutations, match_context)
                 
                 if platform_data:
                     if mutation_data:
@@ -176,6 +177,7 @@ def match_gojek_transactions():
 
         # Get mutations
         mutations = matcher.get_mutations_query(start_date, end_date).all()
+        match_context = matcher.build_match_context(daily_totals, mutations)
 
         matches = []
         unmatched_merchants = []
@@ -183,7 +185,7 @@ def match_gojek_transactions():
 
         # Process each daily total
         for total in daily_totals:
-            platform_data, mutation_data = matcher.match_transactions(total, mutations)
+            platform_data, mutation_data = matcher.match_transactions(total, mutations, match_context)
             
             if platform_data:
                 if mutation_data:
@@ -257,13 +259,14 @@ def match_grab_transactions():
 
         # Get mutations
         mutations = matcher.get_mutations_query(start_date, end_date).all()
+        match_context = matcher.build_match_context(daily_totals, mutations)
 
         matches = []
         unmatched_merchants = []
         matched_mutations = set()
 
         for daily_total in daily_totals:
-            platform_data, mutation_data = matcher.match_transactions(daily_total, mutations)
+            platform_data, mutation_data = matcher.match_transactions(daily_total, mutations, match_context)
             
             if platform_data:
                 match = create_standardized_match(platform_data, 'Grab')
@@ -316,6 +319,7 @@ def match_shopee_transactions():
 
         # Get mutations
         mutations = matcher.get_mutations_query(start_date, end_date).all()
+        match_context = matcher.build_match_context(daily_totals, mutations)
 
         matches = []
         unmatched_merchants = []
@@ -323,7 +327,7 @@ def match_shopee_transactions():
 
         # Process each daily total
         for total in daily_totals:
-            platform_data, mutation_data = matcher.match_transactions(total, mutations)
+            platform_data, mutation_data = matcher.match_transactions(total, mutations, match_context)
             
             if platform_data:
                 if mutation_data:
@@ -398,6 +402,7 @@ def match_shopeepay_transactions():
 
         # Get mutations
         mutations = matcher.get_mutations_query(start_date, end_date).all()
+        match_context = matcher.build_match_context(daily_totals, mutations)
 
         matches = []
         unmatched_merchants = []
@@ -405,7 +410,7 @@ def match_shopeepay_transactions():
 
         # Process each daily total
         for total in daily_totals:
-            platform_data, mutation_data = matcher.match_transactions(total, mutations)
+            platform_data, mutation_data = matcher.match_transactions(total, mutations, match_context)
             
             if platform_data:
                 if mutation_data:

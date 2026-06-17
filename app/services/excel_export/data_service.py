@@ -298,6 +298,7 @@ def _match_mutations(daily_totals, outlet_code, start_date, end_date):
         try:
             matcher = TransactionMatcher(platform)
             mutations = matcher.get_mutations_query(start_date.date(), end_date.date()).all()
+            match_context = matcher.build_match_context(mutations=mutations, outlet_codes=[outlet_code])
             for date, totals in daily_totals.items():
                 net_key = f'{platform.capitalize()}_Net' if platform != 'shopeepay' else 'ShopeePay_Net'
                 mutation_key = f'{platform.capitalize()}_Mutation' if platform != 'shopeepay' else 'ShopeePay_Mutation'
@@ -312,6 +313,7 @@ def _match_mutations(daily_totals, outlet_code, start_date, end_date):
                         outlet_code,
                         date,
                         mutations,
+                        match_context,
                     )
                 else:
                     class MockDailyTotal:
@@ -321,7 +323,7 @@ def _match_mutations(daily_totals, outlet_code, start_date, end_date):
                             self.total_net = total_net
 
                     mock_total = MockDailyTotal(outlet_code, date, net_amount)
-                    _, mutation_data = matcher.match_transactions(mock_total, mutations)
+                    _, mutation_data = matcher.match_transactions(mock_total, mutations, match_context)
 
                 if mutation_data:
                     mutation_amount = float(mutation_data.get('transaction_amount', 0))
