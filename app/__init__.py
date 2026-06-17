@@ -19,6 +19,7 @@ from app.controllers.test_controller import test_bp
 from app.controllers.bi_controller import bi_bp
 from app.controllers import qpon_controller
 from app.controllers import webshop_controller
+from app.models.transaction_match import TransactionMatch
 from flask_cors import CORS
 
 def create_app():
