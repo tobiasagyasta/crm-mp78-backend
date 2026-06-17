@@ -50,6 +50,59 @@ def create_standardized_unmatched(platform_data, platform_name):
         'platform': platform_name
     }
 
+def build_match_response(platform, platform_label, start_date, end_date, page, per_page, platform_code_filter=None):
+    matcher = TransactionMatcher(platform)
+    batch_result = matcher.safe_rebuild_matches(start_date, end_date, platform_code_filter)
+
+    total_records = len(batch_result['daily_totals'])
+    total_pages = (total_records + per_page - 1) // per_page
+    start_idx = (page - 1) * per_page
+    end_idx = start_idx + per_page
+    page_results = batch_result['results'][start_idx:end_idx]
+    total_unmatched_merchants = sum(
+        1 for result in batch_result['results']
+        if result['platform_data'] and not result['mutation_data']
+    )
+
+    matches = []
+    unmatched_merchants = []
+    for result in page_results:
+        platform_data = result['platform_data']
+        mutation_data = result['mutation_data']
+        if not platform_data:
+            continue
+        if mutation_data:
+            match = create_standardized_match(platform_data, platform_label)
+            match['mutation_match'] = mutation_data
+            matches.append(match)
+        else:
+            unmatched_merchants.append(create_standardized_unmatched(platform_data, platform_label))
+
+    unmatched_mutations = [
+        {
+            'transaction_id': m.transaction_id,
+            'platform_code': m.platform_code,
+            'transaction_date': m.tanggal,
+            'transaction_amount': float(m.transaction_amount or 0.0)
+        }
+        for m in batch_result['mutations']
+        if (m.platform_code, m.tanggal) not in batch_result['matched_mutation_keys']
+    ]
+
+    return {
+        'matches': matches,
+        'unmatched_merchants': unmatched_merchants,
+        'unmatched_mutations': unmatched_mutations,
+        'total_unmatched_merchants': total_unmatched_merchants,
+        'pagination': {
+            'current_page': page,
+            'per_page': per_page,
+            'total_pages': total_pages,
+            'total_records': total_records
+        },
+        'page_total': len(page_results),
+    }
+
 @mutations_bp.route('/match/summary', methods=['GET'])
 def match_summary():
     """Summary route for transaction matching statistics across platforms"""
@@ -74,44 +127,17 @@ def match_summary():
             # Skip platform_code for Grab as it doesn't use it
             current_platform_code = None if current_platform == 'grab' else platform_code
             
-            # Initialize matcher for current platform
             matcher = TransactionMatcher(current_platform)
-            
-            # Get daily totals
-            daily_totals = matcher.get_daily_totals_query(start_date, end_date, current_platform_code).all()
-            
-            # Get mutations
-            mutations = matcher.get_mutations_query(start_date, end_date).all()
-            match_context = matcher.build_match_context(daily_totals, mutations)
-            
-            # Process matching
-            matches = []
-            unmatched_merchants = []
-            matched_mutations = set()
-            
-            # Process each daily total
-            for total in daily_totals:
-                platform_data, mutation_data = matcher.match_transactions(total, mutations, match_context)
-                
-                if platform_data:
-                    if mutation_data:
-                        matches.append(1)  # Just count, don't store details
-                        matched_mutations.add((mutation_data.get('platform_code', ''), mutation_data.get('transaction_date')))
-                    else:
-                        unmatched_merchants.append(1)  # Just count
-            
-            # Find unmatched mutations
-            unmatched_mutations = [
-                1  # Just count
-                for m in mutations
-                if (getattr(m, 'platform_code', ''), m.tanggal) not in matched_mutations
-            ]
+            batch_result = matcher.safe_rebuild_matches(start_date, end_date, current_platform_code)
             
             # Calculate statistics
-            total_merchants = len(daily_totals)
-            total_matched = len(matches)
-            total_unmatched_merchants = len(unmatched_merchants)
-            total_unmatched_mutations = len(unmatched_mutations)
+            total_merchants = len(batch_result['daily_totals'])
+            total_matched = sum(1 for result in batch_result['results'] if result['mutation_data'])
+            total_unmatched_merchants = total_merchants - total_matched
+            total_unmatched_mutations = sum(
+                1 for mutation in batch_result['mutations']
+                if (mutation.platform_code, mutation.tanggal) not in batch_result['matched_mutation_keys']
+            )
             
             # Calculate matching percentage
             matching_percentage = (total_matched / total_merchants * 100) if total_merchants > 0 else 0
@@ -162,75 +188,21 @@ def match_gojek_transactions():
         per_page = request.args.get('per_page', 10, type=int)
         platform_code_filter = request.args.get('platform_code')
 
-        matcher = TransactionMatcher('gojek')
-
-       
-        # Get daily totals with pagination
-        daily_totals_query = matcher.get_daily_totals_query(start_date, end_date, platform_code_filter)
-        total_records = daily_totals_query.count()
-        total_pages = (total_records + per_page - 1) // per_page
-
-        daily_totals = daily_totals_query.order_by(DailyMerchantTotal.date)\
-                                       .offset((page - 1) * per_page)\
-                                       .limit(per_page)\
-                                       .all()
-
-        # Get mutations
-        mutations = matcher.get_mutations_query(start_date, end_date).all()
-        match_context = matcher.build_match_context(daily_totals, mutations)
-
-        matches = []
-        unmatched_merchants = []
-        matched_mutations = set()
-
-        # Process each daily total
-        for total in daily_totals:
-            platform_data, mutation_data = matcher.match_transactions(total, mutations, match_context)
-            
-            if platform_data:
-                if mutation_data:
-                    match = create_standardized_match(platform_data, 'Gojek')
-                    match['mutation_match'] = mutation_data
-                    matches.append(match)
-                    matched_mutations.add((mutation_data['platform_code'], mutation_data['transaction_date']))
-                else:
-                    unmatched_merchants.append(create_standardized_unmatched(platform_data, 'Gojek'))
-
-        # Find unmatched mutations
-        unmatched_mutations = [
-            {
-                'transaction_id': m.transaction_id,
-                'platform_code': m.platform_code,
-                'transaction_date': m.tanggal,
-                'transaction_amount': float(m.transaction_amount or 0.0)
-            }
-            for m in mutations
-            if (m.platform_code, m.tanggal) not in matched_mutations
-        ]
-
-        # Paginate unmatched lists
-        start_idx = (page - 1) * per_page
-        end_idx = start_idx + per_page
-        paginated_unmatched_merchants = unmatched_merchants[start_idx:end_idx]
-        paginated_unmatched_mutations = unmatched_mutations[start_idx:end_idx]
+        response = build_match_response('gojek', 'Gojek', start_date, end_date, page, per_page, platform_code_filter)
+        paginated_unmatched_mutations = response['unmatched_mutations'][(page - 1) * per_page:page * per_page]
 
         return jsonify({
-            'matches': matches,
+            'matches': response['matches'],
             'statistics': {
-                'page_total': len(daily_totals),
-                'page_matched': len(matches),
-                'page_unmatched': len(paginated_unmatched_merchants),
-                'total_unmatched': len(unmatched_merchants),
-                'total_unmatched_mutations': len(unmatched_mutations),
-                'unmatched_merchants': paginated_unmatched_merchants,
+                'page_total': response['page_total'],
+                'page_matched': len(response['matches']),
+                'page_unmatched': len(response['unmatched_merchants']),
+                'total_unmatched': response['total_unmatched_merchants'],
+                'total_unmatched_mutations': len(response['unmatched_mutations']),
+                'unmatched_merchants': response['unmatched_merchants'],
                 'unmatched_mutations': paginated_unmatched_mutations
             },
-            'pagination': {
-                'current_page': page,
-                'per_page': per_page,
-                'total_pages': total_pages,
-                'total_records': total_records
-            }
+            'pagination': response['pagination']
         }), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -244,53 +216,17 @@ def match_grab_transactions():
         per_page = request.args.get('per_page', 10, type=int)
         platform_code_filter = request.args.get('platform_code')
 
-        # Initialize TransactionMatcher for Grab
-        matcher = TransactionMatcher('grab')
-
-        # Get daily totals query
-        daily_totals_query = matcher.get_daily_totals_query(start_date, end_date,platform_code_filter)
-
-        # Calculate total pages
-        total_records = daily_totals_query.count()
-        total_pages = (total_records + per_page - 1) // per_page
-
-        # Apply pagination
-        daily_totals = daily_totals_query.offset((page - 1) * per_page).limit(per_page).all()
-
-        # Get mutations
-        mutations = matcher.get_mutations_query(start_date, end_date).all()
-        match_context = matcher.build_match_context(daily_totals, mutations)
-
-        matches = []
-        unmatched_merchants = []
-        matched_mutations = set()
-
-        for daily_total in daily_totals:
-            platform_data, mutation_data = matcher.match_transactions(daily_total, mutations, match_context)
-            
-            if platform_data:
-                match = create_standardized_match(platform_data, 'Grab')
-                if mutation_data:
-                    match['mutation_match'] = mutation_data
-                    matches.append(match)
-                    matched_mutations.add((mutation_data['platform_code'], mutation_data['transaction_date']))
-                else:
-                    unmatched_merchants.append(create_standardized_unmatched(platform_data, 'Grab'))
+        response = build_match_response('grab', 'Grab', start_date, end_date, page, per_page, platform_code_filter)
 
         return jsonify({
-            'matches': matches,
+            'matches': response['matches'],
             'statistics': {
-                'page_total': len(daily_totals),
-                'page_matched': len(matches),
-                'page_unmatched': len(unmatched_merchants),
-                'unmatched_merchants': unmatched_merchants
+                'page_total': response['page_total'],
+                'page_matched': len(response['matches']),
+                'page_unmatched': len(response['unmatched_merchants']),
+                'unmatched_merchants': response['unmatched_merchants']
             },
-            'pagination': {
-                'current_page': page,
-                'per_page': per_page,
-                'total_pages': total_pages,
-                'total_records': total_records
-            }
+            'pagination': response['pagination']
         }), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -305,74 +241,21 @@ def match_shopee_transactions():
         per_page = request.args.get('per_page', 10, type=int)
         platform_code_filter = request.args.get('platform_code')
 
-        matcher = TransactionMatcher('shopee')
-        
-        # Get daily totals with pagination
-        daily_totals_query = matcher.get_daily_totals_query(start_date, end_date, platform_code_filter)
-        total_records = daily_totals_query.count()
-        total_pages = (total_records + per_page - 1) // per_page
-
-        daily_totals = daily_totals_query.order_by(DailyMerchantTotal.date)\
-                                       .offset((page - 1) * per_page)\
-                                       .limit(per_page)\
-                                       .all()
-
-        # Get mutations
-        mutations = matcher.get_mutations_query(start_date, end_date).all()
-        match_context = matcher.build_match_context(daily_totals, mutations)
-
-        matches = []
-        unmatched_merchants = []
-        matched_mutations = set()
-
-        # Process each daily total
-        for total in daily_totals:
-            platform_data, mutation_data = matcher.match_transactions(total, mutations, match_context)
-            
-            if platform_data:
-                if mutation_data:
-                    match = create_standardized_match(platform_data, 'Shopee')
-                    match['mutation_match'] = mutation_data
-                    matches.append(match)
-                    matched_mutations.add((mutation_data['platform_code'], mutation_data['transaction_date']))
-                else:
-                    unmatched_merchants.append(create_standardized_unmatched(platform_data, 'Shopee'))
-
-        # Find unmatched mutations
-        unmatched_mutations = [
-            {
-                'transaction_id': m.transaction_id,
-                'platform_code': m.platform_code,
-                'transaction_date': m.tanggal,
-                'transaction_amount': float(m.transaction_amount or 0.0)
-            }
-            for m in mutations
-            if (m.platform_code, m.tanggal) not in matched_mutations
-        ]
-
-        # Paginate unmatched lists
-        start_idx = (page - 1) * per_page
-        end_idx = start_idx + per_page
-        paginated_unmatched_merchants = unmatched_merchants[start_idx:end_idx]
-        paginated_unmatched_mutations = unmatched_mutations[start_idx:end_idx]
+        response = build_match_response('shopee', 'Shopee', start_date, end_date, page, per_page, platform_code_filter)
+        paginated_unmatched_mutations = response['unmatched_mutations'][(page - 1) * per_page:page * per_page]
 
         return jsonify({
-            'matches': matches,
+            'matches': response['matches'],
             'statistics': {
-                'page_total': len(daily_totals),
-                'page_matched': len(matches),
-                'page_unmatched': len(paginated_unmatched_merchants),
-                'total_unmatched': len(unmatched_merchants),
-                'total_unmatched_mutations': len(unmatched_mutations),
-                'unmatched_merchants': paginated_unmatched_merchants,
+                'page_total': response['page_total'],
+                'page_matched': len(response['matches']),
+                'page_unmatched': len(response['unmatched_merchants']),
+                'total_unmatched': response['total_unmatched_merchants'],
+                'total_unmatched_mutations': len(response['unmatched_mutations']),
+                'unmatched_merchants': response['unmatched_merchants'],
                 'unmatched_mutations': paginated_unmatched_mutations
             },
-            'pagination': {
-                'current_page': page,
-                'per_page': per_page,
-                'total_pages': total_pages,
-                'total_records': total_records
-            }
+            'pagination': response['pagination']
         }), 200
 
     except Exception as e:
@@ -388,74 +271,21 @@ def match_shopeepay_transactions():
         per_page = request.args.get('per_page', 10, type=int)
         platform_code_filter = request.args.get('platform_code')
 
-        matcher = TransactionMatcher('shopeepay')
-        
-        # Get daily totals with pagination
-        daily_totals_query = matcher.get_daily_totals_query(start_date, end_date, platform_code_filter)
-        total_records = daily_totals_query.count()
-        total_pages = (total_records + per_page - 1) // per_page
-
-        daily_totals = daily_totals_query.order_by(DailyMerchantTotal.date)\
-                                       .offset((page - 1) * per_page)\
-                                       .limit(per_page)\
-                                       .all()
-
-        # Get mutations
-        mutations = matcher.get_mutations_query(start_date, end_date).all()
-        match_context = matcher.build_match_context(daily_totals, mutations)
-
-        matches = []
-        unmatched_merchants = []
-        matched_mutations = set()
-
-        # Process each daily total
-        for total in daily_totals:
-            platform_data, mutation_data = matcher.match_transactions(total, mutations, match_context)
-            
-            if platform_data:
-                if mutation_data:
-                    match = create_standardized_match(platform_data, 'ShopeePay')
-                    match['mutation_match'] = mutation_data
-                    matches.append(match)
-                    matched_mutations.add((mutation_data['platform_code'], mutation_data['transaction_date']))
-                else:
-                    unmatched_merchants.append(create_standardized_unmatched(platform_data, 'ShopeePay'))
-
-        # Find unmatched mutations
-        unmatched_mutations = [
-            {
-                'transaction_id': m.transaction_id,
-                'platform_code': m.platform_code,
-                'transaction_date': m.tanggal,
-                'transaction_amount': float(m.transaction_amount or 0.0)
-            }
-            for m in mutations
-            if (m.platform_code, m.tanggal) not in matched_mutations
-        ]
-
-        # Paginate unmatched lists
-        start_idx = (page - 1) * per_page
-        end_idx = start_idx + per_page
-        paginated_unmatched_merchants = unmatched_merchants[start_idx:end_idx]
-        paginated_unmatched_mutations = unmatched_mutations[start_idx:end_idx]
+        response = build_match_response('shopeepay', 'ShopeePay', start_date, end_date, page, per_page, platform_code_filter)
+        paginated_unmatched_mutations = response['unmatched_mutations'][(page - 1) * per_page:page * per_page]
 
         return jsonify({
-            'matches': matches,
+            'matches': response['matches'],
             'statistics': {
-                'page_total': len(daily_totals),
-                'page_matched': len(matches),
-                'page_unmatched': len(paginated_unmatched_merchants),
-                'total_unmatched': len(unmatched_merchants),
-                'total_unmatched_mutations': len(unmatched_mutations),
-                'unmatched_merchants': paginated_unmatched_merchants,
+                'page_total': response['page_total'],
+                'page_matched': len(response['matches']),
+                'page_unmatched': len(response['unmatched_merchants']),
+                'total_unmatched': response['total_unmatched_merchants'],
+                'total_unmatched_mutations': len(response['unmatched_mutations']),
+                'unmatched_merchants': response['unmatched_merchants'],
                 'unmatched_mutations': paginated_unmatched_mutations
             },
-            'pagination': {
-                'current_page': page,
-                'per_page': per_page,
-                'total_pages': total_pages,
-                'total_records': total_records
-            }
+            'pagination': response['pagination']
         }), 200
 
     except Exception as e:

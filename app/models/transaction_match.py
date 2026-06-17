@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from app.extensions import db
+from sqlalchemy import text
 
 
 class TransactionMatch(db.Model):
@@ -38,7 +39,7 @@ class TransactionMatch(db.Model):
             name='fk_transaction_matches_daily_total',
         ),
         db.CheckConstraint(
-            "status IN ('matched', 'unmatched_platform', 'unmatched_mutation', 'ignored')",
+            "status IN ('matched', 'manual_matched', 'unmatched_platform', 'unmatched_mutation', 'ignored')",
             name='valid_transaction_match_status',
         ),
         db.UniqueConstraint(
@@ -49,6 +50,16 @@ class TransactionMatch(db.Model):
         db.Index('ix_transaction_matches_outlet_report_date', 'outlet_code', 'report_date'),
         db.Index('ix_transaction_matches_status', 'status'),
         db.Index('ix_transaction_matches_mutation_id', 'mutation_id'),
+        db.Index(
+            'uq_transaction_matches_active_mutation',
+            'platform', 'mutation_id',
+            unique=True,
+            postgresql_where=text("mutation_id IS NOT NULL AND status != 'ignored'"),
+        ),
+        db.Index(
+            'ix_transaction_matches_platform_status_report_date',
+            'platform', 'status', 'report_date',
+        ),
     )
 
     def __repr__(self):
