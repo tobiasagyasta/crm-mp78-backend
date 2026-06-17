@@ -160,21 +160,13 @@ class DailySheet(BaseSheet):
         return mpr_calc.gofood_value(totals)
 
     def _get_gofood_ac_value(self, totals):
-        value = mpr_calc.gofood_value(totals, self._is_mpr_brand())
-        if self._is_mpr_brand():
-            return mpr_calc.mpr_after_commission_value(value)
-
-        return value
+        return mpr_calc.gofood_value(totals, self._is_mpr_brand())
 
     def _get_gojek_qris_value(self, totals):
         return mpr_calc.gojek_qris_value(totals)
 
     def _get_gojek_qris_ac_value(self, totals):
-        value = mpr_calc.gojek_qris_value(totals, self._is_mpr_brand())
-        if self._is_mpr_brand():
-            return mpr_calc.mpr_after_commission_value(value)
-
-        return value
+        return mpr_calc.gojek_qris_value(totals, self._is_mpr_brand())
 
     def _get_gojek_net_value(self, totals):
         return mpr_calc.gojek_net_value(totals)
@@ -192,21 +184,13 @@ class DailySheet(BaseSheet):
         return mpr_calc.grabfood_value(totals)
 
     def _get_grabfood_ac_value(self, totals):
-        value = mpr_calc.grabfood_value(totals, self._is_mpr_brand())
-        if self._is_mpr_brand():
-            return mpr_calc.mpr_after_commission_value(value)
-
-        return value
+        return mpr_calc.grabfood_value(totals, self._is_mpr_brand())
 
     def _get_grab_ovo_value(self, totals):
         return mpr_calc.grab_ovo_value(totals)
 
     def _get_grab_ovo_ac_value(self, totals):
-        value = mpr_calc.grab_ovo_value(totals, self._is_mpr_brand())
-        if self._is_mpr_brand():
-            return mpr_calc.mpr_after_commission_value(value)
-
-        return value
+        return mpr_calc.grab_ovo_value(totals, self._is_mpr_brand())
 
     def _get_grab_net_value(self, totals):
         return mpr_calc.grab_net_value(totals)

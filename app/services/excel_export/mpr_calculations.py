@@ -140,13 +140,13 @@ def mp78_ac_value_for_header(totals, header):
 
 def mpr_ac_value_for_header(totals, header):
     if header == 'Gojek_Mutation':
-        return mpr_after_commission_value(gojek_net_ac_value(totals))
+        return gojek_net_ac_value(totals)
     if header == 'Grab_Net':
-        return mpr_after_commission_value(grab_net_ac_value(totals))
+        return grab_net_ac_value(totals)
     if header == 'Shopee_Net':
-        return mpr_after_commission_value(shopee_net_ac_value(totals))
+        return shopee_net_ac_value(totals)
     if header == 'ShopeePay_Net':
-        return mpr_after_commission_value(shopeepay_net_ac_value(totals))
+        return shopeepay_net_ac_value(totals)
     if header == 'Tiktok_Net':
         return tiktok_net_ac_value(totals, is_mpr=True)
 
