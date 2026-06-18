@@ -54,6 +54,30 @@ class ExcelReportGenerator:
 
         return excel_file
 
+    def generate_daily_preview(self) -> dict:
+        """
+        Generates only the Daily sheet preview data.
+
+        This intentionally avoids building the full workbook. Full reporting,
+        reconciliation, summary, closing, monthly, and commission sheets should
+        continue to use generate_report().
+        """
+        report_data = self._build_report_data(self.outlet_code)
+        outlet = report_data['outlet']
+
+        return {
+            'outlet': {
+                'outlet_code': outlet.outlet_code,
+                'outlet_name': outlet.outlet_name_gojek,
+                'brand': outlet.brand,
+            },
+            'period': {
+                'start_date': self.start_date.strftime('%Y-%m-%d'),
+                'end_date': self.end_date.strftime('%Y-%m-%d'),
+            },
+            'sheet': DailySheet(None, report_data).build_preview(),
+        }
+
     def _build_report_data(self, outlet_code: str) -> dict:
         report_data = get_report_data(outlet_code, self.start_date, self.end_date)
         report_data['user_role'] = self.user_role

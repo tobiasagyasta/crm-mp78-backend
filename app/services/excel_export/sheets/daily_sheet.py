@@ -39,7 +39,13 @@ class DailySheet(BaseSheet):
     }
 
     def __init__(self, workbook, data, sheet_name='Daily'):
-        super().__init__(workbook, sheet_name, data)
+        if workbook is None:
+            self.wb = None
+            self.sheet_name = sheet_name
+            self.data = data
+            self.ws = None
+        else:
+            super().__init__(workbook, sheet_name, data)
         self._has_mpr_mapping = None
 
     def generate(self):
@@ -299,8 +305,53 @@ class DailySheet(BaseSheet):
         daily_totals = self.data['daily_totals']
         minusan_by_date = self.data['minusan_by_date']
         current_row = 6
+        header_value_map = self._get_daily_value_map()
 
-        header_value_map = {
+        for date in all_dates:
+            totals = daily_totals.get(date, {})
+            minusan_total = minusan_by_date.get(date, 0)
+            row_data = [
+                header_value_map[header](totals, date, minusan_total) if header in header_value_map else None
+                for header in headers
+            ]
+
+            for col, value in enumerate(row_data, 1):
+                cell = self.ws.cell(row=current_row, column=col, value=value)
+                if isinstance(value, (int, float)) and col > 1:
+                    cell.number_format = '#,##0'
+
+                # Apply conditional formatting for difference columns
+                if headers[col-1] in ['Gojek Difference', 'Shopee Difference', 'ShopeePay Difference']:
+                    if value is not None:
+                        if value > 0:
+                            cell.fill = PatternFill(start_color='C6EFCE', end_color='C6EFCE', fill_type='solid')  # Light green
+                        elif value < 0:
+                            cell.fill = PatternFill(start_color='FFC7CE', end_color='FFC7CE', fill_type='solid')  # Light red
+            current_row += 1
+
+    def _write_grand_total(self):
+        headers = self._get_headers()
+        grand_totals = self.data['grand_totals']
+        all_dates = self.data['all_dates']
+        minusan_by_date = self.data['minusan_by_date']
+        grand_total_row = self.ws.max_row + 1
+        grand_total_value_map = self._get_grand_total_value_map(grand_totals, all_dates, minusan_by_date)
+
+        row_data = [
+            grand_total_value_map[header]() if header in grand_total_value_map else None
+            for header in headers
+        ]
+
+        for col, value in enumerate(row_data, 1):
+            cell = self.ws.cell(row=grand_total_row, column=col, value=value)
+            cell.font = HEADER_FONT
+            cell.fill = YELLOW_FILL
+            cell.alignment = CENTER_ALIGN
+            if isinstance(value, (int, float)):
+                cell.number_format = '#,##0'
+
+    def _get_daily_value_map(self):
+        return {
             'Date': lambda totals, date, minusan_total: date,
             'GoFood': lambda totals, date, minusan_total: self._get_gofood_value(totals),
             'GO-PAY QRIS': lambda totals, date, minusan_total: self._get_gojek_qris_value(totals),
@@ -338,36 +389,8 @@ class DailySheet(BaseSheet):
             'Minusan (Mutasi)': lambda totals, date, minusan_total: minusan_total,
         }
 
-        for date in all_dates:
-            totals = daily_totals.get(date, {})
-            minusan_total = minusan_by_date.get(date, 0)
-            row_data = [
-                header_value_map[header](totals, date, minusan_total) if header in header_value_map else None
-                for header in headers
-            ]
-
-            for col, value in enumerate(row_data, 1):
-                cell = self.ws.cell(row=current_row, column=col, value=value)
-                if isinstance(value, (int, float)) and col > 1:
-                    cell.number_format = '#,##0'
-
-                # Apply conditional formatting for difference columns
-                if headers[col-1] in ['Gojek Difference', 'Shopee Difference', 'ShopeePay Difference']:
-                    if value is not None:
-                        if value > 0:
-                            cell.fill = PatternFill(start_color='C6EFCE', end_color='C6EFCE', fill_type='solid')  # Light green
-                        elif value < 0:
-                            cell.fill = PatternFill(start_color='FFC7CE', end_color='FFC7CE', fill_type='solid')  # Light red
-            current_row += 1
-
-    def _write_grand_total(self):
-        headers = self._get_headers()
-        grand_totals = self.data['grand_totals']
-        all_dates = self.data['all_dates']
-        minusan_by_date = self.data['minusan_by_date']
-        grand_total_row = self.ws.max_row + 1
-
-        grand_total_value_map = {
+    def _get_grand_total_value_map(self, grand_totals, all_dates, minusan_by_date):
+        return {
             'Date': lambda: 'Grand Total',
             'GoFood': lambda: self._get_gofood_value(grand_totals),
             'GO-PAY QRIS': lambda: self._get_gojek_qris_value(grand_totals),
@@ -405,15 +428,40 @@ class DailySheet(BaseSheet):
             'Minusan (Mutasi)': lambda: sum(minusan_by_date.get(date, 0) for date in all_dates),
         }
 
-        row_data = [
-            grand_total_value_map[header]() if header in grand_total_value_map else None
-            for header in headers
-        ]
+    def build_preview(self):
+        headers = self._get_headers()
+        daily_value_map = self._get_daily_value_map()
+        rows = []
 
-        for col, value in enumerate(row_data, 1):
-            cell = self.ws.cell(row=grand_total_row, column=col, value=value)
-            cell.font = HEADER_FONT
-            cell.fill = YELLOW_FILL
-            cell.alignment = CENTER_ALIGN
-            if isinstance(value, (int, float)):
-                cell.number_format = '#,##0'
+        for date in self.data['all_dates']:
+            totals = self.data['daily_totals'].get(date, {})
+            minusan_total = self.data['minusan_by_date'].get(date, 0)
+            rows.append([
+                self._serialize_preview_value(daily_value_map[header](totals, date, minusan_total))
+                if header in daily_value_map else None
+                for header in headers
+            ])
+
+        grand_total_map = self._get_grand_total_value_map(
+            self.data['grand_totals'],
+            self.data['all_dates'],
+            self.data['minusan_by_date'],
+        )
+        totals = {
+            header: self._serialize_preview_value(grand_total_map[header]())
+            for header in headers
+            if header in grand_total_map
+        }
+
+        return {
+            'key': 'daily',
+            'title': self.sheet_name,
+            'columns': headers,
+            'rows': rows,
+            'totals': totals,
+        }
+
+    def _serialize_preview_value(self, value):
+        if hasattr(value, 'isoformat'):
+            return value.isoformat()
+        return value
