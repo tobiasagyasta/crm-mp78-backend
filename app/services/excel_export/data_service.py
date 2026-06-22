@@ -20,7 +20,7 @@ from app.utils.pkb_mutation import get_minus_manual_entries
 from sqlalchemy import func
 from sqlalchemy.orm import aliased
 
-GRAB_REPORTS_TRANSFERRED_ONLY = False
+GRAB_REPORTS_TRANSFERRED_ONLY = True
 GRAB_TRANSFERRED_STATUSES = ('Transferred', 'Ditransfer')
 SHOW_MUTATIONS_WITHOUT_PLATFORM_DATA = True
 
