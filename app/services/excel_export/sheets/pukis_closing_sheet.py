@@ -1,19 +1,26 @@
 from app.services.excel_export.base_sheet import BaseSheet
 from app.services.excel_export.utils.excel_utils import (
     HEADER_FONT, YELLOW_FILL, CENTER_ALIGN, THIN_BORDER, auto_fit_columns, RIGHT_ALIGN,
-    CASH_FILL, GOJEK_FILL, GRAB_FILL, SHOPEE_FILL, TIKTOK_FILL, DATA_FILL, LIGHT_BLUE_FILL
+    CASH_FILL, GOJEK_FILL, GRAB_FILL, SHOPEE_FILL, TIKTOK_FILL, DATA_FILL, LIGHT_BLUE_FILL,
+    BLUE_FILL, GREY_FILL
 )
+from app.services.rekening_info_service import OutletRekeningInfo, RekeningInfoService
 from datetime import timedelta
 
 class PukisClosingSheet(BaseSheet):
     def __init__(self, workbook, data):
         super().__init__(workbook, 'Pukis Closing Sheet', data)
+        self.rekening_col_start = None
+        self.rekening_col_end = None
+        self.rekening_row = None
+        self.rekening_row_end = None
 
     def generate(self):
         self._write_header()
         self._write_data()
         self._write_expenses_table()
         self._apply_styles()
+        self._write_rekening_table()
         auto_fit_columns(self.ws)
 
     def _write_header(self):
@@ -245,6 +252,71 @@ class PukisClosingSheet(BaseSheet):
         # Apply borders to the new table
         for row in self.ws.iter_rows(min_row=start_row, max_row=current_row, min_col=1, max_col=3):
             for cell in row:
+                cell.border = THIN_BORDER
+
+    def _write_rekening_table(self):
+        outlet = self.data['outlet']
+        row = 3
+        start_column = self.ws.max_column + 3
+        rekening_rows = RekeningInfoService.get_outlet_rekenings(outlet)
+
+        if not rekening_rows:
+            rekening_rows = [
+                OutletRekeningInfo(
+                    outlet_label=RekeningInfoService.outlet_label(outlet),
+                    platform_name="-",
+                    rekening_name=None,
+                    rekening_number=None,
+                )
+            ]
+
+        self.rekening_col_start = start_column
+        self.rekening_col_end = start_column + 2
+        self.rekening_row = row
+        self.rekening_row_end = row + len(rekening_rows)
+        self.ws.row_dimensions[row].height = 18
+
+        header_cells = [
+            (start_column, 'Outlet'),
+            (start_column + 1, 'Platform'),
+            (start_column + 2, 'Rekening'),
+        ]
+        for column, value in header_cells:
+            cell = self.ws.cell(row=row, column=column, value=value)
+            cell.font = HEADER_FONT
+            cell.alignment = CENTER_ALIGN
+            cell.fill = BLUE_FILL
+
+        for offset, rekening_info in enumerate(rekening_rows, start=1):
+            data_row = row + offset
+            self.ws.row_dimensions[data_row].height = 18
+
+            label_cell = self.ws.cell(row=data_row, column=start_column, value=rekening_info.outlet_label)
+            label_cell.font = HEADER_FONT
+            label_cell.alignment = CENTER_ALIGN
+            label_cell.fill = GREY_FILL
+
+            platform_cell = self.ws.cell(row=data_row, column=start_column + 1, value=rekening_info.platform_name)
+            platform_cell.font = HEADER_FONT
+            platform_cell.alignment = CENTER_ALIGN
+            platform_cell.fill = GREY_FILL
+
+            value_cell = self.ws.cell(
+                row=data_row,
+                column=start_column + 2,
+                value=rekening_info.display_value,
+            )
+            value_cell.font = HEADER_FONT
+            value_cell.alignment = CENTER_ALIGN
+            value_cell.fill = GREY_FILL
+
+        for row_cells in self.ws.iter_rows(
+            min_row=self.rekening_row,
+            max_row=self.rekening_row_end,
+            min_col=self.rekening_col_start,
+            max_col=self.rekening_col_end,
+        ):
+            for cell in row_cells:
                 cell.border = THIN_BORDER
 
     def _apply_styles(self):
