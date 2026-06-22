@@ -9,6 +9,7 @@ from app.models.cash_reports import CashReport
 from app.models.manual_entry import ManualEntry
 from app.models.shopeepay_reports import ShopeepayReport
 from app.models.bank_mutations import BankMutation
+from app.models.mp78_mutations import MP78Mutation
 from app.models.expense_category import ExpenseCategory
 from app.models.income_category import IncomeCategory
 from app.models.pukis import Pukis
@@ -557,6 +558,7 @@ def upload_report_mutation():
     try:
         for file in files:
             mutations = []
+            mp78_mutations = []
             for row_number, header_row, row in _mutation_rows_from_upload(file):
                 try:
                     # Skip if the date column is 'PEND'
@@ -570,7 +572,7 @@ def upload_report_mutation():
                         })
                         continue
 
-                    parsed = BankMutation.parse_mutation_row(row)
+                    parsed = BankMutation.parse_mutation_row(row, rekening_number)
                     if not parsed:
                         skipped_mutations += 1
                         debug_skipped.append({
@@ -579,6 +581,29 @@ def upload_report_mutation():
                             'header': _debug_row(header_row) if header_row else None,
                             'row': _debug_row(row)
                         })
+                        continue
+
+                    mutation_model = parsed.pop('_mutation_model', 'bank')
+                    if mutation_model == 'mp78':
+                        mutation = MP78Mutation(
+                            rekening_number=rekening_number,
+                            **parsed
+                        )
+
+                        exists = MP78Mutation.query.filter_by(
+                            transaction_id=mutation.transaction_id,
+                        ).first()
+                        if exists:
+                            skipped_mutations += 1
+                            debug_skipped.append({
+                                'row_number': row_number,
+                                'reason': 'Duplicate MP78 mutation entry',
+                                'row': _debug_row(row)
+                            })
+                            continue
+
+                        mp78_mutations.append(mutation)
+                        total_mutations += 1
                         continue
 
                     mutation = BankMutation(
@@ -635,7 +660,28 @@ def upload_report_mutation():
                                 'row': None
                             })
 
-      
+            if mp78_mutations:
+                try:
+                    db.session.bulk_save_objects(mp78_mutations)
+                    db.session.commit()
+                except IntegrityError:
+                    db.session.rollback()
+                    for mutation in mp78_mutations:
+                        try:
+                            db.session.add(mutation)
+                            db.session.commit()
+                        except IntegrityError:
+                            db.session.rollback()
+                            skipped_mutations += 1
+                        except Exception as e:
+                            db.session.rollback()
+                            debug_skipped.append({
+                                'row_number': None,
+                                'reason': f'Error saving MP78 mutation: {str(e)}',
+                                'row': None
+                            })
+
+       
         seen_reasons = set()
         one_per_reason = []
 

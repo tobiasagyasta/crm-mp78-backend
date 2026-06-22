@@ -6,6 +6,7 @@ from app.models.shopee_reports import ShopeeReport
 from app.models.grabfood_reports import GrabFoodReport
 from app.models.cash_reports import CashReport
 from app.models.manual_entry import ManualEntry
+from app.models.mp78_mutations import MP78Mutation
 from app.models.shopeepay_reports import ShopeepayReport
 from app.models.tiktok_reports import TiktokReport
 from app.models.qpon_reports import QponReport
@@ -119,6 +120,17 @@ def get_report_data(outlet_code: str, start_date: datetime, end_date: datetime) 
         .all()
     )
 
+    mp78_mutations = (
+        MP78Mutation.query
+        .filter(
+            MP78Mutation.outlet_code == outlet_code,
+            MP78Mutation.tanggal >= start_date.date(),
+            MP78Mutation.tanggal <= end_date_inclusive.date(),
+        )
+        .order_by(MP78Mutation.tanggal.asc(), MP78Mutation.id.asc())
+        .all()
+    )
+
     grand_totals = _calculate_grand_totals(daily_totals)
 
     return {
@@ -129,6 +141,7 @@ def get_report_data(outlet_code: str, start_date: datetime, end_date: datetime) 
         "daily_totals": daily_totals,
         "grand_totals": grand_totals,
         "manual_entries": manual_entries,
+        "mp78_mutations": mp78_mutations,
         "pukis_reports": pukis_reports,
         "minusan_by_date": minusan_by_date,
         **grab_totals

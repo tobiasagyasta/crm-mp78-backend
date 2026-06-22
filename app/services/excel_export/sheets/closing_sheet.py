@@ -230,6 +230,7 @@ class ClosingSheet(BaseSheet):
         start_date = self.data['start_date']
         end_date = self.data['end_date']
         manual_entries = self.data['manual_entries']
+        mp78_mutations = self.data.get('mp78_mutations', [])
         platform_columns = ['Gojek_Mutation', 'Grab_Net', 'Shopee_Net', 'ShopeePay_Net', 'Tiktok_Net', 'Qpon_Net', 'Webshop_Net']
         platform_names = [
             label
@@ -251,6 +252,8 @@ class ClosingSheet(BaseSheet):
 
         grab_net_total = self._get_grand_total_with_fallback('Grab_Net') or 0
         grab_management_expense = grab_net_total * mpr_calc.MANAGEMENT_COMMISSION_RATE
+        mp78_income_total = self._get_mp78_mutation_total(mp78_mutations, 'income')
+        mp78_expense_total = self._get_mp78_mutation_total(mp78_mutations, 'expense')
         total_income = (
             self._get_platform_grand_total_with_fallback('main', 'Gojek_Mutation') +
             self._get_closing_grand_total_income_value('Grab_Net', grab_net_total) +
@@ -265,6 +268,7 @@ class ClosingSheet(BaseSheet):
             (self._get_mpr_display_value('ShopeePay_Net') or 0) +
             (self._get_tiktok_closing_display_value('mpr') or 0) +
             sum(float(entry.amount) for entry, _, _ in manual_entries if entry.entry_type == 'income') +
+            mp78_income_total +
             self._get_grand_total_with_fallback('UV')
         )
         self.ws.cell(row=row_start + 1, column=col_start + 1, value=total_income).font = HEADER_FONT
@@ -275,6 +279,7 @@ class ClosingSheet(BaseSheet):
 
         total_expense = (
             sum(float(entry.amount) for entry, _, _ in manual_entries if entry.entry_type == 'expense') +
+            mp78_expense_total +
             grab_management_expense
         )
         self.ws.cell(row=row_start + 1, column=col_start + 2, value=total_expense).font = HEADER_FONT
@@ -352,22 +357,61 @@ class ClosingSheet(BaseSheet):
                     return datetime(year, month, int(day))
             return datetime.min
 
-        manual_entries_sorted = sorted(manual_entries, key=lambda tup: parse_indonesian_date(tup[0].description))
+        grand_total_entries = []
+        for idx, (entry, income_cat, expense_cat) in enumerate(manual_entries):
+            grand_total_entries.append((
+                parse_indonesian_date(entry.description or ''),
+                1,
+                idx,
+                'manual',
+                (entry, income_cat, expense_cat),
+            ))
+        for idx, mutation in enumerate(mp78_mutations):
+            mutation_date = mutation.tanggal
+            if mutation_date:
+                mutation_date = datetime.combine(mutation_date, datetime.min.time())
+            else:
+                mutation_date = datetime.min
+            grand_total_entries.append((mutation_date, 0, idx, 'mp78_mutation', mutation))
 
-        for idx, (entry, income_cat, expense_cat) in enumerate(manual_entries_sorted, 1):
+        for idx, (_, _, _, row_type, payload) in enumerate(sorted(grand_total_entries), 1):
             row = row_start + final_i + 1 + idx
-            cat_name = (income_cat.name if income_cat else '') if entry.entry_type == 'income' else (expense_cat.name if expense_cat else '')
-            desc_text = f"{cat_name}: {entry.description}"
+            if row_type == 'manual':
+                entry, income_cat, expense_cat = payload
+                cat_name = (income_cat.name if income_cat else '') if entry.entry_type == 'income' else (expense_cat.name if expense_cat else '')
+                desc_text = f"{cat_name}: {entry.description}"
+                amount = float(entry.amount or 0)
+                amount_col = col_start + 1 if entry.entry_type == 'income' else col_start + 2
+            else:
+                mutation = payload
+                desc_text = self._get_mp78_mutation_description(mutation)
+                amount = float(mutation.transaction_amount or 0)
+                amount_col = col_start + 2 if self._is_mp78_expense_mutation(mutation) else col_start + 1
+
             self.ws.cell(row=row, column=col_start, value=desc_text).alignment = LEFT_ALIGN
             self.ws.cell(row=row, column=col_start, value=desc_text).font = HEADER_FONT
-
-
-            if entry.entry_type == 'income':
-                cell = self.ws.cell(row=row, column=col_start + 1, value=float(entry.amount))
-            else:
-                cell = self.ws.cell(row=row, column=col_start + 2, value=float(entry.amount))
+            cell = self.ws.cell(row=row, column=amount_col, value=amount)
             cell.number_format = '#,##0'
             cell.alignment = RIGHT_ALIGN
+
+    def _is_mp78_expense_mutation(self, mutation):
+        return (getattr(mutation, 'transaction_type', '') or '').upper() == 'DB'
+
+    def _get_mp78_mutation_total(self, mutations, entry_type):
+        total = 0
+        for mutation in mutations:
+            is_expense = self._is_mp78_expense_mutation(mutation)
+            if (entry_type == 'expense') != is_expense:
+                continue
+            total += float(getattr(mutation, 'transaction_amount', 0) or 0)
+        return total
+
+    def _get_mp78_mutation_description(self, mutation):
+        date_label = mutation.tanggal.strftime('%Y-%m-%d') if mutation.tanggal else '-'
+        transaction_type = (mutation.transaction_type or '').upper()
+        label = f"MP78 Mutation {transaction_type}".strip()
+        description = mutation.transaksi or mutation.transaction_id or ''
+        return f"{label} {date_label}: {description}"
 
     def _write_store_id_table(self):
         outlet = self.data['outlet']
