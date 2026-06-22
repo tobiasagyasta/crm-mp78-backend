@@ -14,6 +14,7 @@ class DailyMerchantTotal(db.Model):
 
     __table_args__ = (
         db.Index('ix_daily_merchant_totals_report_date_outlet', 'report_type', 'date', 'outlet_id'),
+        db.Index('ix_daily_merchant_totals_date_report', 'date', 'report_type'),
     )
 
     def __repr__(self):

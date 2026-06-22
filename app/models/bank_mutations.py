@@ -26,6 +26,7 @@ class BankMutation(db.Model):
     __table_args__ = (
         db.Index('ix_bank_mutations_platform_date_code', 'platform_name', 'tanggal', 'platform_code'),
         db.Index('ix_bank_mutations_platform_date_amount', 'platform_name', 'tanggal', 'transaction_amount'),
+        db.Index('ix_bank_mutations_platform_date_id', 'platform_name', 'tanggal', 'id'),
     )
 
     @staticmethod

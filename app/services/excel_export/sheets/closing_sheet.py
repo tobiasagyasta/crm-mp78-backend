@@ -6,7 +6,7 @@ from app.services.excel_export.utils.excel_utils import (
 )
 from app.models.mpr_mapping import MprMapping
 from app.models.outlet import Outlet
-from app.models.rekening import Rekening
+from app.services.rekening_info_service import OutletRekeningInfo, RekeningInfoService
 from datetime import datetime
 import re
 
@@ -425,24 +425,31 @@ class ClosingSheet(BaseSheet):
 
         row = 3
         start_column = (self.store_id_col_end + 2) if self.store_id_col_end else 22
-        rekening_rows = [
-            (self._get_rekening_table_outlet_label(outlet), outlet.rekening_id, GREY_FILL),
-        ]
+        rekening_rows = RekeningInfoService.get_outlet_rekenings(outlet)
 
         if mpr_outlet:
-            rekening_rows.append(
-                (self._get_rekening_table_outlet_label(mpr_outlet), mpr_outlet.rekening_id, GREY_FILL)
-            )
+            rekening_rows.extend(RekeningInfoService.get_outlet_rekenings(mpr_outlet))
+
+        if not rekening_rows:
+            rekening_rows = [
+                OutletRekeningInfo(
+                    outlet_label=self._get_rekening_table_outlet_label(outlet),
+                    platform_name="-",
+                    rekening_name=None,
+                    rekening_number=None,
+                )
+            ]
 
         self.rekening_col_start = start_column
-        self.rekening_col_end = start_column + 1
+        self.rekening_col_end = start_column + 2
         self.rekening_row = row
         self.rekening_row_end = row + len(rekening_rows)
         self.ws.row_dimensions[row].height = 18
 
         header_cells = [
             (start_column, 'Outlet'),
-            (start_column + 1, 'Rekening'),
+            (start_column + 1, 'Platform'),
+            (start_column + 2, 'Rekening'),
         ]
         for column, value in header_cells:
             cell = self.ws.cell(row=row, column=column, value=value)
@@ -450,33 +457,28 @@ class ClosingSheet(BaseSheet):
             cell.alignment = CENTER_ALIGN
             cell.fill = BLUE_FILL
 
-        for offset, (label, rekening_id, fill) in enumerate(rekening_rows, start=1):
+        for offset, rekening_info in enumerate(rekening_rows, start=1):
             data_row = row + offset
             self.ws.row_dimensions[data_row].height = 18
 
-            label_cell = self.ws.cell(row=data_row, column=start_column, value=label)
+            label_cell = self.ws.cell(row=data_row, column=start_column, value=rekening_info.outlet_label)
             label_cell.font = HEADER_FONT
             label_cell.alignment = CENTER_ALIGN
-            label_cell.fill = fill
+            label_cell.fill = GREY_FILL
+
+            platform_cell = self.ws.cell(row=data_row, column=start_column + 1, value=rekening_info.platform_name)
+            platform_cell.font = HEADER_FONT
+            platform_cell.alignment = CENTER_ALIGN
+            platform_cell.fill = GREY_FILL
 
             value_cell = self.ws.cell(
                 row=data_row,
-                column=start_column + 1,
-                value=self._get_rekening_display_value(rekening_id),
+                column=start_column + 2,
+                value=rekening_info.display_value,
             )
             value_cell.font = HEADER_FONT
             value_cell.alignment = CENTER_ALIGN
-            value_cell.fill = fill
-
-    def _get_rekening_display_value(self, rekening_id):
-        if not rekening_id:
-            return "-"
-
-        rekening = Rekening.query.get(rekening_id)
-        if not rekening:
-            return f"ID {rekening_id}"
-
-        return f"{rekening.name} - {rekening.rekening_number}"
+            value_cell.fill = GREY_FILL
 
     def _get_mapped_mpr_outlet(self):
         if not self._is_mp78_brand():
