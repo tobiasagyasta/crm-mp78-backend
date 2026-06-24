@@ -41,6 +41,7 @@ class Outlet(db.Model):
     # Operational Information
     status = db.Column(db.Enum("Active", "Inactive", name="outlet_status"), nullable=False, default="Active")
     closing_date = db.Column(db.String(10), nullable=True) 
+    disabled_closing_platforms = db.Column(ARRAY(db.String), nullable=True)
     operating_hours = db.Column(db.String(255), nullable=True)
     coordinator_avenger = db.Column(db.String(255), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -86,6 +87,7 @@ class Outlet(db.Model):
             "pic_phone": self.pic_phone,
             "status": self.status,
             "closing_date": self.closing_date,
+            "disabled_closing_platforms": self.disabled_closing_platforms or [],
             "operating_hours": self.operating_hours,
             "coordinator_avenger": self.coordinator_avenger,
             "created_at": self.created_at.isoformat(),
