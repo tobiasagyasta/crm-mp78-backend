@@ -15,6 +15,95 @@ from app.models.income_category import IncomeCategory
 from app.models.expense_category import ExpenseCategory
 mutations_bp = Blueprint('mutations', __name__)
 
+UNASSIGNED_PLATFORM_CODE_EXCLUDED_PLATFORMS = ('PKB', 'Grab')
+
+
+def parse_date_param(param_name):
+    value = request.args.get(param_name)
+    if not value:
+        raise ValueError(f'{param_name} is required')
+
+    return datetime.strptime(value, '%Y-%m-%d').date()
+
+
+def serialize_bank_mutation(mutation):
+    return {
+        'id': mutation.id,
+        'rekening_number': mutation.rekening_number,
+        'tanggal': mutation.tanggal.isoformat() if mutation.tanggal else None,
+        'transaksi': mutation.transaksi,
+        'transaction_type': mutation.transaction_type,
+        'transaction_id': mutation.transaction_id,
+        'transaction_amount': float(mutation.transaction_amount) if mutation.transaction_amount is not None else None,
+        'platform_code': mutation.platform_code,
+        'platform_name': mutation.platform_name,
+        'created_at': mutation.created_at.isoformat() if mutation.created_at else None,
+    }
+
+
+def get_mutation_query_options():
+    return {
+        'start_date': parse_date_param('start_date'),
+        'end_date': parse_date_param('end_date'),
+        'page': request.args.get('page', 1, type=int),
+        'per_page': request.args.get('per_page', 50, type=int),
+    }
+
+
+def build_unassigned_platform_code_mutations_query(options):
+    return (
+        BankMutation.query
+        .filter(
+            BankMutation.platform_code.is_(None),
+            BankMutation.platform_name.notin_(UNASSIGNED_PLATFORM_CODE_EXCLUDED_PLATFORMS),
+            BankMutation.tanggal >= options['start_date'],
+            BankMutation.tanggal <= options['end_date'],
+        )
+    )
+
+
+@mutations_bp.route('/mutations/unassigned', methods=['GET'])
+def get_mutations():
+    try:
+        options = get_mutation_query_options()
+        if options['start_date'] > options['end_date']:
+            return jsonify({'error': 'start_date cannot be after end_date'}), 400
+
+        page = max(options['page'], 1)
+        per_page = min(max(options['per_page'], 1), 100)
+        query = build_unassigned_platform_code_mutations_query(options)
+        total_records = query.count()
+        total_pages = (total_records + per_page - 1) // per_page
+
+        mutations = (
+            query
+            .order_by(BankMutation.tanggal.desc(), BankMutation.id.desc())
+            .offset((page - 1) * per_page)
+            .limit(per_page)
+            .all()
+        )
+
+        return jsonify({
+            'data': [serialize_bank_mutation(mutation) for mutation in mutations],
+            'filters': {
+                'start_date': options['start_date'].isoformat(),
+                'end_date': options['end_date'].isoformat(),
+                'platform_code': None,
+                'excluded_platform_names': list(UNASSIGNED_PLATFORM_CODE_EXCLUDED_PLATFORMS),
+            },
+            'pagination': {
+                'current_page': page,
+                'per_page': per_page,
+                'total_pages': total_pages,
+                'total_records': total_records,
+            },
+        }), 200
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 def create_standardized_match(platform_data, platform_name):
     """Helper function to create standardized match structure"""
     amount = platform_data.get('total_amount') or platform_data.get('total_net_income') or platform_data.get('total_settlement')
