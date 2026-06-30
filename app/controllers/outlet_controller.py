@@ -2,6 +2,12 @@ from flask import Blueprint, request, jsonify
 from app.extensions import db
 from app.models.outlet import Outlet
 from app.models.rekening import Rekening
+from app.services.closing_platforms import (
+    available_platforms_payload,
+    disabled_platforms_for_outlet,
+    normalize_platform,
+    normalize_platforms,
+)
 from datetime import datetime
 
 outlet_bp = Blueprint("outlet_bp", __name__, url_prefix="/outlets")
@@ -50,6 +56,11 @@ def create_outlet():
         return jsonify({"error": "Could not generate unique outlet code. Please try again"}), 500
 
     try:
+        disabled_closing_platforms = normalize_platforms(data.get('disabled_closing_platforms', []))
+    except ValueError as exc:
+        return jsonify({"error": str(exc), "available_platforms": available_platforms_payload()}), 400
+
+    try:
         outlet = Outlet(
             outlet_code=outlet_code,
             outlet_name_gojek=data['outlet_name_gojek'],
@@ -69,6 +80,7 @@ def create_outlet():
             pic_phone=data.get('pic_phone'),
             status=data.get('status', 'Active'),
             closing_date=data.get('closing_date'),
+            disabled_closing_platforms=disabled_closing_platforms,
             operating_hours=data.get('operating_hours'),
             coordinator_avenger=data.get('coordinator_avenger'),
             brand=data.get('brand'),
@@ -198,6 +210,87 @@ def get_closing_date_by_code(outlet_code):
         outlet.closing_date.isoformat() if hasattr(outlet.closing_date, "isoformat") else outlet.closing_date
     )
     return jsonify({"closing_date": closing_date}), 200
+
+@outlet_bp.route("/<int:outlet_id>/closing-platforms", methods=["GET"])
+def get_outlet_closing_platforms(outlet_id):
+    outlet = Outlet.query.get(outlet_id)
+    if not outlet:
+        return jsonify({"error": "Outlet not found"}), 404
+
+    disabled_platforms = disabled_platforms_for_outlet(outlet)
+    return jsonify({
+        "outlet_id": outlet.id,
+        "outlet_code": outlet.outlet_code,
+        "disabled_closing_platforms": disabled_platforms,
+        "enabled_closing_platforms": [
+            platform["key"]
+            for platform in available_platforms_payload()
+            if platform["key"] not in disabled_platforms
+        ],
+        "available_platforms": available_platforms_payload(),
+    }), 200
+
+@outlet_bp.route("/<int:outlet_id>/closing-platforms", methods=["PUT"])
+def set_outlet_closing_platforms(outlet_id):
+    outlet = Outlet.query.get(outlet_id)
+    if not outlet:
+        return jsonify({"error": "Outlet not found"}), 404
+
+    data = request.get_json() or {}
+    if "disabled_closing_platforms" not in data:
+        return jsonify({"error": "disabled_closing_platforms is required"}), 400
+
+    if not isinstance(data["disabled_closing_platforms"], list):
+        return jsonify({"error": "disabled_closing_platforms must be a list"}), 400
+
+    try:
+        outlet.disabled_closing_platforms = normalize_platforms(data["disabled_closing_platforms"])
+        db.session.commit()
+    except ValueError as exc:
+        db.session.rollback()
+        return jsonify({"error": str(exc), "available_platforms": available_platforms_payload()}), 400
+    except Exception:
+        db.session.rollback()
+        return jsonify({"error": "Failed to update closing platforms"}), 500
+
+    return jsonify(outlet.to_dict()), 200
+
+@outlet_bp.route("/<int:outlet_id>/closing-platforms/<platform>", methods=["PATCH"])
+def toggle_outlet_closing_platform(outlet_id, platform):
+    outlet = Outlet.query.get(outlet_id)
+    if not outlet:
+        return jsonify({"error": "Outlet not found"}), 404
+
+    data = request.get_json() or {}
+    if "enabled" not in data and "disabled" not in data:
+        return jsonify({"error": "enabled or disabled is required"}), 400
+
+    try:
+        canonical_platform = normalize_platform(platform)
+    except ValueError as exc:
+        return jsonify({"error": str(exc), "available_platforms": available_platforms_payload()}), 400
+
+    enabled = data.get("enabled")
+    if enabled is None:
+        enabled = not bool(data.get("disabled"))
+    if not isinstance(enabled, bool):
+        return jsonify({"error": "enabled must be a boolean"}), 400
+
+    disabled_platforms = set(disabled_platforms_for_outlet(outlet))
+    if enabled:
+        disabled_platforms.discard(canonical_platform)
+    else:
+        disabled_platforms.add(canonical_platform)
+
+    try:
+        outlet.disabled_closing_platforms = normalize_platforms(disabled_platforms)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        return jsonify({"error": "Failed to update closing platform"}), 500
+
+    return jsonify(outlet.to_dict()), 200
+
 @outlet_bp.route("/code/<outlet_code>", methods=["GET"])
 def get_outlet_by_code(outlet_code):
     
@@ -281,6 +374,13 @@ def update_outlet(outlet_id):
                         outlet.closing_date = data[field]
                     except ValueError as e:
                         return jsonify({"error": f"Invalid date format for closing_date: {str(e)}"}), 400
+                elif field == 'disabled_closing_platforms':
+                    if not isinstance(data[field], list):
+                        return jsonify({"error": "disabled_closing_platforms must be a list"}), 400
+                    try:
+                        outlet.disabled_closing_platforms = normalize_platforms(data[field])
+                    except ValueError as exc:
+                        return jsonify({"error": str(exc), "available_platforms": available_platforms_payload()}), 400
                 else:
                     setattr(outlet, field, data[field])
         
