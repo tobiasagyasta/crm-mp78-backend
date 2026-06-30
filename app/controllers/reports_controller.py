@@ -1843,6 +1843,109 @@ def get_reports_totals():
         print(f"Error calculating totals: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
+
+@reports_bp.route('/failed-cancelled-transfers', methods=['GET'])
+def get_failed_cancelled_transfers():
+    start_date_param = request.args.get('start_date')
+    end_date_param = request.args.get('end_date')
+    outlet_code = request.args.get('outlet_code')
+    brand_name = request.args.get('brand_name')
+    platform = (request.args.get('platform') or '').lower()
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 20, type=int)
+    successful_statuses = ('Ditransfer', 'Transferred', 'Completed', 'Selesai')
+
+    if not start_date_param or not end_date_param:
+        return jsonify({'error': 'start_date and end_date are required'}), 400
+
+    if not platform:
+        return jsonify({'error': 'platform is required'}), 400
+
+    if platform != 'grab':
+        return jsonify({'error': f'Platform "{platform}" is not supported yet'}), 400
+
+    if page < 1:
+        return jsonify({'error': 'page must be greater than or equal to 1'}), 400
+
+    if per_page < 1 or per_page > 100:
+        return jsonify({'error': 'per_page must be between 1 and 100'}), 400
+
+    try:
+        start_date = datetime.strptime(start_date_param, '%Y-%m-%d')
+        end_date = datetime.strptime(end_date_param, '%Y-%m-%d')
+        end_date_inclusive = datetime(end_date.year, end_date.month, end_date.day, 23, 59, 59)
+
+        grab_query = GrabFoodReport.query.filter(
+            GrabFoodReport.tanggal_dibuat >= start_date,
+            GrabFoodReport.tanggal_dibuat <= end_date_inclusive,
+            db.or_(
+                GrabFoodReport.status.is_(None),
+                ~GrabFoodReport.status.in_(successful_statuses)
+            )
+        )
+
+        if outlet_code and outlet_code.upper() != "ALL":
+            grab_query = grab_query.filter(GrabFoodReport.outlet_code == outlet_code)
+
+        if brand_name and brand_name.upper() != "ALL":
+            grab_query = grab_query.filter(GrabFoodReport.brand_name == brand_name)
+
+        total_records = grab_query.count()
+        total_pages = (total_records + per_page - 1) // per_page
+        amount_total, net_total = grab_query.with_entities(
+            func.coalesce(func.sum(GrabFoodReport.amount), 0),
+            func.coalesce(func.sum(GrabFoodReport.total), 0)
+        ).first()
+
+        reports = grab_query.order_by(GrabFoodReport.tanggal_dibuat.asc()).offset(
+            (page - 1) * per_page
+        ).limit(per_page).all()
+        transactions = [
+            {
+                'id': report.id,
+                'brand_name': report.brand_name,
+                'outlet_code': report.outlet_code,
+                'nama_toko': report.nama_toko,
+                'tanggal_dibuat': report.tanggal_dibuat.isoformat() if report.tanggal_dibuat else None,
+                'tanggal_transfer': report.tanggal_transfer.isoformat() if report.tanggal_transfer else None,
+                'status': report.status,
+                'amount': float(report.amount or 0),
+                'total': float(report.total or 0),
+            }
+            for report in reports
+        ]
+
+        return jsonify({
+            'platform': platform,
+            'period': {
+                'start_date': start_date_param,
+                'end_date': end_date_param
+            },
+            'outlet_code': outlet_code,
+            'brand_name': brand_name,
+            'excluded_statuses': list(successful_statuses),
+            'count': len(transactions),
+            'pagination': {
+                'page': page,
+                'per_page': per_page,
+                'total_records': total_records,
+                'total_pages': total_pages,
+                'has_next': page < total_pages,
+                'has_prev': page > 1
+            },
+            'totals': {
+                'amount': round(float(amount_total or 0), 2),
+                'total': round(float(net_total or 0), 2)
+            },
+            'transactions': transactions
+        }), 200
+
+    except ValueError:
+        return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
+    except Exception as e:
+        print(f"Error fetching failed/cancelled transfers: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
 @reports_bp.route('/top-outlets', methods=['GET'])
 def get_top_outlets():
     start_date_param = request.args.get('start_date')

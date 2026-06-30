@@ -2,10 +2,12 @@ from app.services.excel_export.base_sheet import BaseSheet
 from app.services.excel_export import mpr_calculations as mpr_calc
 from app.services.excel_export.utils.excel_utils import (
     HEADER_FONT, YELLOW_FILL, CENTER_ALIGN, GOJEK_FILL, GRAB_FILL, SHOPEE_FILL,GREY_FILL,
-    TIKTOK_FILL, BLUE_FILL, DIFFERENCE_FILL, THIN_BORDER, auto_fit_columns, LEFT_ALIGN, RIGHT_ALIGN
+    TIKTOK_FILL, BLUE_FILL, DIFFERENCE_FILL, THIN_BORDER, auto_fit_columns, LEFT_ALIGN, RIGHT_ALIGN,
+    CLOSED_OFF_FILL
 )
 from app.models.mpr_mapping import MprMapping
 from app.models.outlet import Outlet
+from app.services.closing_platforms import is_platform_disabled, platform_for_header
 from app.services.rekening_info_service import OutletRekeningInfo, RekeningInfoService
 from datetime import datetime
 import re
@@ -67,15 +69,17 @@ class ClosingSheet(BaseSheet):
             cell.font = HEADER_FONT
             cell.alignment = RIGHT_ALIGN
             cell.number_format = '#,##0'
-            cell.fill = YELLOW_FILL
+            cell.fill = CLOSED_OFF_FILL if self._is_closing_platform_disabled(header, report_type) else YELLOW_FILL
 
         # Platform names in the second row of the header
-        for col, (name, _, _) in enumerate(platform_definitions, 2):
+        for col, (name, header, report_type) in enumerate(platform_definitions, 2):
             cell = self.ws.cell(row=closing_row + 1, column=col)
             cell.value = name
             cell.font = HEADER_FONT
             cell.alignment = CENTER_ALIGN
-            if name in ['Gojek', 'Gojek (ac)', 'Gojek MPR (ac)']:
+            if self._is_closing_platform_disabled(header, report_type):
+                cell.fill = CLOSED_OFF_FILL
+            elif name in ['Gojek', 'Gojek (ac)', 'Gojek MPR (ac)']:
                 cell.fill = GOJEK_FILL
             elif name in ['Grab', 'Grab Net', 'Grab (ac)', 'Grab MPR (ac)', 'Grab(OVO)']:
                 cell.fill = GRAB_FILL
@@ -255,18 +259,18 @@ class ClosingSheet(BaseSheet):
         mp78_income_total = self._get_mp78_mutation_total(mp78_mutations, 'income')
         mp78_expense_total = self._get_mp78_mutation_total(mp78_mutations, 'expense')
         total_income = (
-            self._get_platform_grand_total_with_fallback('main', 'Gojek_Mutation') +
-            self._get_closing_grand_total_income_value('Grab_Net', grab_net_total) +
-            self._get_platform_grand_total_with_fallback('main', 'Shopee_Net') +
-            self._get_platform_grand_total_with_fallback('main', 'ShopeePay_Net') +
-            self._get_platform_grand_total_with_fallback('main', 'Tiktok_Net') +
-            self._get_platform_grand_total_with_fallback('main', 'Qpon_Net') +
-            self._get_platform_grand_total_with_fallback('main', 'Webshop_Net') +
-            (self._get_mpr_display_value('Gojek_Mutation') or 0) +
-            (self._get_mpr_display_value('Grab_Net') or 0) +
-            (self._get_mpr_display_value('Shopee_Net') or 0) +
-            (self._get_mpr_display_value('ShopeePay_Net') or 0) +
-            (self._get_tiktok_closing_display_value('mpr') or 0) +
+            self._get_closing_grand_total_income_contribution('main', 'Gojek_Mutation') +
+            self._get_closing_grand_total_income_contribution('main', 'Grab_Net', grab_net_total) +
+            self._get_closing_grand_total_income_contribution('main', 'Shopee_Net') +
+            self._get_closing_grand_total_income_contribution('main', 'ShopeePay_Net') +
+            self._get_closing_grand_total_income_contribution('main', 'Tiktok_Net') +
+            self._get_closing_grand_total_income_contribution('main', 'Qpon_Net') +
+            self._get_closing_grand_total_income_contribution('main', 'Webshop_Net') +
+            self._get_closing_grand_total_income_contribution('mpr', 'Gojek_Mutation') +
+            self._get_closing_grand_total_income_contribution('mpr', 'Grab_Net') +
+            self._get_closing_grand_total_income_contribution('mpr', 'Shopee_Net') +
+            self._get_closing_grand_total_income_contribution('mpr', 'ShopeePay_Net') +
+            self._get_closing_grand_total_income_contribution('mpr', 'Tiktok_Net') +
             sum(float(entry.amount) for entry, _, _ in manual_entries if entry.entry_type == 'income') +
             mp78_income_total +
             self._get_grand_total_with_fallback('UV')
@@ -299,20 +303,31 @@ class ClosingSheet(BaseSheet):
         for i, header in enumerate(platform_columns, 1):
             label_row = row_start + 1 + final_i + 1
             platform_label = self._get_closing_grand_total_platform_label(platform_names[i-1], header)
-            self.ws.cell(row=label_row, column=col_start, value=platform_label).alignment = LEFT_ALIGN
-            self.ws.cell(row=label_row, column=col_start, value=platform_label).font = HEADER_FONT
+            platform_disabled = self._is_closing_platform_disabled(header, 'main')
+            label_cell = self.ws.cell(row=label_row, column=col_start, value=platform_label)
+            label_cell.alignment = LEFT_ALIGN
+            label_cell.font = HEADER_FONT
+            if platform_disabled:
+                label_cell.fill = CLOSED_OFF_FILL
             value_cell = self.ws.cell(
                 row=label_row,
                 column=col_start + 1,
-                value=self._get_closing_grand_total_income_value(header, grab_net_total)
+                value=None if platform_disabled else self._get_closing_grand_total_income_value(header, grab_net_total)
             )
             value_cell.number_format = '#,##0'
             value_cell.alignment = RIGHT_ALIGN
+            if platform_disabled:
+                value_cell.fill = CLOSED_OFF_FILL
             final_i += 1
             if header == 'Grab_Net':
                 grab_mgmt_row = label_row + 1
-                self.ws.cell(row=grab_mgmt_row, column=col_start, value="Grab Manag 1%").alignment = LEFT_ALIGN
-                self.ws.cell(row=grab_mgmt_row, column=col_start, value="Grab Manag 1%").font = HEADER_FONT
+                management_label_cell = self.ws.cell(
+                    row=grab_mgmt_row,
+                    column=col_start,
+                    value=self._get_grab_management_commission_label()
+                )
+                management_label_cell.alignment = LEFT_ALIGN
+                management_label_cell.font = HEADER_FONT
                 management_cell_value = self.ws.cell(
                     row=grab_mgmt_row,
                     column=col_start + 2,
@@ -335,11 +350,21 @@ class ClosingSheet(BaseSheet):
                 continue
 
             label_row = row_start + 1 + final_i + 1
-            self.ws.cell(row=label_row, column=col_start, value=label).alignment = LEFT_ALIGN
-            self.ws.cell(row=label_row, column=col_start, value=label).font = HEADER_FONT
-            value_cell = self.ws.cell(row=label_row, column=col_start + 1, value=mpr_value)
+            platform_disabled = self._is_closing_platform_disabled(header, 'mpr')
+            label_cell = self.ws.cell(row=label_row, column=col_start, value=label)
+            label_cell.alignment = LEFT_ALIGN
+            label_cell.font = HEADER_FONT
+            if platform_disabled:
+                label_cell.fill = CLOSED_OFF_FILL
+            value_cell = self.ws.cell(
+                row=label_row,
+                column=col_start + 1,
+                value=None if platform_disabled else mpr_value,
+            )
             value_cell.number_format = '#,##0'
             value_cell.alignment = RIGHT_ALIGN
+            if platform_disabled:
+                value_cell.fill = CLOSED_OFF_FILL
             final_i += 1
 
         MONTH_MAP = {
@@ -581,6 +606,18 @@ class ClosingSheet(BaseSheet):
     def _uses_mp78_management_ac(self):
         return self._is_mp78_brand() and mpr_calc.ENABLE_MP78_MANAGEMENT_AC
 
+    def _get_grab_management_commission_rate(self):
+        if self._is_mpr_brand():
+            return mpr_calc.MPR_GRAB_MANAGEMENT_COMMISSION_RATE
+
+        return mpr_calc.MANAGEMENT_COMMISSION_RATE
+
+    def _get_grab_management_commission_label(self):
+        if self._is_mpr_brand():
+            return 'Grab Manag 8%'
+
+        return 'Grab Manag 1%'
+
     def _get_mp78_display_value(self, header, date=None):
         totals = self.data.get('grand_totals', {})
         if date is not None:
@@ -656,6 +693,34 @@ class ClosingSheet(BaseSheet):
             return self._get_grand_total_with_fallback(header)
 
         return self._get_platform_grand_total_with_fallback('main', header)
+
+    def _get_closing_grand_total_income_contribution(self, report_type, header, grab_net_total=None):
+        if self._is_closing_platform_disabled(header, report_type):
+            return 0
+
+        if report_type == 'mpr':
+            if header == self.TIKTOK_NET_HEADER:
+                return self._get_tiktok_closing_display_value('mpr') or 0
+            return self._get_mpr_display_value(header) or 0
+
+        return self._get_closing_grand_total_income_value(header, grab_net_total) or 0
+
+    def _is_closing_platform_disabled(self, header, report_type='main'):
+        platform = platform_for_header(header)
+        if not platform:
+            return False
+
+        outlet = self._get_outlet_for_report_type(report_type)
+        return is_platform_disabled(outlet, platform)
+
+    def _get_outlet_for_report_type(self, report_type):
+        if report_type == 'mpr':
+            mpr_report_data = self.data.get('mpr_report_data')
+            if mpr_report_data:
+                return mpr_report_data.get('outlet')
+            return self._get_mapped_mpr_outlet()
+
+        return self.data.get('outlet')
 
     def _get_closing_grand_total_platform_label(self, label, header):
         if header == 'Grab_Net':
