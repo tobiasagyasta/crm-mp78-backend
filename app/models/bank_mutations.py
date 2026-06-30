@@ -192,6 +192,18 @@ class BankMutation(db.Model):
         )
 
     @staticmethod
+    def _statement_description_after_outlet_code(value):
+        description = BankMutation._as_text(value)
+        if not description:
+            return ''
+
+        match = re.search(r'\([A-Za-z]{3}[-\s]?\d{3}\)\s*(.*)$', description)
+        if match:
+            return match.group(1).strip()
+
+        return description
+
+    @staticmethod
     def _parse_transaction_date(value):
         if isinstance(value, datetime):
             return value.date()
@@ -293,7 +305,9 @@ class BankMutation(db.Model):
         amount_str = BankMutation._as_text(BankMutation._row_value(row, 3))
         transaction_type = 'DB' if 'DB' in amount_str.upper() else 'CR' if 'CR' in amount_str.upper() else None
         transaction_amount = BankMutation._parse_currency(amount_str)
-        transaksi = BankMutation._as_text(BankMutation._row_value(row, 1))
+        transaksi = BankMutation._statement_description_after_outlet_code(
+            BankMutation._row_value(row, 1)
+        )
 
         return {
             'tanggal': tanggal,
@@ -302,7 +316,7 @@ class BankMutation(db.Model):
             'transaction_amount': transaction_amount,
             'platform_code': platform_code,
             'platform_name': platform_name,
-            'transaksi': BankMutation._row_text(row) or transaksi
+            'transaksi': transaksi
         }
 
     @staticmethod
