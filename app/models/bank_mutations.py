@@ -4,6 +4,7 @@ from app.models.outlet import Outlet
 import re
 import csv
 import io
+import hashlib
 from decimal import Decimal, InvalidOperation
 
 class BankMutation(db.Model):
@@ -338,6 +339,58 @@ class BankMutation(db.Model):
         return platform_name, match.group(3)
 
     @staticmethod
+    def _extract_mp78_code(text):
+        match = re.search(r'\(\s*([A-Za-z0-9]{2,10})\s*\)', text)
+        return match.group(1).upper() if match else None
+
+    @staticmethod
+    def _build_mp78_transaction_id(rekening_number, tanggal, transaksi, amount_str, saldo):
+        parts = [
+            BankMutation._as_text(rekening_number),
+            tanggal.isoformat() if tanggal else '',
+            re.sub(r'\s+', ' ', BankMutation._as_text(transaksi)),
+            re.sub(r'\s+', ' ', BankMutation._as_text(amount_str)),
+            re.sub(r'\s+', ' ', BankMutation._as_text(saldo)),
+        ]
+        return hashlib.sha256('|'.join(parts).encode('utf-8')).hexdigest()
+
+    @staticmethod
+    def parse_mp78_row(row, rekening_number=None):
+        row = BankMutation._normalize_statement_mutation_row(row)
+        if not row:
+            return None
+
+        transaksi = BankMutation._as_text(BankMutation._row_value(row, 1))
+        mp78_code = BankMutation._extract_mp78_code(transaksi)
+        if not mp78_code:
+            return None
+
+        outlet = Outlet.query.filter(db.func.upper(Outlet.mp78_code) == mp78_code).first()
+        if not outlet:
+            return None
+
+        tanggal = BankMutation._parse_transaction_date(row[0])
+        amount_str = BankMutation._as_text(BankMutation._row_value(row, 3))
+        transaction_type = 'DB' if 'DB' in amount_str.upper() else 'CR' if 'CR' in amount_str.upper() else None
+        transaction_amount = BankMutation._parse_currency(amount_str)
+
+        return {
+            'tanggal': tanggal,
+            'transaksi': BankMutation._row_text(row) or transaksi,
+            'transaction_type': transaction_type,
+            'transaction_amount': transaction_amount,
+            'mp78_code': mp78_code,
+            'outlet_code': outlet.outlet_code,
+            'transaction_id': BankMutation._build_mp78_transaction_id(
+                rekening_number,
+                tanggal,
+                transaksi,
+                amount_str,
+                BankMutation._row_value(row, 4),
+            ),
+        }
+
+    @staticmethod
     def parse_gojek_row(row):
         """
         Parse a Gojek CSV row (list of strings) into a dict suitable for BankMutation.
@@ -473,7 +526,7 @@ class BankMutation(db.Model):
             return None
 
     @staticmethod
-    def parse_mutation_row(row):
+    def parse_mutation_row(row, rekening_number=None):
         """
         Main parser for supported bank mutation rows.
         It first normalizes the mutation table shape, then dispatches to the
@@ -485,7 +538,10 @@ class BankMutation(db.Model):
 
         parser = BankMutation.detect_platform(normalized_row)
         if not parser:
-            return None
+            mp78_data = BankMutation.parse_mp78_row(normalized_row, rekening_number)
+            if mp78_data:
+                mp78_data['_mutation_model'] = 'mp78'
+            return mp78_data
 
         return parser(normalized_row)
 
