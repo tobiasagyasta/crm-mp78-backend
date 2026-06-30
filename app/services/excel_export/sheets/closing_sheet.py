@@ -254,7 +254,7 @@ class ClosingSheet(BaseSheet):
         self.ws.cell(row=row_start + 1, column=col_start).fill = BLUE_FILL
 
         grab_net_total = self._get_grand_total_with_fallback('Grab_Net') or 0
-        grab_management_expense = grab_net_total * mpr_calc.MANAGEMENT_COMMISSION_RATE
+        grab_management_expense = grab_net_total * self._get_grab_management_commission_rate()
         total_income = (
             self._get_closing_grand_total_income_contribution('main', 'Gojek_Mutation') +
             self._get_closing_grand_total_income_contribution('main', 'Grab_Net', grab_net_total) +
@@ -316,8 +316,13 @@ class ClosingSheet(BaseSheet):
             final_i += 1
             if header == 'Grab_Net':
                 grab_mgmt_row = label_row + 1
-                self.ws.cell(row=grab_mgmt_row, column=col_start, value="Grab Manag 1%").alignment = LEFT_ALIGN
-                self.ws.cell(row=grab_mgmt_row, column=col_start, value="Grab Manag 1%").font = HEADER_FONT
+                management_label_cell = self.ws.cell(
+                    row=grab_mgmt_row,
+                    column=col_start,
+                    value=self._get_grab_management_commission_label()
+                )
+                management_label_cell.alignment = LEFT_ALIGN
+                management_label_cell.font = HEADER_FONT
                 management_cell_value = self.ws.cell(
                     row=grab_mgmt_row,
                     column=col_start + 2,
@@ -556,6 +561,18 @@ class ClosingSheet(BaseSheet):
 
     def _uses_mp78_management_ac(self):
         return self._is_mp78_brand() and mpr_calc.ENABLE_MP78_MANAGEMENT_AC
+
+    def _get_grab_management_commission_rate(self):
+        if self._is_mpr_brand():
+            return mpr_calc.MPR_GRAB_MANAGEMENT_COMMISSION_RATE
+
+        return mpr_calc.MANAGEMENT_COMMISSION_RATE
+
+    def _get_grab_management_commission_label(self):
+        if self._is_mpr_brand():
+            return 'Grab Manag 8%'
+
+        return 'Grab Manag 1%'
 
     def _get_mp78_display_value(self, header, date=None):
         totals = self.data.get('grand_totals', {})
