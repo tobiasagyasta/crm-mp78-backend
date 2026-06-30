@@ -344,6 +344,12 @@ class BankMutation(db.Model):
         return match.group(1).upper() if match else None
 
     @staticmethod
+    def _mp78_description_after_code(text):
+        transaksi = BankMutation._as_text(text)
+        match = re.search(r'\(\s*[A-Za-z0-9]{2,10}\s*\)\s*(.*)$', transaksi)
+        return match.group(1).strip() if match else transaksi
+
+    @staticmethod
     def _build_mp78_transaction_id(rekening_number, tanggal, transaksi, amount_str, saldo):
         parts = [
             BankMutation._as_text(rekening_number),
@@ -376,7 +382,7 @@ class BankMutation(db.Model):
 
         return {
             'tanggal': tanggal,
-            'transaksi': BankMutation._row_text(row) or transaksi,
+            'transaksi': BankMutation._mp78_description_after_code(transaksi),
             'transaction_type': transaction_type,
             'transaction_amount': transaction_amount,
             'mp78_code': mp78_code,
