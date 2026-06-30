@@ -434,9 +434,8 @@ class ClosingSheet(BaseSheet):
     def _get_mp78_mutation_description(self, mutation):
         date_label = mutation.tanggal.strftime('%Y-%m-%d') if mutation.tanggal else '-'
         transaction_type = (mutation.transaction_type or '').upper()
-        label = f"MP78 Mutation {transaction_type}".strip()
-        description = mutation.transaksi or mutation.transaction_id or ''
-        return f"{label} {date_label}: {description}"
+        description = mutation.transaksi or ''
+        return f"{date_label} : {description} {transaction_type} "
 
     def _write_store_id_table(self):
         outlet = self.data['outlet']
