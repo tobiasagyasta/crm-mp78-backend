@@ -205,7 +205,7 @@ class BankMutation(db.Model):
         return description
 
     @staticmethod
-    def _parse_transaction_date(value):
+    def _parse_transaction_date(value, reference_date=None):
         if isinstance(value, datetime):
             return value.date()
         if isinstance(value, date):
@@ -221,8 +221,30 @@ class BankMutation(db.Model):
         if re.fullmatch(r'\d+(\.0+)?', date_str):
             return (datetime(1899, 12, 30) + timedelta(days=int(float(date_str)))).date()
 
-        slash_formats = ('%d/%m/%Y', '%m/%d/%Y') if has_excel_text_quote else ('%m/%d/%Y', '%d/%m/%Y')
-        for fmt in (*slash_formats, '%d-%m-%Y', '%Y-%m-%d', '%d-%b-%y', '%d-%b-%Y'):
+        reference_date = reference_date or date.today()
+
+        numeric_date_match = re.fullmatch(r'(\d{1,2})([/-])(\d{1,2})\2(\d{4})', date_str)
+        if numeric_date_match:
+            separator = numeric_date_match.group(2)
+            preferred_formats = (
+                (f'%d{separator}%m{separator}%Y', f'%m{separator}%d{separator}%Y')
+                if has_excel_text_quote
+                else (f'%m{separator}%d{separator}%Y', f'%d{separator}%m{separator}%Y')
+            )
+            candidates = []
+            candidate_dates = set()
+            for index, fmt in enumerate(preferred_formats):
+                try:
+                    parsed_date = datetime.strptime(date_str, fmt).date()
+                except ValueError:
+                    continue
+                if parsed_date not in candidate_dates:
+                    candidates.append((abs((parsed_date - reference_date).days), index, parsed_date))
+                    candidate_dates.add(parsed_date)
+            if candidates:
+                return min(candidates)[2]
+
+        for fmt in ('%Y-%m-%d', '%d-%b-%y', '%d-%b-%Y'):
             try:
                 return datetime.strptime(date_str, fmt).date()
             except ValueError:
