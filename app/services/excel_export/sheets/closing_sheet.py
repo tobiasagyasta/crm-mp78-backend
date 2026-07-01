@@ -32,6 +32,8 @@ class ClosingSheet(BaseSheet):
         self.rekening_col_end = None
         self.rekening_row = None
         self.rekening_row_end = None
+        self._mpr_mapping = None
+        self._mpr_mapping_loaded = False
 
     def generate(self):
         self._write_main_table()
@@ -255,7 +257,7 @@ class ClosingSheet(BaseSheet):
         self.ws.cell(row=row_start + 1, column=col_start).fill = BLUE_FILL
 
         grab_net_total = self._get_grand_total_with_fallback('Grab_Net') or 0
-        grab_management_expense = grab_net_total * mpr_calc.MANAGEMENT_COMMISSION_RATE
+        grab_management_expense = self._get_grab_management_commission_expense(grab_net_total)
         mp78_income_total = self._get_mp78_mutation_total(mp78_mutations, 'income')
         mp78_expense_total = self._get_mp78_mutation_total(mp78_mutations, 'expense')
         total_income = (
@@ -556,12 +558,25 @@ class ClosingSheet(BaseSheet):
         if mpr_report_data and mpr_report_data.get('outlet'):
             return mpr_report_data['outlet']
 
-        outlet = self.data['outlet']
-        mapping = MprMapping.query.filter_by(mp78_outlet_code=outlet.outlet_code).first()
+        mapping = self._get_mpr_mapping()
         if not mapping or not mapping.mpr_outlet_code:
             return None
 
         return Outlet.query.filter_by(outlet_code=mapping.mpr_outlet_code).first()
+
+    def _get_mpr_mapping(self):
+        if not self._is_mp78_brand():
+            return None
+
+        if not self._mpr_mapping_loaded:
+            outlet = self.data['outlet']
+            self._mpr_mapping = MprMapping.query.filter_by(mp78_outlet_code=outlet.outlet_code).first()
+            self._mpr_mapping_loaded = True
+
+        return self._mpr_mapping
+
+    def _has_mpr_mapping(self):
+        return self._get_mpr_mapping() is not None
 
     def _get_rekening_table_outlet_label(self, outlet):
         if not outlet:
@@ -603,7 +618,11 @@ class ClosingSheet(BaseSheet):
         return mpr_calc.is_mpr_brand(self.data['outlet'].brand)
 
     def _uses_mp78_management_ac(self):
-        return self._is_mp78_brand() and mpr_calc.ENABLE_MP78_MANAGEMENT_AC
+        return (
+            self._is_mp78_brand()
+            and self._has_mpr_mapping()
+            and mpr_calc.ENABLE_MP78_MANAGEMENT_AC
+        )
 
     def _get_grab_management_commission_rate(self):
         if self._is_mpr_brand():
@@ -611,9 +630,15 @@ class ClosingSheet(BaseSheet):
 
         return mpr_calc.MANAGEMENT_COMMISSION_RATE
 
+    def _get_grab_management_commission_expense(self, grab_net_total):
+        if self._is_mpr_brand():
+            return grab_net_total - (self._get_direct_mpr_display_value('Grab_Net') or 0)
+
+        return grab_net_total * self._get_grab_management_commission_rate()
+
     def _get_grab_management_commission_label(self):
         if self._is_mpr_brand():
-            return 'Grab Manag 8%'
+            return 'Grab Manag MPR'
 
         return 'Grab Manag 1%'
 
