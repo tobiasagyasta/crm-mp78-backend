@@ -14,7 +14,6 @@ class DailySheet(BaseSheet):
     OPTIONAL_MPR_AC_HEADERS = {
         'GoFood (ac)',
         'GO-PAY QRIS (ac)',
-        'Gojek Net (ac)',
         'GrabFood (ac)',
         'GrabOVO (ac)',
         'Shopee Net (ac)',
@@ -178,7 +177,7 @@ class DailySheet(BaseSheet):
         return mpr_calc.gojek_net_value(totals)
 
     def _get_gojek_net_ac_value(self, totals):
-        if self._is_mpr_brand() and self._current_outlet_has_mpr_mapping():
+        if self._is_mpr_brand():
             return mpr_calc.mpr_ac_value_for_header(totals, 'Gojek_Mutation')
 
         if self._uses_mp78_management_ac():
