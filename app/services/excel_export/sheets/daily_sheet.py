@@ -11,17 +11,6 @@ from app.services.excel_export.utils.excel_utils import (
 
 class DailySheet(BaseSheet):
     MPR_COMMISSION_RATE = 0.08
-    OPTIONAL_MPR_AC_HEADERS = {
-        'GoFood (ac)',
-        'GO-PAY QRIS (ac)',
-        'GrabFood (ac)',
-        'GrabOVO (ac)',
-        'Shopee Net (ac)',
-        'ShopeePay Net (ac)',
-        'Tiktok Net (ac)',
-        'Qpon Net (ac)',
-        'Webshop Net (ac)',
-    }
     MP78_MANAGEMENT_AC_HEADERS = {
         'Gojek Net (ac)',
         'Grab Net (ac)',
@@ -45,7 +34,7 @@ class DailySheet(BaseSheet):
             self.ws = None
         else:
             super().__init__(workbook, sheet_name, data)
-        self._has_mpr_mapping = None
+        self._has_mp78_mpr_mapping = None
 
     def generate(self):
         self._write_title()
@@ -104,26 +93,14 @@ class DailySheet(BaseSheet):
             if 'Grab Net' in base_headers:
                 base_headers.remove('Grab Net')
 
-        if outlet_brand == 'MP78':
-            if mpr_calc.ENABLE_MP78_MANAGEMENT_AC:
-                base_headers = self._add_mp78_management_ac_headers(base_headers)
-                base_headers = [
-                    header for header in base_headers
-                    if (
-                        header not in self.MP78_MANAGEMENT_AC_HEADERS
-                        or header in self.MP78_ENABLED_AC_HEADERS
-                    )
-                ]
-            else:
-                base_headers = [
-                    header for header in base_headers
-                    if header not in self.MP78_MANAGEMENT_AC_HEADERS
-                ]
-
-        if mpr_calc.is_mpr_brand(outlet_brand) and not self._current_outlet_has_mpr_mapping():
+        if outlet_brand == 'MP78' and self._uses_mp78_management_ac():
+            base_headers = self._add_mp78_management_ac_headers(base_headers)
             base_headers = [
                 header for header in base_headers
-                if header not in self.OPTIONAL_MPR_AC_HEADERS
+                if (
+                    header not in self.MP78_MANAGEMENT_AC_HEADERS
+                    or header in self.MP78_ENABLED_AC_HEADERS
+                )
             ]
 
         return base_headers
@@ -159,7 +136,11 @@ class DailySheet(BaseSheet):
         return self.data['outlet'].brand == 'MP78'
 
     def _uses_mp78_management_ac(self):
-        return self._is_mp78_brand() and mpr_calc.ENABLE_MP78_MANAGEMENT_AC
+        return (
+            self._is_mp78_brand()
+            and self._current_mp78_outlet_has_mpr_mapping()
+            and mpr_calc.ENABLE_MP78_MANAGEMENT_AC
+        )
 
     def _get_gofood_value(self, totals):
         return mpr_calc.gofood_value(totals)
@@ -204,7 +185,7 @@ class DailySheet(BaseSheet):
         return mpr_calc.shopee_net_value(totals, self._is_mpr_brand())
 
     def _get_shopee_net_ac_value(self, totals):
-        if self._is_mpr_brand() and self._current_outlet_has_mpr_mapping():
+        if self._is_mpr_brand():
             return mpr_calc.mpr_ac_value_for_header(totals, 'Shopee_Net')
 
         if self._uses_mp78_management_ac():
@@ -216,7 +197,7 @@ class DailySheet(BaseSheet):
         return mpr_calc.shopeepay_net_value(totals)
 
     def _get_shopeepay_net_ac_value(self, totals):
-        if self._is_mpr_brand() and self._current_outlet_has_mpr_mapping():
+        if self._is_mpr_brand():
             return mpr_calc.mpr_ac_value_for_header(totals, 'ShopeePay_Net')
 
         if self._uses_mp78_management_ac():
@@ -224,20 +205,17 @@ class DailySheet(BaseSheet):
 
         return self._get_value_with_mutation_fallback(totals, 'ShopeePay_Mutation', 'ShopeePay_Net')
 
-    def _current_outlet_has_mpr_mapping(self):
-        if self._has_mpr_mapping is None:
+    def _current_mp78_outlet_has_mpr_mapping(self):
+        if self._has_mp78_mpr_mapping is None:
             outlet_code = self.data['outlet'].outlet_code
-            self._has_mpr_mapping = (
-                MprMapping.query.filter_by(mpr_outlet_code=outlet_code).first() is not None
+            self._has_mp78_mpr_mapping = (
+                MprMapping.query.filter_by(mp78_outlet_code=outlet_code).first() is not None
             )
 
-        return self._has_mpr_mapping
+        return self._has_mp78_mpr_mapping
 
     def _get_grab_net_ac_value(self, totals):
-        if (
-            self._is_mpr_brand()
-            and self._current_outlet_has_mpr_mapping()
-        ):
+        if self._is_mpr_brand():
             return mpr_calc.mpr_ac_value_for_header(totals, 'Grab_Net')
 
         if self._uses_mp78_management_ac():
