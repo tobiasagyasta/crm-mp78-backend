@@ -239,6 +239,7 @@ class MonthlyManagementCommissionSheet(BaseSheet):
         return platform_nets
 
     def _platform_values(self, period_totals, platform, fallback_nets):
+        rate = self._platform_rate(platform)
         net_total = float(
             period_totals.get(
                 platform["net_key"],
@@ -249,7 +250,7 @@ class MonthlyManagementCommissionSheet(BaseSheet):
         commission_total = float(
             period_totals.get(
                 platform["commission_key"],
-                net_total * platform["rate"],
+                net_total * rate,
             )
             or 0
         )
@@ -261,6 +262,12 @@ class MonthlyManagementCommissionSheet(BaseSheet):
             or 0
         )
         return net_total, commission_total, net_after_commission
+
+    def _platform_rate(self, platform):
+        if platform["key"] == "tiktok":
+            return self.data.get("tiktok_commission_rate", platform["rate"])
+
+        return platform["rate"]
 
     def _create_header(self):
         periods = self._periods()

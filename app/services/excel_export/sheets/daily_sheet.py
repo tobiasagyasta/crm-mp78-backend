@@ -1,6 +1,5 @@
 from openpyxl.styles import PatternFill
 from openpyxl.utils import get_column_letter
-from app.models.mpr_mapping import MprMapping
 from app.services.excel_export.base_sheet import BaseSheet
 from app.services.excel_export import mpr_calculations as mpr_calc
 from app.services.excel_export.utils.excel_utils import (
@@ -34,7 +33,6 @@ class DailySheet(BaseSheet):
             self.ws = None
         else:
             super().__init__(workbook, sheet_name, data)
-        self._has_mp78_mpr_mapping = None
 
     def generate(self):
         self._write_title()
@@ -136,11 +134,7 @@ class DailySheet(BaseSheet):
         return self.data['outlet'].brand == 'MP78'
 
     def _uses_mp78_management_ac(self):
-        return (
-            self._is_mp78_brand()
-            and self._current_mp78_outlet_has_mpr_mapping()
-            and mpr_calc.ENABLE_MP78_MANAGEMENT_AC
-        )
+        return self._is_mp78_brand() and mpr_calc.ENABLE_MP78_MANAGEMENT_AC
 
     def _get_gofood_value(self, totals):
         return mpr_calc.gofood_value(totals)
@@ -205,15 +199,6 @@ class DailySheet(BaseSheet):
 
         return self._get_value_with_mutation_fallback(totals, 'ShopeePay_Mutation', 'ShopeePay_Net')
 
-    def _current_mp78_outlet_has_mpr_mapping(self):
-        if self._has_mp78_mpr_mapping is None:
-            outlet_code = self.data['outlet'].outlet_code
-            self._has_mp78_mpr_mapping = (
-                MprMapping.query.filter_by(mp78_outlet_code=outlet_code).first() is not None
-            )
-
-        return self._has_mp78_mpr_mapping
-
     def _get_grab_net_ac_value(self, totals):
         if self._is_mpr_brand():
             return mpr_calc.mpr_ac_value_for_header(totals, 'Grab_Net')
@@ -224,8 +209,8 @@ class DailySheet(BaseSheet):
         return mpr_calc.management_net_ac_value(totals, 'Grab_Net')
 
     def _get_standard_net_ac_value(self, totals, net_key):
-        if self._is_mpr_brand() and net_key == 'Tiktok_Net':
-            return mpr_calc.tiktok_net_ac_value(totals, is_mpr=True)
+        if net_key == 'Tiktok_Net':
+            return mpr_calc.tiktok_net_ac_value_for_brand(totals, self.data['outlet'].brand)
 
         if self._uses_mp78_management_ac():
             return mpr_calc.mp78_ac_value_for_header(totals, net_key)

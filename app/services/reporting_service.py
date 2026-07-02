@@ -692,6 +692,7 @@ def generate_monthly_management_commission_data(
         "outlets": transformed_outlets,
         "commission_divisor": commission_divisor,
         "commission_rate": (1 / commission_divisor) if commission_divisor else 0,
+        "tiktok_commission_rate": mpr_calc.tiktok_commission_rate_for_brand(normalized_brand_name),
     }
 
 
@@ -722,7 +723,7 @@ def generate_monthly_management_commission_data_custom_range(
     outlet_codes = [str(outlet.outlet_code) for outlet in outlets]
     period_set = set(periods)
     standard_rate = (1 / commission_divisor) if commission_divisor else 0
-    tiktok_rate = mpr_calc.TIKTOK_MANAGEMENT_COMMISSION_RATE
+    tiktok_rate = mpr_calc.tiktok_commission_rate_for_brand(normalized_brand_name)
     webshop_rate = 0.03
 
     def _empty_period_totals() -> dict:

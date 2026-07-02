@@ -12,6 +12,24 @@ MPR_BRANDS = ("MPR", "MPR Mandiri", "MPR Non MP78")
 def is_mpr_brand(brand):
     return brand in MPR_BRANDS
 
+
+def is_mp78_brand(brand):
+    return brand == 'MP78'
+
+
+def tiktok_commission_rate_for_brand(brand):
+    if is_mpr_brand(brand):
+        return 1 - MPR_TIKTOK_NET_RATE
+    if is_mp78_brand(brand):
+        return TIKTOK_MANAGEMENT_COMMISSION_RATE
+
+    return TIKTOK_MANAGEMENT_COMMISSION_RATE
+
+
+def tiktok_net_ac_value_for_brand(totals, brand):
+    net = totals.get('Tiktok_Net', 0)
+    return net - (net * tiktok_commission_rate_for_brand(brand))
+
 def value_with_mutation_fallback(totals, mutation_key, net_key):
     return totals.get(mutation_key) or totals.get(net_key, 0)
 
@@ -76,12 +94,14 @@ def grab_net_value(totals, is_mpr=False):
 
     return totals.get('Grab_Net', 0)
 
-def tiktok_net_ac_value(totals, is_mpr=False):
+def tiktok_net_ac_value(totals, is_mpr=False, commission_rate=None):
     net = totals.get('Tiktok_Net', 0)
     if is_mpr:
-        return net * MPR_TIKTOK_NET_RATE
+        commission_rate = 1 - MPR_TIKTOK_NET_RATE
+    elif commission_rate is None:
+        commission_rate = TIKTOK_MANAGEMENT_COMMISSION_RATE
 
-    return net - (net * TIKTOK_MANAGEMENT_COMMISSION_RATE)
+    return net - (net * commission_rate)
 
 
 def grab_net_ac_value(totals):
@@ -134,7 +154,7 @@ def mp78_ac_value_for_header(totals, header):
     if header == 'Grab_Net':
         return management_net_ac_value(totals, 'Grab_Net', 'Grab_Difference')
     if header == 'Tiktok_Net':
-        return tiktok_net_ac_value(totals)
+        return tiktok_net_ac_value(totals, commission_rate=TIKTOK_MANAGEMENT_COMMISSION_RATE)
 
     return None
 

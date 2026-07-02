@@ -618,11 +618,7 @@ class ClosingSheet(BaseSheet):
         return mpr_calc.is_mpr_brand(self.data['outlet'].brand)
 
     def _uses_mp78_management_ac(self):
-        return (
-            self._is_mp78_brand()
-            and self._has_mpr_mapping()
-            and mpr_calc.ENABLE_MP78_MANAGEMENT_AC
-        )
+        return self._is_mp78_brand() and mpr_calc.ENABLE_MP78_MANAGEMENT_AC
 
     def _get_grab_management_commission_rate(self):
         if self._is_mpr_brand():
@@ -695,7 +691,7 @@ class ClosingSheet(BaseSheet):
             return mpr_calc.tiktok_net_ac_value(closing_totals, is_mpr=True)
 
         if self._uses_mp78_management_ac():
-            return mpr_calc.tiktok_net_ac_value(closing_totals)
+            return mpr_calc.mp78_ac_value_for_header(closing_totals, self.TIKTOK_NET_HEADER)
 
         return closing_net
 
