@@ -151,7 +151,7 @@ def resolve_upload_manual_entry_date_range(outlet, entry_date):
 # import pdfkit
 import csv
 from io import StringIO
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from datetime import datetime
 from sqlalchemy.exc import IntegrityError
 from app.models.outlet import Outlet
@@ -1183,6 +1183,44 @@ def upload_report_grab():
         skipped_reports = 0
         store_id_map = {}
         affected_outlets = set()
+        seen_transaction_ids = set()
+        seen_long_order_ids = set()
+        seen_short_order_ids = set()
+
+        def clean_identifier(value):
+            if value is None:
+                return None
+            value = str(value).strip()
+            return value or None
+
+        def has_duplicate_grab_identifier(transaction_id, long_order_id, short_order_id):
+            if transaction_id and transaction_id in seen_transaction_ids:
+                return True
+            if long_order_id and long_order_id in seen_long_order_ids:
+                return True
+            if short_order_id and short_order_id in seen_short_order_ids:
+                return True
+
+            duplicate_filters = []
+            if transaction_id:
+                duplicate_filters.append(GrabFoodReport.id_transaksi == transaction_id)
+            if long_order_id:
+                duplicate_filters.append(GrabFoodReport.id_pesanan_panjang == long_order_id)
+            if short_order_id:
+                duplicate_filters.append(GrabFoodReport.id_pesanan_pendek == short_order_id)
+
+            if duplicate_filters:
+                return GrabFoodReport.query.filter(or_(*duplicate_filters)).first() is not None
+
+            return False
+
+        def remember_grab_identifiers(transaction_id, long_order_id, short_order_id):
+            if transaction_id:
+                seen_transaction_ids.add(transaction_id)
+            if long_order_id:
+                seen_long_order_ids.add(long_order_id)
+            if short_order_id:
+                seen_short_order_ids.add(short_order_id)
 
         for file in files:
             file_contents = file.read().decode('utf-8')
@@ -1204,12 +1242,12 @@ def upload_report_grab():
                 if not outlet:
                     continue
 
-                transaction_id = row.get('ID transaksi', '')
-                if transaction_id:
-                    existing_report = GrabFoodReport.query.filter_by(id_transaksi=transaction_id).first()
-                    if existing_report:
-                        skipped_reports += 1
-                        continue
+                transaction_id = clean_identifier(row.get('ID transaksi'))
+                long_order_id = clean_identifier(row.get('ID pesanan (panjang)'))
+                short_order_id = clean_identifier(row.get('ID pesanan (pendek)'))
+                if has_duplicate_grab_identifier(transaction_id, long_order_id, short_order_id):
+                    skipped_reports += 1
+                    continue
 
                 try:
                     date_str = row.get('Tanggal dibuat', '')
@@ -1240,13 +1278,16 @@ def upload_report_grab():
                         kategori=row.get('Kategori', ''),
                         subkategori=row.get('Subkategori', ''),
                         status=row.get('Status', ''),
-                        id_transaksi=row.get('ID transaksi', ''),
+                        id_transaksi=transaction_id,
+                        id_pesanan_panjang=long_order_id,
+                        id_pesanan_pendek=short_order_id,
                         komisi_grabkitchen=safe_float(row.get('Komisi GrabKitchen')),
                         total=safe_float(row.get('Total')),
                         amount=safe_float(row.get('Amount')),
                         penjualan_bersih=safe_float(row.get('Penjualan bersih'))
                     )
                     reports.append(report)
+                    remember_grab_identifiers(transaction_id, long_order_id, short_order_id)
                     affected_outlets.add((outlet.outlet_code, tanggal_diperbarui.date()))
                     total_reports += 1
                 except (ValueError, TypeError) as e:
