@@ -254,11 +254,8 @@ def _aggregate_qpon(daily_totals, reports):
         if date not in daily_totals:
             continue
 
-        net_amount = getattr(report, "net_amount", None)
-        if net_amount is None:
-            net_amount = getattr(report, "nett_amount", 0)
-
-        daily_totals[date]['Qpon_Net'] += float(net_amount or 0)
+        qpon_amount = float(report.gross_amount or 0)
+        daily_totals[date]['Qpon_Net'] += qpon_amount
         daily_totals[date]['Qpon_Gross'] += float(report.gross_amount or 0)
 
 def _aggregate_qpon_closing(daily_totals, reports):
@@ -270,11 +267,8 @@ def _aggregate_qpon_closing(daily_totals, reports):
         if date not in daily_totals:
             continue
 
-        net_amount = getattr(report, "net_amount", None)
-        if net_amount is None:
-            net_amount = getattr(report, "nett_amount", 0)
-
-        daily_totals[date]['Qpon_Closing_Net'] += float(net_amount or 0)
+        qpon_amount = float(report.gross_amount or 0)
+        daily_totals[date]['Qpon_Closing_Net'] += qpon_amount
         daily_totals[date]['Qpon_Closing_Gross'] += float(report.gross_amount or 0)
 
 def _aggregate_webshop(daily_totals, reports):

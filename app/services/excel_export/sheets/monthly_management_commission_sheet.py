@@ -223,7 +223,7 @@ class MonthlyManagementCommissionSheet(BaseSheet):
                 continue
             period = self._resolve_period(report.bill_created_at.date(), periods, closing_day)
             if period in period_set:
-                platform_nets[period]["qpon"] += float(report.nett_amount or 0)
+                platform_nets[period]["qpon"] += float(report.gross_amount or 0)
 
         for report in WebshopReport.query.filter(
             WebshopReport.outlet_code == outlet_code,

@@ -853,11 +853,10 @@ def generate_monthly_management_commission_data_custom_range(
     for report in qpon_reports:
         if not report.bill_created_at:
             continue
-        amount = QponReport.apply_nett_fallback(report.gross_amount, report.nett_amount)
         _accumulate(
             report.outlet_code,
             report.bill_created_at.date(),
-            float(amount or 0),
+            float(report.gross_amount or 0),
             "qpon_net",
             "qpon_commission",
             "qpon_net_after_commission",
