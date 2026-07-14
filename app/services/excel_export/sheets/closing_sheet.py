@@ -780,7 +780,6 @@ class ClosingSheet(BaseSheet):
                 ('ShopeeFood', 'Shopee_Net', 'main'),
                 ('ShopeePay', 'ShopeePay_Net', 'main'),
                 ('Tiktok (ac)', 'Tiktok_Net', 'main'),
-                ('Qpon', 'Qpon_Net', 'main'),
                 ('Qpon (ac)', self.QPON_AC_HEADER, 'main'),
                 ('Webshop', 'Webshop_Net', 'main'),
             ]
@@ -791,17 +790,12 @@ class ClosingSheet(BaseSheet):
             ('ShopeeFood', 'Shopee_Net', 'main'),
             ('ShopeePay', 'ShopeePay_Net', 'main'),
             ('Tiktok', 'Tiktok_Net', 'main'),
-            ('Qpon', 'Qpon_Net', 'main'),
             ('Qpon (ac)', self.QPON_AC_HEADER, 'main'),
             ('Webshop', 'Webshop_Net', 'main'),
         ]
 
     def _get_main_grand_total_platform_definitions(self):
-        return [
-            definition
-            for definition in self._get_main_platform_definitions_for_grand_total()
-            if definition[1] != self.QPON_NET_HEADER
-        ]
+        return self._get_main_platform_definitions_for_grand_total()
 
     def _apply_styles(self):
         # Apply borders to the main table
