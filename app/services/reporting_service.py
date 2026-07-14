@@ -724,6 +724,7 @@ def generate_monthly_management_commission_data_custom_range(
     period_set = set(periods)
     standard_rate = (1 / commission_divisor) if commission_divisor else 0
     tiktok_rate = mpr_calc.tiktok_commission_rate_for_brand(normalized_brand_name)
+    qpon_rate = mpr_calc.QPON_COMMISSION_RATE
     webshop_rate = 0.03
 
     def _empty_period_totals() -> dict:
@@ -860,7 +861,7 @@ def generate_monthly_management_commission_data_custom_range(
             "qpon_net",
             "qpon_commission",
             "qpon_net_after_commission",
-            standard_rate,
+            qpon_rate,
         )
 
     webshop_reports = WebshopReport.query.filter(

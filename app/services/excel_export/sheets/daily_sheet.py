@@ -214,7 +214,7 @@ class DailySheet(BaseSheet):
             return mpr_calc.tiktok_net_ac_value_for_brand(totals, self.data['outlet'].brand)
 
         if net_key == 'Qpon_Net':
-            return mpr_calc.management_net_ac_value(totals, net_key)
+            return mpr_calc.qpon_net_ac_value(totals, net_key)
 
         if self._uses_mp78_management_ac():
             return mpr_calc.mp78_ac_value_for_header(totals, net_key)

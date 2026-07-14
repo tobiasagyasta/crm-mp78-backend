@@ -717,7 +717,10 @@ class ClosingSheet(BaseSheet):
         if closing_net is None:
             return None
 
-        return closing_net - (closing_net * mpr_calc.MANAGEMENT_COMMISSION_RATE)
+        return mpr_calc.qpon_net_ac_value(
+            {self.QPON_CLOSING_NET_HEADER: closing_net},
+            self.QPON_CLOSING_NET_HEADER,
+        )
 
     def _get_closing_grand_total_income_value(self, header, grab_net_total=None):
         if header == 'Grab_Net':

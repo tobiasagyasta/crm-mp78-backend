@@ -45,7 +45,7 @@ class MonthlyManagementCommissionSheet(BaseSheet):
             "net_key": "qpon_net",
             "commission_key": "qpon_commission",
             "after_key": "qpon_net_after_commission",
-            "rate": 1 / 74,
+            "rate": mpr_calc.QPON_COMMISSION_RATE,
         },
         {
             "key": "webshop",
