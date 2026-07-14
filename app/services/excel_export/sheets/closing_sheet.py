@@ -17,6 +17,7 @@ class ClosingSheet(BaseSheet):
     TIKTOK_CLOSING_NET_HEADER = 'Tiktok_Closing_Net'
     QPON_NET_HEADER = 'Qpon_Net'
     QPON_CLOSING_NET_HEADER = 'Qpon_Closing_Net'
+    QPON_AC_HEADER = 'Qpon_Net_Ac'
 
     def __init__(self, workbook, data):
         super().__init__(workbook, 'Closing Sheet', data)
@@ -92,7 +93,7 @@ class ClosingSheet(BaseSheet):
                 cell.fill = SHOPEE_FILL
             elif name in [
                 'Tiktok', 'Tiktok (ac)', 'Tiktok MPR (ac)',
-                'Qpon', 'Qpon (ac)', 'Webshop', 'Webshop (ac)'
+                'Qpon', 'Qpon (ac)', 'Qpon MPR (ac)', 'Webshop', 'Webshop (ac)'
             ]:
                 cell.fill = TIKTOK_FILL
 
@@ -172,6 +173,7 @@ class ClosingSheet(BaseSheet):
             ('Shopee MPR (ac)', 'Shopee_Net', 'mpr'),
             ('ShopeePay MPR (ac)', 'ShopeePay_Net', 'mpr'),
             ('Tiktok MPR (ac)', 'Tiktok_Net', 'mpr'),
+            ('Qpon MPR (ac)', self.QPON_AC_HEADER, 'mpr'),
         ]
 
     def _get_main_table_platforms(self):
@@ -197,6 +199,7 @@ class ClosingSheet(BaseSheet):
             ('Shopee MPR (ac)', 'Shopee_Net', 'mpr'),
             ('ShopeePay MPR (ac)', 'ShopeePay_Net', 'mpr'),
             ('Tiktok MPR (ac)', 'Tiktok_Net', 'mpr'),
+            ('Qpon MPR (ac)', self.QPON_AC_HEADER, 'mpr'),
         ]
 
     def _get_platform_grand_total_with_fallback(self, report_type, header):
@@ -204,6 +207,8 @@ class ClosingSheet(BaseSheet):
             return self._get_tiktok_closing_display_value(report_type)
         if header == self.QPON_NET_HEADER:
             return self._get_qpon_closing_display_value(report_type)
+        if header == self.QPON_AC_HEADER:
+            return self._get_qpon_closing_ac_display_value(report_type)
         if report_type == 'mpr':
             return self._get_mpr_display_value(header)
         if self._is_mpr_brand():
@@ -220,6 +225,8 @@ class ClosingSheet(BaseSheet):
             return self._get_tiktok_closing_display_value(report_type, date)
         if header == self.QPON_NET_HEADER:
             return self._get_qpon_closing_display_value(report_type, date)
+        if header == self.QPON_AC_HEADER:
+            return self._get_qpon_closing_ac_display_value(report_type, date)
         if report_type == 'mpr':
             return self._get_mpr_display_value(header, date)
         if self._is_mpr_brand():
@@ -237,11 +244,7 @@ class ClosingSheet(BaseSheet):
         end_date = self.data['end_date']
         manual_entries = self.data['manual_entries']
         mp78_mutations = self.data.get('mp78_mutations', [])
-        platform_columns = ['Gojek_Mutation', 'Grab_Net', 'Shopee_Net', 'ShopeePay_Net', 'Tiktok_Net', 'Qpon_Net', 'Webshop_Net']
-        platform_names = [
-            label
-            for label, _, _ in self._get_main_platform_definitions_for_grand_total()
-        ]
+        platform_definitions = self._get_main_grand_total_platform_definitions()
 
         col_start = self.ws.max_column + 3
         row_start = 3
@@ -266,13 +269,14 @@ class ClosingSheet(BaseSheet):
             self._get_closing_grand_total_income_contribution('main', 'Shopee_Net') +
             self._get_closing_grand_total_income_contribution('main', 'ShopeePay_Net') +
             self._get_closing_grand_total_income_contribution('main', 'Tiktok_Net') +
-            self._get_closing_grand_total_income_contribution('main', 'Qpon_Net') +
+            self._get_closing_grand_total_income_contribution('main', self.QPON_AC_HEADER) +
             self._get_closing_grand_total_income_contribution('main', 'Webshop_Net') +
             self._get_closing_grand_total_income_contribution('mpr', 'Gojek_Mutation') +
             self._get_closing_grand_total_income_contribution('mpr', 'Grab_Net') +
             self._get_closing_grand_total_income_contribution('mpr', 'Shopee_Net') +
             self._get_closing_grand_total_income_contribution('mpr', 'ShopeePay_Net') +
             self._get_closing_grand_total_income_contribution('mpr', 'Tiktok_Net') +
+            self._get_closing_grand_total_income_contribution('mpr', self.QPON_AC_HEADER) +
             sum(float(entry.amount) for entry, _, _ in manual_entries if entry.entry_type == 'income') +
             mp78_income_total +
             self._get_grand_total_with_fallback('UV')
@@ -302,9 +306,9 @@ class ClosingSheet(BaseSheet):
         self.ws.cell(row=row_start, column=col_start + 3).fill = GREY_FILL
 
         final_i = 0
-        for i, header in enumerate(platform_columns, 1):
+        for platform_label, header, _ in platform_definitions:
             label_row = row_start + 1 + final_i + 1
-            platform_label = self._get_closing_grand_total_platform_label(platform_names[i-1], header)
+            platform_label = self._get_closing_grand_total_platform_label(platform_label, header)
             platform_disabled = self._is_closing_platform_disabled(header, 'main')
             label_cell = self.ws.cell(row=label_row, column=col_start, value=platform_label)
             label_cell.alignment = LEFT_ALIGN
@@ -346,6 +350,8 @@ class ClosingSheet(BaseSheet):
         for label, header in mpr_rows:
             if header == self.TIKTOK_NET_HEADER:
                 mpr_value = self._get_tiktok_closing_display_value('mpr')
+            elif header == self.QPON_AC_HEADER:
+                mpr_value = self._get_qpon_closing_ac_display_value('mpr')
             else:
                 mpr_value = self._get_mpr_display_value(header)
             if mpr_value is None:
@@ -706,6 +712,13 @@ class ClosingSheet(BaseSheet):
 
         return totals.get(self.QPON_CLOSING_NET_HEADER, 0)
 
+    def _get_qpon_closing_ac_display_value(self, report_type, date=None):
+        closing_net = self._get_qpon_closing_display_value(report_type, date)
+        if closing_net is None:
+            return None
+
+        return closing_net - (closing_net * mpr_calc.MANAGEMENT_COMMISSION_RATE)
+
     def _get_closing_grand_total_income_value(self, header, grab_net_total=None):
         if header == 'Grab_Net':
             if grab_net_total is not None:
@@ -721,12 +734,14 @@ class ClosingSheet(BaseSheet):
         if report_type == 'mpr':
             if header == self.TIKTOK_NET_HEADER:
                 return self._get_tiktok_closing_display_value('mpr') or 0
+            if header == self.QPON_AC_HEADER:
+                return self._get_qpon_closing_ac_display_value('mpr') or 0
             return self._get_mpr_display_value(header) or 0
 
         return self._get_closing_grand_total_income_value(header, grab_net_total) or 0
 
     def _is_closing_platform_disabled(self, header, report_type='main'):
-        platform = platform_for_header(header)
+        platform = self._get_platform_for_closing_header(header)
         if not platform:
             return False
 
@@ -741,6 +756,12 @@ class ClosingSheet(BaseSheet):
             return self._get_mapped_mpr_outlet()
 
         return self.data.get('outlet')
+
+    def _get_platform_for_closing_header(self, header):
+        if header == self.QPON_AC_HEADER:
+            return 'qpon'
+
+        return platform_for_header(header)
 
     def _get_closing_grand_total_platform_label(self, label, header):
         if header == 'Grab_Net':
@@ -757,6 +778,7 @@ class ClosingSheet(BaseSheet):
                 ('ShopeePay', 'ShopeePay_Net', 'main'),
                 ('Tiktok (ac)', 'Tiktok_Net', 'main'),
                 ('Qpon', 'Qpon_Net', 'main'),
+                ('Qpon (ac)', self.QPON_AC_HEADER, 'main'),
                 ('Webshop', 'Webshop_Net', 'main'),
             ]
 
@@ -767,7 +789,15 @@ class ClosingSheet(BaseSheet):
             ('ShopeePay', 'ShopeePay_Net', 'main'),
             ('Tiktok', 'Tiktok_Net', 'main'),
             ('Qpon', 'Qpon_Net', 'main'),
+            ('Qpon (ac)', self.QPON_AC_HEADER, 'main'),
             ('Webshop', 'Webshop_Net', 'main'),
+        ]
+
+    def _get_main_grand_total_platform_definitions(self):
+        return [
+            definition
+            for definition in self._get_main_platform_definitions_for_grand_total()
+            if definition[1] != self.QPON_NET_HEADER
         ]
 
     def _apply_styles(self):

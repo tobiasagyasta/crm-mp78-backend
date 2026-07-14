@@ -23,6 +23,7 @@ class DailySheet(BaseSheet):
         'Gojek Net (ac)',
         'Grab Net (ac)',
         'Tiktok Net (ac)',
+        'Qpon Net (ac)',
     }
 
     def __init__(self, workbook, data, sheet_name='Daily'):
@@ -56,7 +57,7 @@ class DailySheet(BaseSheet):
             'Date', 'GoFood', 'GO-PAY QRIS', 'Gojek Net', 'Gojek Mutation', 'Gojek Difference', 'Gojek Net (ac)',
             'GrabFood', 'GrabOVO', 'Grab Net (ac)', 'Shopee Net', 'Shopee Mutation', 'Shopee Difference',
             'ShopeePay Net', 'ShopeePay Mutation', 'ShopeePay Difference', 'ShopeePay Net (ac)',
-            'Tiktok Net', 'Tiktok Settlement Time', 'Qpon Net', 'Webshop Net', 'UV'
+            'Tiktok Net', 'Tiktok Settlement Time', 'Qpon Net', 'Qpon Net (ac)', 'Webshop Net', 'UV'
         ]
         extra_headers = ['Cash Income (Admin)', 'Cash Expense (Admin)', 'Sisa Cash (Admin)', 'Minusan (Mutasi)']
 
@@ -211,6 +212,9 @@ class DailySheet(BaseSheet):
     def _get_standard_net_ac_value(self, totals, net_key):
         if net_key == 'Tiktok_Net':
             return mpr_calc.tiktok_net_ac_value_for_brand(totals, self.data['outlet'].brand)
+
+        if net_key == 'Qpon_Net':
+            return mpr_calc.management_net_ac_value(totals, net_key)
 
         if self._uses_mp78_management_ac():
             return mpr_calc.mp78_ac_value_for_header(totals, net_key)
