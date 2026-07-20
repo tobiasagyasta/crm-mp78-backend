@@ -1187,32 +1187,82 @@ def upload_report_grab():
         seen_long_order_ids = set()
         seen_short_order_ids = set()
 
+        outlets = Outlet.query.all()
+        outlets_by_store_id = {outlet.store_id_grab: outlet for outlet in outlets if outlet.store_id_grab}
+        outlets_by_name = {outlet.outlet_name_grab: outlet for outlet in outlets if outlet.outlet_name_grab}
+
         def clean_identifier(value):
             if value is None:
                 return None
             value = str(value).strip()
             return value or None
 
-        def has_duplicate_grab_identifier(transaction_id, long_order_id, short_order_id):
+        def safe_float(value):
+            if not value:
+                return 0
+            try:
+                return float(str(value).replace(',', ''))
+            except (ValueError, TypeError):
+                return 0
+
+        def chunks(values, size=1000):
+            values = list(values)
+            for index in range(0, len(values), size):
+                yield values[index:index + size]
+
+        def load_existing_grab_identifiers(transaction_ids, long_order_ids, short_order_ids):
+            existing_transaction_ids = set()
+            existing_long_order_ids = set()
+            existing_short_order_ids = set()
+
+            for batch in chunks(transaction_ids):
+                existing_transaction_ids.update(
+                    identifier
+                    for (identifier,) in db.session.query(GrabFoodReport.id_transaksi)
+                    .filter(GrabFoodReport.id_transaksi.in_(batch))
+                    .all()
+                    if identifier
+                )
+
+            for batch in chunks(long_order_ids):
+                existing_long_order_ids.update(
+                    identifier
+                    for (identifier,) in db.session.query(GrabFoodReport.id_pesanan_panjang)
+                    .filter(GrabFoodReport.id_pesanan_panjang.in_(batch))
+                    .all()
+                    if identifier
+                )
+
+            for batch in chunks(short_order_ids):
+                existing_short_order_ids.update(
+                    identifier
+                    for (identifier,) in db.session.query(GrabFoodReport.id_pesanan_pendek)
+                    .filter(GrabFoodReport.id_pesanan_pendek.in_(batch))
+                    .all()
+                    if identifier
+                )
+
+            return existing_transaction_ids, existing_long_order_ids, existing_short_order_ids
+
+        def has_duplicate_grab_identifier(
+            transaction_id,
+            long_order_id,
+            short_order_id,
+            existing_transaction_ids,
+            existing_long_order_ids,
+            existing_short_order_ids,
+        ):
             if transaction_id and transaction_id in seen_transaction_ids:
                 return True
             if long_order_id and long_order_id in seen_long_order_ids:
                 return True
             if short_order_id and short_order_id in seen_short_order_ids:
                 return True
-
-            duplicate_filters = []
-            if transaction_id:
-                duplicate_filters.append(GrabFoodReport.id_transaksi == transaction_id)
-            if long_order_id:
-                duplicate_filters.append(GrabFoodReport.id_pesanan_panjang == long_order_id)
-            if short_order_id:
-                duplicate_filters.append(GrabFoodReport.id_pesanan_pendek == short_order_id)
-
-            if duplicate_filters:
-                return GrabFoodReport.query.filter(or_(*duplicate_filters)).first() is not None
-
-            return False
+            return (
+                (transaction_id and transaction_id in existing_transaction_ids)
+                or (long_order_id and long_order_id in existing_long_order_ids)
+                or (short_order_id and short_order_id in existing_short_order_ids)
+            )
 
         def remember_grab_identifiers(transaction_id, long_order_id, short_order_id):
             if transaction_id:
@@ -1226,9 +1276,30 @@ def upload_report_grab():
             file_contents = file.read().decode('utf-8')
             csv_file = StringIO(file_contents)
             reader = csv.DictReader(csv_file)
+            rows = list(reader)
+
+            transaction_ids = set()
+            long_order_ids = set()
+            short_order_ids = set()
+            for row in rows:
+                transaction_id = clean_identifier(row.get('ID transaksi'))
+                long_order_id = clean_identifier(row.get('ID pesanan (panjang)'))
+                short_order_id = clean_identifier(row.get('ID pesanan (pendek)'))
+                if transaction_id:
+                    transaction_ids.add(transaction_id)
+                if long_order_id:
+                    long_order_ids.add(long_order_id)
+                if short_order_id:
+                    short_order_ids.add(short_order_id)
+
+            existing_transaction_ids, existing_long_order_ids, existing_short_order_ids = load_existing_grab_identifiers(
+                transaction_ids,
+                long_order_ids,
+                short_order_ids,
+            )
             
             reports = []
-            for row in reader:
+            for row in rows:
                 store_name = row.get('Nama toko', '').strip()
                 store_id = row.get('ID toko')
                 if store_name and store_id:
@@ -1236,16 +1307,23 @@ def upload_report_grab():
 
                 outlet = None
                 if store_id:
-                    outlet = Outlet.query.filter_by(store_id_grab=store_id).first()
+                    outlet = outlets_by_store_id.get(store_id)
                 if not outlet and store_name:
-                    outlet = Outlet.query.filter_by(outlet_name_grab=store_name).first()
+                    outlet = outlets_by_name.get(store_name)
                 if not outlet:
                     continue
 
                 transaction_id = clean_identifier(row.get('ID transaksi'))
                 long_order_id = clean_identifier(row.get('ID pesanan (panjang)'))
                 short_order_id = clean_identifier(row.get('ID pesanan (pendek)'))
-                if has_duplicate_grab_identifier(transaction_id, long_order_id, short_order_id):
+                if has_duplicate_grab_identifier(
+                    transaction_id,
+                    long_order_id,
+                    short_order_id,
+                    existing_transaction_ids,
+                    existing_long_order_ids,
+                    existing_short_order_ids,
+                ):
                     skipped_reports += 1
                     continue
 
@@ -1259,33 +1337,25 @@ def upload_report_grab():
                     except ValueError:
                         tanggal_dibuat = datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S')
                         tanggal_diperbarui = datetime.strptime(date_made_str, '%Y-%m-%d %H:%M:%S')
-                    def safe_float(value):
-                        if not value:
-                            return 0
-                        try:
-                            return float(str(value).replace(',', ''))
-                        except (ValueError, TypeError):
-                            return 0
-
-                    report = GrabFoodReport(
-                        brand_name=outlet.brand,
-                        outlet_code=outlet.outlet_code,
-                        nama_toko=store_name,
-                        id_toko=store_id,
-                        tanggal_dibuat=tanggal_dibuat,
-                        diperbarui_pada=tanggal_diperbarui,
-                        jenis=row.get('Jenis', ''),
-                        kategori=row.get('Kategori', ''),
-                        subkategori=row.get('Subkategori', ''),
-                        status=row.get('Status', ''),
-                        id_transaksi=transaction_id,
-                        id_pesanan_panjang=long_order_id,
-                        id_pesanan_pendek=short_order_id,
-                        komisi_grabkitchen=safe_float(row.get('Komisi GrabKitchen')),
-                        total=safe_float(row.get('Total')),
-                        amount=safe_float(row.get('Amount')),
-                        penjualan_bersih=safe_float(row.get('Penjualan bersih'))
-                    )
+                    report = {
+                        'brand_name': outlet.brand,
+                        'outlet_code': outlet.outlet_code,
+                        'nama_toko': store_name,
+                        'id_toko': store_id,
+                        'tanggal_dibuat': tanggal_dibuat,
+                        'diperbarui_pada': tanggal_diperbarui,
+                        'jenis': row.get('Jenis', ''),
+                        'kategori': row.get('Kategori', ''),
+                        'subkategori': row.get('Subkategori', ''),
+                        'status': row.get('Status', ''),
+                        'id_transaksi': transaction_id,
+                        'id_pesanan_panjang': long_order_id,
+                        'id_pesanan_pendek': short_order_id,
+                        'komisi_grabkitchen': safe_float(row.get('Komisi GrabKitchen')),
+                        'total': safe_float(row.get('Total')),
+                        'amount': safe_float(row.get('Amount')),
+                        'penjualan_bersih': safe_float(row.get('Penjualan bersih')),
+                    }
                     reports.append(report)
                     remember_grab_identifiers(transaction_id, long_order_id, short_order_id)
                     affected_outlets.add((outlet.outlet_code, tanggal_diperbarui.date()))
@@ -1295,7 +1365,7 @@ def upload_report_grab():
                     continue
 
             if reports:
-                db.session.bulk_save_objects(reports)
+                db.session.bulk_insert_mappings(GrabFoodReport, reports)
 
         for outlet_id, date in affected_outlets:
             update_daily_total_for_outlet(outlet_id, date, 'grab')
