@@ -1337,6 +1337,12 @@ def upload_report_grab():
                     except ValueError:
                         tanggal_dibuat = datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S')
                         tanggal_diperbarui = datetime.strptime(date_made_str, '%Y-%m-%d %H:%M:%S')
+                    amount = safe_float(row.get('Amount'))
+                    total = safe_float(row.get('Total'))
+                    if amount == 0 or total == 0:
+                        skipped_reports += 1
+                        continue
+
                     report = {
                         'brand_name': outlet.brand,
                         'outlet_code': outlet.outlet_code,
@@ -1352,8 +1358,8 @@ def upload_report_grab():
                         'id_pesanan_panjang': long_order_id,
                         'id_pesanan_pendek': short_order_id,
                         'komisi_grabkitchen': safe_float(row.get('Komisi GrabKitchen')),
-                        'total': safe_float(row.get('Total')),
-                        'amount': safe_float(row.get('Amount')),
+                        'total': total,
+                        'amount': amount,
                         'penjualan_bersih': safe_float(row.get('Penjualan bersih')),
                     }
                     reports.append(report)
