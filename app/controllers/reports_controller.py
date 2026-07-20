@@ -720,14 +720,151 @@ def upload_report_gojek():
         skipped_reports = 0
         store_id_map = {}
         affected_outlets = set()
+        seen_transaction_ids = set()
+        seen_order_ids = set()
+        seen_amount_keys = set()
+
+        outlets = Outlet.query.all()
+        outlets_by_store_id = {outlet.store_id_gojek: outlet for outlet in outlets if outlet.store_id_gojek}
+        outlets_by_name = {outlet.outlet_name_gojek: outlet for outlet in outlets if outlet.outlet_name_gojek}
+
+        def clean_identifier(value):
+            if value is None:
+                return None
+            value = str(value).strip().strip("'")
+            return value or None
+
+        def safe_float(value):
+            if not value:
+                return 0
+            try:
+                return float(str(value).replace(',', '').replace("'", ''))
+            except (ValueError, TypeError):
+                return 0
+
+        def safe_float_or_none(value):
+            try:
+                return float(str(value).replace(',', '').replace("'", ''))
+            except (ValueError, TypeError):
+                return None
+
+        def chunks(values, size=1000):
+            values = list(values)
+            for index in range(0, len(values), size):
+                yield values[index:index + size]
+
+        def load_existing_gojek_identifiers(transaction_ids, order_ids):
+            existing_transaction_ids = set()
+            existing_order_ids = set()
+
+            for batch in chunks(transaction_ids):
+                existing_transaction_ids.update(
+                    identifier
+                    for (identifier,) in db.session.query(GojekReport.transaction_id)
+                    .filter(GojekReport.transaction_id.in_(batch))
+                    .all()
+                    if identifier
+                )
+
+            for batch in chunks(order_ids):
+                existing_order_ids.update(
+                    identifier
+                    for (identifier,) in db.session.query(GojekReport.order_id)
+                    .filter(GojekReport.order_id.in_(batch))
+                    .all()
+                    if identifier
+                )
+
+            return existing_transaction_ids, existing_order_ids
+
+        def load_existing_gojek_amount_keys(rows):
+            merchant_ids = set()
+            transaction_dates = set()
+
+            for row in rows:
+                merchant_id = row.get('Merchant ID')
+                if not merchant_id:
+                    continue
+                try:
+                    transaction_date = datetime.strptime(row.get('Transaction Date', ''), '%m/%d/%Y').date()
+                except ValueError:
+                    continue
+                merchant_ids.add(merchant_id)
+                transaction_dates.add(transaction_date)
+
+            if not merchant_ids or not transaction_dates:
+                return set()
+
+            existing_amount_keys = set()
+            existing_reports = db.session.query(
+                GojekReport.transaction_date,
+                GojekReport.merchant_id,
+                GojekReport.amount,
+                GojekReport.nett_amount,
+            ).filter(
+                GojekReport.merchant_id.in_(merchant_ids),
+                GojekReport.transaction_date.in_(transaction_dates),
+            ).all()
+
+            for transaction_date, merchant_id, amount, nett_amount in existing_reports:
+                if amount is not None:
+                    existing_amount_keys.add((transaction_date, merchant_id, float(amount)))
+                if nett_amount is not None:
+                    existing_amount_keys.add((transaction_date, merchant_id, float(nett_amount)))
+
+            return existing_amount_keys
+
+        def has_duplicate_gojek_identifier(transaction_id, order_id, existing_transaction_ids, existing_order_ids):
+            if transaction_id and transaction_id in seen_transaction_ids:
+                return True
+            if order_id and order_id in seen_order_ids:
+                return True
+            return (
+                (transaction_id and transaction_id in existing_transaction_ids)
+                or (order_id and order_id in existing_order_ids)
+            )
+
+        def remember_gojek_identifiers(transaction_id, order_id):
+            if transaction_id:
+                seen_transaction_ids.add(transaction_id)
+            if order_id:
+                seen_order_ids.add(order_id)
+
+        def has_duplicate_gojek_amount(transaction_date, merchant_id, amount, existing_amount_keys):
+            if amount is None or not merchant_id:
+                return False
+
+            amount_key = (transaction_date, merchant_id, amount)
+            return amount_key in seen_amount_keys or amount_key in existing_amount_keys
+
+        def remember_gojek_amount(transaction_date, merchant_id, amount):
+            if amount is not None and merchant_id:
+                seen_amount_keys.add((transaction_date, merchant_id, amount))
 
         for file in files:
             file_contents = file.read().decode('utf-8')
             csv_file = StringIO(file_contents)
             reader = csv.DictReader(csv_file)
+            rows = list(reader)
+
+            transaction_ids = set()
+            order_ids = set()
+            for row in rows:
+                transaction_id = clean_identifier(row.get('Transaction ID'))
+                order_id = clean_identifier(row.get('Order ID'))
+                if transaction_id:
+                    transaction_ids.add(transaction_id)
+                if order_id:
+                    order_ids.add(order_id)
+
+            existing_transaction_ids, existing_order_ids = load_existing_gojek_identifiers(
+                transaction_ids,
+                order_ids,
+            )
+            existing_amount_keys = load_existing_gojek_amount_keys(rows)
             
             reports = []
-            for row in reader:
+            for row in rows:
                 merchant_name = row.get('Merchant name', '').strip()
                 merchant_id = row.get('Merchant ID')
                 if merchant_name and merchant_id:
@@ -735,17 +872,22 @@ def upload_report_gojek():
 
                 outlet = None
                 if merchant_id:
-                    outlet = Outlet.query.filter_by(store_id_gojek=merchant_id).first()
+                    outlet = outlets_by_store_id.get(merchant_id)
                 if not outlet and merchant_name:
-                    outlet = Outlet.query.filter_by(outlet_name_gojek=merchant_name).first()
+                    outlet = outlets_by_name.get(merchant_name)
                 if not outlet:
                     continue
 
-                # Read raw ids (strip quotes/spaces)
-                order_no_raw = (row.get('Order ID', '') or '').strip()
-                order_no = order_no_raw.strip("'") if order_no_raw else ''
-                transaction_id_raw = (row.get('Transaction ID', '') or '').strip()
-                transaction_id_check = transaction_id_raw.strip("'") if transaction_id_raw else ''
+                transaction_id = clean_identifier(row.get('Transaction ID'))
+                order_id = clean_identifier(row.get('Order ID'))
+                if has_duplicate_gojek_identifier(
+                    transaction_id,
+                    order_id,
+                    existing_transaction_ids,
+                    existing_order_ids,
+                ):
+                    skipped_reports += 1
+                    continue
 
                 try:
                     date_str = row.get('Transaction Date', '')
@@ -761,60 +903,39 @@ def upload_report_gojek():
                     except ValueError:
                         transaction_time = None
 
-                    # Duplicate checks: prefer transaction_id, then order_id, then fallback by date+merchant_id+amount
-                    existing_report = None
-                    if transaction_id_check:
-                        existing_report = GojekReport.query.filter_by(transaction_id=transaction_id_check).first()
-
-                    if not existing_report and order_no:
-                        existing_report = GojekReport.query.filter_by(order_id=order_no).first()
-
-                    if not existing_report:
-                        # Fallback: compare by date + merchant_id + amount (if available)
-                        def safe_float(v):
-                            try:
-                                return float(str(v).replace(',', '').replace("'", ''))
-                            except Exception:
-                                return None
-
-                        parsed_amount = safe_float(row.get('Amount', 0) or 0)
-                        if parsed_amount is not None and merchant_id:
-                            existing_report = GojekReport.query.filter(
-                                GojekReport.transaction_date == transaction_date,
-                                GojekReport.merchant_id == merchant_id,
-                                (GojekReport.amount == parsed_amount) | (GojekReport.nett_amount == parsed_amount)
-                            ).first()
-
-                    if existing_report:
+                    parsed_amount = safe_float_or_none(row.get('Amount', 0) or 0)
+                    if has_duplicate_gojek_amount(transaction_date, merchant_id, parsed_amount, existing_amount_keys):
                         skipped_reports += 1
                         continue
 
-                    report = GojekReport(
-                        brand_name=outlet.brand,
-                        outlet_code=outlet.outlet_code,
-                        transaction_id=row.get('Transaction ID', '').strip("'"),
-                        transaction_date=transaction_date,
-                        transaction_time=transaction_time,
-                        stan=row.get('Stan', ''),
-                        nett_amount=row.get('Nett Amount', 0),
-                        amount=row.get('Amount', 0),
-                        transaction_status=row.get('Transaction Status', ''),
-                        transaction_reference=row.get('Transaction Reference', '').strip("'"),
-                        order_id=row.get('Order ID', '').strip("'"),
-                        feature=row.get('Feature', ''),
-                        payment_type=row.get('Payment Type', ''),
-                        merchant_name=merchant_name,
-                        merchant_id=merchant_id,
-                        promo_type=row.get('Promo Type', ''),
-                        promo_name=row.get('Promo Name', ''),
-                        gopay_promo=float(row.get('Gopay promo', 0).replace(',', '') or 0),
-                        gofood_discount=float(row.get('GoFood discount', 0).replace(',', '') or 0),
-                        voucher_commission=float(row.get('Voucher commission', 0).replace(',', '') or 0),
-                        tax=float(row.get('Tax', 0).replace(',', '') or 0),
-                        witholding_tax=float(row.get('Witholding tax', 0).replace(',', '') or 0),
-                        currency=row.get('Currency', 'IDR')
-                    )
+                    report = {
+                        'brand_name': outlet.brand,
+                        'outlet_code': outlet.outlet_code,
+                        'transaction_id': transaction_id or '',
+                        'transaction_date': transaction_date,
+                        'transaction_time': transaction_time,
+                        'stan': row.get('Stan', ''),
+                        'nett_amount': safe_float(row.get('Nett Amount')),
+                        'amount': safe_float(row.get('Amount')),
+                        'transaction_status': row.get('Transaction Status', ''),
+                        'transaction_reference': clean_identifier(row.get('Transaction Reference')) or '',
+                        'order_id': order_id or '',
+                        'feature': row.get('Feature', ''),
+                        'payment_type': row.get('Payment Type', ''),
+                        'merchant_name': merchant_name,
+                        'merchant_id': merchant_id,
+                        'promo_type': row.get('Promo Type', ''),
+                        'promo_name': row.get('Promo Name', ''),
+                        'gopay_promo': safe_float(row.get('Gopay promo')),
+                        'gofood_discount': safe_float(row.get('GoFood discount')),
+                        'voucher_commission': safe_float(row.get('Voucher commission')),
+                        'tax': safe_float(row.get('Tax')),
+                        'witholding_tax': safe_float(row.get('Witholding tax')),
+                        'currency': row.get('Currency', 'IDR')
+                    }
                     reports.append(report)
+                    remember_gojek_identifiers(transaction_id, order_id)
+                    remember_gojek_amount(transaction_date, merchant_id, parsed_amount)
                     affected_outlets.add((outlet.outlet_code, transaction_date))
                     total_reports += 1
                 except (ValueError, TypeError) as e:
@@ -822,7 +943,7 @@ def upload_report_gojek():
                     continue
 
             if reports:
-                db.session.bulk_save_objects(reports)
+                db.session.bulk_insert_mappings(GojekReport, reports)
 
         for outlet_id, date in affected_outlets:
             update_daily_total_for_outlet(outlet_id, date, 'gojek')
