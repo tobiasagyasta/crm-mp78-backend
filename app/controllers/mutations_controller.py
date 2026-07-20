@@ -15,7 +15,7 @@ from app.models.income_category import IncomeCategory
 from app.models.expense_category import ExpenseCategory
 mutations_bp = Blueprint('mutations', __name__)
 
-UNASSIGNED_PLATFORM_CODE_EXCLUDED_PLATFORMS = ('PKB', 'Grab')
+UNASSIGNED_PLATFORM_CODE_EXCLUDED_PLATFORMS = ('PKB', 'Grab', 'Gojek', 'Shopee', 'ShopeeFood')
 
 
 def parse_date_param(param_name):

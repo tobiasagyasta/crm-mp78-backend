@@ -611,12 +611,16 @@ def upload_report_mutation():
                         **parsed
                     )
 
-                    # Check for duplicates in the database only
-                    exists = BankMutation.query.filter_by(
-                        tanggal=mutation.tanggal,
-                        transaction_amount=mutation.transaction_amount,
-                        platform_code=mutation.platform_code,
-                    ).first()
+                    if mutation.platform_name == 'Unknown' and mutation.transaction_id:
+                        exists = BankMutation.query.filter_by(
+                            transaction_id=mutation.transaction_id,
+                        ).first()
+                    else:
+                        exists = BankMutation.query.filter_by(
+                            tanggal=mutation.tanggal,
+                            transaction_amount=mutation.transaction_amount,
+                            platform_code=mutation.platform_code,
+                        ).first()
                     if exists:
                         skipped_mutations += 1
                         debug_skipped.append({
@@ -2119,6 +2123,10 @@ def get_failed_cancelled_transfers():
             db.or_(
                 GrabFoodReport.status.is_(None),
                 ~GrabFoodReport.status.in_(successful_statuses)
+            ),
+            db.or_(
+                func.coalesce(GrabFoodReport.amount, 0) != 0,
+                func.coalesce(GrabFoodReport.total, 0) != 0
             )
         )
 

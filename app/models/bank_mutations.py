@@ -419,6 +419,34 @@ class BankMutation(db.Model):
         }
 
     @staticmethod
+    def parse_unassigned_row(row, rekening_number=None):
+        row = BankMutation._normalize_statement_mutation_row(row)
+        if not row:
+            return None
+
+        tanggal = BankMutation._parse_transaction_date(row[0])
+        transaksi = BankMutation._as_text(BankMutation._row_value(row, 1))
+        amount_str = BankMutation._as_text(BankMutation._row_value(row, 3))
+        transaction_type = 'DB' if 'DB' in amount_str.upper() else 'CR' if 'CR' in amount_str.upper() else None
+        transaction_amount = BankMutation._parse_currency(amount_str)
+
+        return {
+            'tanggal': tanggal,
+            'transaksi': transaksi,
+            'transaction_type': transaction_type,
+            'transaction_id': BankMutation._build_mp78_transaction_id(
+                rekening_number,
+                tanggal,
+                transaksi,
+                amount_str,
+                BankMutation._row_value(row, 4),
+            ),
+            'transaction_amount': transaction_amount,
+            'platform_code': None,
+            'platform_name': 'Unknown',
+        }
+
+    @staticmethod
     def parse_gojek_row(row):
         """
         Parse a Gojek CSV row (list of strings) into a dict suitable for BankMutation.
@@ -569,7 +597,8 @@ class BankMutation(db.Model):
             mp78_data = BankMutation.parse_mp78_row(normalized_row, rekening_number)
             if mp78_data:
                 mp78_data['_mutation_model'] = 'mp78'
-            return mp78_data
+                return mp78_data
+            return BankMutation.parse_unassigned_row(normalized_row, rekening_number)
 
         return parser(normalized_row)
 
