@@ -8,7 +8,7 @@ class Config:
         'pool_recycle': 300,
         'pool_size': 5,
         'max_overflow': 5,
-        'pool_timeout': 30,
+        'pool_timeout': 300,
     }
     JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', 'your-secret-key')
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=1)
