@@ -611,12 +611,16 @@ def upload_report_mutation():
                         **parsed
                     )
 
-                    # Check for duplicates in the database only
-                    exists = BankMutation.query.filter_by(
-                        tanggal=mutation.tanggal,
-                        transaction_amount=mutation.transaction_amount,
-                        platform_code=mutation.platform_code,
-                    ).first()
+                    if mutation.platform_name == 'Unknown' and mutation.transaction_id:
+                        exists = BankMutation.query.filter_by(
+                            transaction_id=mutation.transaction_id,
+                        ).first()
+                    else:
+                        exists = BankMutation.query.filter_by(
+                            tanggal=mutation.tanggal,
+                            transaction_amount=mutation.transaction_amount,
+                            platform_code=mutation.platform_code,
+                        ).first()
                     if exists:
                         skipped_mutations += 1
                         debug_skipped.append({
@@ -720,14 +724,96 @@ def upload_report_gojek():
         skipped_reports = 0
         store_id_map = {}
         affected_outlets = set()
+        seen_transaction_references = set()
+        seen_transaction_ids = set()
+
+        outlets = Outlet.query.all()
+        outlets_by_store_id = {outlet.store_id_gojek: outlet for outlet in outlets if outlet.store_id_gojek}
+        outlets_by_name = {outlet.outlet_name_gojek: outlet for outlet in outlets if outlet.outlet_name_gojek}
+
+        def clean_identifier(value):
+            if value is None:
+                return None
+            value = str(value).strip().strip("'")
+            return value or None
+
+        def safe_float(value):
+            if not value:
+                return 0
+            try:
+                return float(str(value).replace(',', '').replace("'", ''))
+            except (ValueError, TypeError):
+                return 0
+
+        def chunks(values, size=1000):
+            values = list(values)
+            for index in range(0, len(values), size):
+                yield values[index:index + size]
+
+        def load_existing_gojek_identifiers(transaction_references, transaction_ids):
+            existing_transaction_references = set()
+            existing_transaction_ids = set()
+
+            for batch in chunks(transaction_references):
+                existing_transaction_references.update(
+                    identifier
+                    for (identifier,) in db.session.query(GojekReport.transaction_reference)
+                    .filter(GojekReport.transaction_reference.in_(batch))
+                    .all()
+                    if identifier
+                )
+
+            for batch in chunks(transaction_ids):
+                existing_transaction_ids.update(
+                    identifier
+                    for (identifier,) in db.session.query(GojekReport.transaction_id)
+                    .filter(GojekReport.transaction_id.in_(batch))
+                    .all()
+                    if identifier
+                )
+
+            return existing_transaction_references, existing_transaction_ids
+
+        def has_duplicate_gojek_identifier(transaction_reference, transaction_id, existing_transaction_references, existing_transaction_ids):
+            if transaction_reference and transaction_reference in seen_transaction_references:
+                return True
+            if transaction_id and transaction_id in seen_transaction_ids:
+                return True
+            return (
+                (transaction_reference and transaction_reference in existing_transaction_references)
+                or
+                (transaction_id and transaction_id in existing_transaction_ids)
+            )
+
+        def remember_gojek_identifiers(transaction_reference, transaction_id):
+            if transaction_reference:
+                seen_transaction_references.add(transaction_reference)
+            if transaction_id:
+                seen_transaction_ids.add(transaction_id)
 
         for file in files:
             file_contents = file.read().decode('utf-8')
             csv_file = StringIO(file_contents)
             reader = csv.DictReader(csv_file)
+            rows = list(reader)
+
+            transaction_references = set()
+            transaction_ids = set()
+            for row in rows:
+                transaction_reference = clean_identifier(row.get('Transaction Reference'))
+                transaction_id = clean_identifier(row.get('Transaction ID'))
+                if transaction_reference:
+                    transaction_references.add(transaction_reference)
+                if transaction_id:
+                    transaction_ids.add(transaction_id)
+
+            existing_transaction_references, existing_transaction_ids = load_existing_gojek_identifiers(
+                transaction_references,
+                transaction_ids,
+            )
             
             reports = []
-            for row in reader:
+            for row in rows:
                 merchant_name = row.get('Merchant name', '').strip()
                 merchant_id = row.get('Merchant ID')
                 if merchant_name and merchant_id:
@@ -735,17 +821,23 @@ def upload_report_gojek():
 
                 outlet = None
                 if merchant_id:
-                    outlet = Outlet.query.filter_by(store_id_gojek=merchant_id).first()
+                    outlet = outlets_by_store_id.get(merchant_id)
                 if not outlet and merchant_name:
-                    outlet = Outlet.query.filter_by(outlet_name_gojek=merchant_name).first()
+                    outlet = outlets_by_name.get(merchant_name)
                 if not outlet:
                     continue
 
-                # Read raw ids (strip quotes/spaces)
-                order_no_raw = (row.get('Order ID', '') or '').strip()
-                order_no = order_no_raw.strip("'") if order_no_raw else ''
-                transaction_id_raw = (row.get('Transaction ID', '') or '').strip()
-                transaction_id_check = transaction_id_raw.strip("'") if transaction_id_raw else ''
+                transaction_id = clean_identifier(row.get('Transaction ID'))
+                transaction_reference = clean_identifier(row.get('Transaction Reference'))
+                order_id = clean_identifier(row.get('Order ID'))
+                if has_duplicate_gojek_identifier(
+                    transaction_reference,
+                    transaction_id,
+                    existing_transaction_references,
+                    existing_transaction_ids,
+                ):
+                    skipped_reports += 1
+                    continue
 
                 try:
                     date_str = row.get('Transaction Date', '')
@@ -761,60 +853,33 @@ def upload_report_gojek():
                     except ValueError:
                         transaction_time = None
 
-                    # Duplicate checks: prefer transaction_id, then order_id, then fallback by date+merchant_id+amount
-                    existing_report = None
-                    if transaction_id_check:
-                        existing_report = GojekReport.query.filter_by(transaction_id=transaction_id_check).first()
-
-                    if not existing_report and order_no:
-                        existing_report = GojekReport.query.filter_by(order_id=order_no).first()
-
-                    if not existing_report:
-                        # Fallback: compare by date + merchant_id + amount (if available)
-                        def safe_float(v):
-                            try:
-                                return float(str(v).replace(',', '').replace("'", ''))
-                            except Exception:
-                                return None
-
-                        parsed_amount = safe_float(row.get('Amount', 0) or 0)
-                        if parsed_amount is not None and merchant_id:
-                            existing_report = GojekReport.query.filter(
-                                GojekReport.transaction_date == transaction_date,
-                                GojekReport.merchant_id == merchant_id,
-                                (GojekReport.amount == parsed_amount) | (GojekReport.nett_amount == parsed_amount)
-                            ).first()
-
-                    if existing_report:
-                        skipped_reports += 1
-                        continue
-
-                    report = GojekReport(
-                        brand_name=outlet.brand,
-                        outlet_code=outlet.outlet_code,
-                        transaction_id=row.get('Transaction ID', '').strip("'"),
-                        transaction_date=transaction_date,
-                        transaction_time=transaction_time,
-                        stan=row.get('Stan', ''),
-                        nett_amount=row.get('Nett Amount', 0),
-                        amount=row.get('Amount', 0),
-                        transaction_status=row.get('Transaction Status', ''),
-                        transaction_reference=row.get('Transaction Reference', '').strip("'"),
-                        order_id=row.get('Order ID', '').strip("'"),
-                        feature=row.get('Feature', ''),
-                        payment_type=row.get('Payment Type', ''),
-                        merchant_name=merchant_name,
-                        merchant_id=merchant_id,
-                        promo_type=row.get('Promo Type', ''),
-                        promo_name=row.get('Promo Name', ''),
-                        gopay_promo=float(row.get('Gopay promo', 0).replace(',', '') or 0),
-                        gofood_discount=float(row.get('GoFood discount', 0).replace(',', '') or 0),
-                        voucher_commission=float(row.get('Voucher commission', 0).replace(',', '') or 0),
-                        tax=float(row.get('Tax', 0).replace(',', '') or 0),
-                        witholding_tax=float(row.get('Witholding tax', 0).replace(',', '') or 0),
-                        currency=row.get('Currency', 'IDR')
-                    )
+                    report = {
+                        'brand_name': outlet.brand,
+                        'outlet_code': outlet.outlet_code,
+                        'transaction_id': transaction_id or '',
+                        'transaction_date': transaction_date,
+                        'transaction_time': transaction_time,
+                        'stan': row.get('Stan', ''),
+                        'nett_amount': safe_float(row.get('Nett Amount')),
+                        'amount': safe_float(row.get('Amount')),
+                        'transaction_status': row.get('Transaction Status', ''),
+                        'transaction_reference': transaction_reference or '',
+                        'order_id': order_id or '',
+                        'feature': row.get('Feature', ''),
+                        'payment_type': row.get('Payment Type', ''),
+                        'merchant_name': merchant_name,
+                        'merchant_id': merchant_id,
+                        'promo_type': row.get('Promo Type', ''),
+                        'promo_name': row.get('Promo Name', ''),
+                        'gopay_promo': safe_float(row.get('Gopay promo')),
+                        'gofood_discount': safe_float(row.get('GoFood discount')),
+                        'voucher_commission': safe_float(row.get('Voucher commission')),
+                        'tax': safe_float(row.get('Tax')),
+                        'witholding_tax': safe_float(row.get('Witholding tax')),
+                        'currency': row.get('Currency', 'IDR')
+                    }
                     reports.append(report)
+                    remember_gojek_identifiers(transaction_reference, transaction_id)
                     affected_outlets.add((outlet.outlet_code, transaction_date))
                     total_reports += 1
                 except (ValueError, TypeError) as e:
@@ -822,7 +887,7 @@ def upload_report_gojek():
                     continue
 
             if reports:
-                db.session.bulk_save_objects(reports)
+                db.session.bulk_insert_mappings(GojekReport, reports)
 
         for outlet_id, date in affected_outlets:
             update_daily_total_for_outlet(outlet_id, date, 'gojek')
@@ -1187,32 +1252,82 @@ def upload_report_grab():
         seen_long_order_ids = set()
         seen_short_order_ids = set()
 
+        outlets = Outlet.query.all()
+        outlets_by_store_id = {outlet.store_id_grab: outlet for outlet in outlets if outlet.store_id_grab}
+        outlets_by_name = {outlet.outlet_name_grab: outlet for outlet in outlets if outlet.outlet_name_grab}
+
         def clean_identifier(value):
             if value is None:
                 return None
             value = str(value).strip()
             return value or None
 
-        def has_duplicate_grab_identifier(transaction_id, long_order_id, short_order_id):
+        def safe_float(value):
+            if not value:
+                return 0
+            try:
+                return float(str(value).replace(',', ''))
+            except (ValueError, TypeError):
+                return 0
+
+        def chunks(values, size=1000):
+            values = list(values)
+            for index in range(0, len(values), size):
+                yield values[index:index + size]
+
+        def load_existing_grab_identifiers(transaction_ids, long_order_ids, short_order_ids):
+            existing_transaction_ids = set()
+            existing_long_order_ids = set()
+            existing_short_order_ids = set()
+
+            for batch in chunks(transaction_ids):
+                existing_transaction_ids.update(
+                    identifier
+                    for (identifier,) in db.session.query(GrabFoodReport.id_transaksi)
+                    .filter(GrabFoodReport.id_transaksi.in_(batch))
+                    .all()
+                    if identifier
+                )
+
+            for batch in chunks(long_order_ids):
+                existing_long_order_ids.update(
+                    identifier
+                    for (identifier,) in db.session.query(GrabFoodReport.id_pesanan_panjang)
+                    .filter(GrabFoodReport.id_pesanan_panjang.in_(batch))
+                    .all()
+                    if identifier
+                )
+
+            for batch in chunks(short_order_ids):
+                existing_short_order_ids.update(
+                    identifier
+                    for (identifier,) in db.session.query(GrabFoodReport.id_pesanan_pendek)
+                    .filter(GrabFoodReport.id_pesanan_pendek.in_(batch))
+                    .all()
+                    if identifier
+                )
+
+            return existing_transaction_ids, existing_long_order_ids, existing_short_order_ids
+
+        def has_duplicate_grab_identifier(
+            transaction_id,
+            long_order_id,
+            short_order_id,
+            existing_transaction_ids,
+            existing_long_order_ids,
+            existing_short_order_ids,
+        ):
             if transaction_id and transaction_id in seen_transaction_ids:
                 return True
             if long_order_id and long_order_id in seen_long_order_ids:
                 return True
             if short_order_id and short_order_id in seen_short_order_ids:
                 return True
-
-            duplicate_filters = []
-            if transaction_id:
-                duplicate_filters.append(GrabFoodReport.id_transaksi == transaction_id)
-            if long_order_id:
-                duplicate_filters.append(GrabFoodReport.id_pesanan_panjang == long_order_id)
-            if short_order_id:
-                duplicate_filters.append(GrabFoodReport.id_pesanan_pendek == short_order_id)
-
-            if duplicate_filters:
-                return GrabFoodReport.query.filter(or_(*duplicate_filters)).first() is not None
-
-            return False
+            return (
+                (transaction_id and transaction_id in existing_transaction_ids)
+                or (long_order_id and long_order_id in existing_long_order_ids)
+                or (short_order_id and short_order_id in existing_short_order_ids)
+            )
 
         def remember_grab_identifiers(transaction_id, long_order_id, short_order_id):
             if transaction_id:
@@ -1226,9 +1341,30 @@ def upload_report_grab():
             file_contents = file.read().decode('utf-8')
             csv_file = StringIO(file_contents)
             reader = csv.DictReader(csv_file)
+            rows = list(reader)
+
+            transaction_ids = set()
+            long_order_ids = set()
+            short_order_ids = set()
+            for row in rows:
+                transaction_id = clean_identifier(row.get('ID transaksi'))
+                long_order_id = clean_identifier(row.get('ID pesanan (panjang)'))
+                short_order_id = clean_identifier(row.get('ID pesanan (pendek)'))
+                if transaction_id:
+                    transaction_ids.add(transaction_id)
+                if long_order_id:
+                    long_order_ids.add(long_order_id)
+                if short_order_id:
+                    short_order_ids.add(short_order_id)
+
+            existing_transaction_ids, existing_long_order_ids, existing_short_order_ids = load_existing_grab_identifiers(
+                transaction_ids,
+                long_order_ids,
+                short_order_ids,
+            )
             
             reports = []
-            for row in reader:
+            for row in rows:
                 store_name = row.get('Nama toko', '').strip()
                 store_id = row.get('ID toko')
                 if store_name and store_id:
@@ -1236,16 +1372,23 @@ def upload_report_grab():
 
                 outlet = None
                 if store_id:
-                    outlet = Outlet.query.filter_by(store_id_grab=store_id).first()
+                    outlet = outlets_by_store_id.get(store_id)
                 if not outlet and store_name:
-                    outlet = Outlet.query.filter_by(outlet_name_grab=store_name).first()
+                    outlet = outlets_by_name.get(store_name)
                 if not outlet:
                     continue
 
                 transaction_id = clean_identifier(row.get('ID transaksi'))
                 long_order_id = clean_identifier(row.get('ID pesanan (panjang)'))
                 short_order_id = clean_identifier(row.get('ID pesanan (pendek)'))
-                if has_duplicate_grab_identifier(transaction_id, long_order_id, short_order_id):
+                if has_duplicate_grab_identifier(
+                    transaction_id,
+                    long_order_id,
+                    short_order_id,
+                    existing_transaction_ids,
+                    existing_long_order_ids,
+                    existing_short_order_ids,
+                ):
                     skipped_reports += 1
                     continue
 
@@ -1259,33 +1402,31 @@ def upload_report_grab():
                     except ValueError:
                         tanggal_dibuat = datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S')
                         tanggal_diperbarui = datetime.strptime(date_made_str, '%Y-%m-%d %H:%M:%S')
-                    def safe_float(value):
-                        if not value:
-                            return 0
-                        try:
-                            return float(str(value).replace(',', ''))
-                        except (ValueError, TypeError):
-                            return 0
+                    amount = safe_float(row.get('Amount'))
+                    total = safe_float(row.get('Total'))
+                    if amount == 0 or total == 0:
+                        skipped_reports += 1
+                        continue
 
-                    report = GrabFoodReport(
-                        brand_name=outlet.brand,
-                        outlet_code=outlet.outlet_code,
-                        nama_toko=store_name,
-                        id_toko=store_id,
-                        tanggal_dibuat=tanggal_dibuat,
-                        diperbarui_pada=tanggal_diperbarui,
-                        jenis=row.get('Jenis', ''),
-                        kategori=row.get('Kategori', ''),
-                        subkategori=row.get('Subkategori', ''),
-                        status=row.get('Status', ''),
-                        id_transaksi=transaction_id,
-                        id_pesanan_panjang=long_order_id,
-                        id_pesanan_pendek=short_order_id,
-                        komisi_grabkitchen=safe_float(row.get('Komisi GrabKitchen')),
-                        total=safe_float(row.get('Total')),
-                        amount=safe_float(row.get('Amount')),
-                        penjualan_bersih=safe_float(row.get('Penjualan bersih'))
-                    )
+                    report = {
+                        'brand_name': outlet.brand,
+                        'outlet_code': outlet.outlet_code,
+                        'nama_toko': store_name,
+                        'id_toko': store_id,
+                        'tanggal_dibuat': tanggal_dibuat,
+                        'diperbarui_pada': tanggal_diperbarui,
+                        'jenis': row.get('Jenis', ''),
+                        'kategori': row.get('Kategori', ''),
+                        'subkategori': row.get('Subkategori', ''),
+                        'status': row.get('Status', ''),
+                        'id_transaksi': transaction_id,
+                        'id_pesanan_panjang': long_order_id,
+                        'id_pesanan_pendek': short_order_id,
+                        'komisi_grabkitchen': safe_float(row.get('Komisi GrabKitchen')),
+                        'total': total,
+                        'amount': amount,
+                        'penjualan_bersih': safe_float(row.get('Penjualan bersih')),
+                    }
                     reports.append(report)
                     remember_grab_identifiers(transaction_id, long_order_id, short_order_id)
                     affected_outlets.add((outlet.outlet_code, tanggal_diperbarui.date()))
@@ -1295,7 +1436,7 @@ def upload_report_grab():
                     continue
 
             if reports:
-                db.session.bulk_save_objects(reports)
+                db.session.bulk_insert_mappings(GrabFoodReport, reports)
 
         for outlet_id, date in affected_outlets:
             update_daily_total_for_outlet(outlet_id, date, 'grab')
@@ -1922,6 +2063,10 @@ def get_failed_cancelled_transfers():
             db.or_(
                 GrabFoodReport.status.is_(None),
                 ~GrabFoodReport.status.in_(successful_statuses)
+            ),
+            db.or_(
+                func.coalesce(GrabFoodReport.amount, 0) != 0,
+                func.coalesce(GrabFoodReport.total, 0) != 0
             )
         )
 
