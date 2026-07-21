@@ -724,9 +724,8 @@ def upload_report_gojek():
         skipped_reports = 0
         store_id_map = {}
         affected_outlets = set()
+        seen_transaction_references = set()
         seen_transaction_ids = set()
-        seen_order_ids = set()
-        seen_amount_keys = set()
 
         outlets = Outlet.query.all()
         outlets_by_store_id = {outlet.store_id_gojek: outlet for outlet in outlets if outlet.store_id_gojek}
@@ -746,20 +745,23 @@ def upload_report_gojek():
             except (ValueError, TypeError):
                 return 0
 
-        def safe_float_or_none(value):
-            try:
-                return float(str(value).replace(',', '').replace("'", ''))
-            except (ValueError, TypeError):
-                return None
-
         def chunks(values, size=1000):
             values = list(values)
             for index in range(0, len(values), size):
                 yield values[index:index + size]
 
-        def load_existing_gojek_identifiers(transaction_ids, order_ids):
+        def load_existing_gojek_identifiers(transaction_references, transaction_ids):
+            existing_transaction_references = set()
             existing_transaction_ids = set()
-            existing_order_ids = set()
+
+            for batch in chunks(transaction_references):
+                existing_transaction_references.update(
+                    identifier
+                    for (identifier,) in db.session.query(GojekReport.transaction_reference)
+                    .filter(GojekReport.transaction_reference.in_(batch))
+                    .all()
+                    if identifier
+                )
 
             for batch in chunks(transaction_ids):
                 existing_transaction_ids.update(
@@ -770,80 +772,24 @@ def upload_report_gojek():
                     if identifier
                 )
 
-            for batch in chunks(order_ids):
-                existing_order_ids.update(
-                    identifier
-                    for (identifier,) in db.session.query(GojekReport.order_id)
-                    .filter(GojekReport.order_id.in_(batch))
-                    .all()
-                    if identifier
-                )
+            return existing_transaction_references, existing_transaction_ids
 
-            return existing_transaction_ids, existing_order_ids
-
-        def load_existing_gojek_amount_keys(rows):
-            merchant_ids = set()
-            transaction_dates = set()
-
-            for row in rows:
-                merchant_id = row.get('Merchant ID')
-                if not merchant_id:
-                    continue
-                try:
-                    transaction_date = datetime.strptime(row.get('Transaction Date', ''), '%m/%d/%Y').date()
-                except ValueError:
-                    continue
-                merchant_ids.add(merchant_id)
-                transaction_dates.add(transaction_date)
-
-            if not merchant_ids or not transaction_dates:
-                return set()
-
-            existing_amount_keys = set()
-            existing_reports = db.session.query(
-                GojekReport.transaction_date,
-                GojekReport.merchant_id,
-                GojekReport.amount,
-                GojekReport.nett_amount,
-            ).filter(
-                GojekReport.merchant_id.in_(merchant_ids),
-                GojekReport.transaction_date.in_(transaction_dates),
-            ).all()
-
-            for transaction_date, merchant_id, amount, nett_amount in existing_reports:
-                if amount is not None:
-                    existing_amount_keys.add((transaction_date, merchant_id, float(amount)))
-                if nett_amount is not None:
-                    existing_amount_keys.add((transaction_date, merchant_id, float(nett_amount)))
-
-            return existing_amount_keys
-
-        def has_duplicate_gojek_identifier(transaction_id, order_id, existing_transaction_ids, existing_order_ids):
+        def has_duplicate_gojek_identifier(transaction_reference, transaction_id, existing_transaction_references, existing_transaction_ids):
+            if transaction_reference and transaction_reference in seen_transaction_references:
+                return True
             if transaction_id and transaction_id in seen_transaction_ids:
                 return True
-            if order_id and order_id in seen_order_ids:
-                return True
             return (
+                (transaction_reference and transaction_reference in existing_transaction_references)
+                or
                 (transaction_id and transaction_id in existing_transaction_ids)
-                or (order_id and order_id in existing_order_ids)
             )
 
-        def remember_gojek_identifiers(transaction_id, order_id):
+        def remember_gojek_identifiers(transaction_reference, transaction_id):
+            if transaction_reference:
+                seen_transaction_references.add(transaction_reference)
             if transaction_id:
                 seen_transaction_ids.add(transaction_id)
-            if order_id:
-                seen_order_ids.add(order_id)
-
-        def has_duplicate_gojek_amount(transaction_date, merchant_id, amount, existing_amount_keys):
-            if amount is None or not merchant_id:
-                return False
-
-            amount_key = (transaction_date, merchant_id, amount)
-            return amount_key in seen_amount_keys or amount_key in existing_amount_keys
-
-        def remember_gojek_amount(transaction_date, merchant_id, amount):
-            if amount is not None and merchant_id:
-                seen_amount_keys.add((transaction_date, merchant_id, amount))
 
         for file in files:
             file_contents = file.read().decode('utf-8')
@@ -851,21 +797,20 @@ def upload_report_gojek():
             reader = csv.DictReader(csv_file)
             rows = list(reader)
 
+            transaction_references = set()
             transaction_ids = set()
-            order_ids = set()
             for row in rows:
+                transaction_reference = clean_identifier(row.get('Transaction Reference'))
                 transaction_id = clean_identifier(row.get('Transaction ID'))
-                order_id = clean_identifier(row.get('Order ID'))
+                if transaction_reference:
+                    transaction_references.add(transaction_reference)
                 if transaction_id:
                     transaction_ids.add(transaction_id)
-                if order_id:
-                    order_ids.add(order_id)
 
-            existing_transaction_ids, existing_order_ids = load_existing_gojek_identifiers(
+            existing_transaction_references, existing_transaction_ids = load_existing_gojek_identifiers(
+                transaction_references,
                 transaction_ids,
-                order_ids,
             )
-            existing_amount_keys = load_existing_gojek_amount_keys(rows)
             
             reports = []
             for row in rows:
@@ -883,12 +828,13 @@ def upload_report_gojek():
                     continue
 
                 transaction_id = clean_identifier(row.get('Transaction ID'))
+                transaction_reference = clean_identifier(row.get('Transaction Reference'))
                 order_id = clean_identifier(row.get('Order ID'))
                 if has_duplicate_gojek_identifier(
+                    transaction_reference,
                     transaction_id,
-                    order_id,
+                    existing_transaction_references,
                     existing_transaction_ids,
-                    existing_order_ids,
                 ):
                     skipped_reports += 1
                     continue
@@ -907,11 +853,6 @@ def upload_report_gojek():
                     except ValueError:
                         transaction_time = None
 
-                    parsed_amount = safe_float_or_none(row.get('Amount', 0) or 0)
-                    if has_duplicate_gojek_amount(transaction_date, merchant_id, parsed_amount, existing_amount_keys):
-                        skipped_reports += 1
-                        continue
-
                     report = {
                         'brand_name': outlet.brand,
                         'outlet_code': outlet.outlet_code,
@@ -922,7 +863,7 @@ def upload_report_gojek():
                         'nett_amount': safe_float(row.get('Nett Amount')),
                         'amount': safe_float(row.get('Amount')),
                         'transaction_status': row.get('Transaction Status', ''),
-                        'transaction_reference': clean_identifier(row.get('Transaction Reference')) or '',
+                        'transaction_reference': transaction_reference or '',
                         'order_id': order_id or '',
                         'feature': row.get('Feature', ''),
                         'payment_type': row.get('Payment Type', ''),
@@ -938,8 +879,7 @@ def upload_report_gojek():
                         'currency': row.get('Currency', 'IDR')
                     }
                     reports.append(report)
-                    remember_gojek_identifiers(transaction_id, order_id)
-                    remember_gojek_amount(transaction_date, merchant_id, parsed_amount)
+                    remember_gojek_identifiers(transaction_reference, transaction_id)
                     affected_outlets.add((outlet.outlet_code, transaction_date))
                     total_reports += 1
                 except (ValueError, TypeError) as e:
