@@ -1250,7 +1250,7 @@ def upload_report_grab():
         affected_outlets = set()
         seen_transaction_ids = set()
         seen_long_order_ids = set()
-        seen_short_order_ids = set()
+        debug_skipped = []
 
         outlets = Outlet.query.all()
         outlets_by_store_id = {outlet.store_id_grab: outlet for outlet in outlets if outlet.store_id_grab}
@@ -1269,6 +1269,24 @@ def upload_report_grab():
                     return value
             return None
 
+        def is_blank_row(row):
+            return not any(str(value).strip() for value in row.values() if value is not None)
+
+        def add_skipped_debug(row_number, reason, row):
+            if len(debug_skipped) >= 50:
+                return
+            debug_skipped.append({
+                'row_number': row_number,
+                'reason': reason,
+                'store_name': row.get('Nama toko'),
+                'store_id': row.get('ID toko'),
+                'transaction_id': row.get('ID transaksi'),
+                'long_order_id': row_value(row, 'ID pesanan (panjang)', 'ID pesanan panjang'),
+                'short_order_id': row_value(row, 'ID pesanan (pendek)', 'ID pesanan pendek'),
+                'amount': row_value(row, 'Amount', 'Jumlah'),
+                'total': row.get('Total'),
+            })
+
         def safe_float(value):
             if not value:
                 return 0
@@ -1282,10 +1300,9 @@ def upload_report_grab():
             for index in range(0, len(values), size):
                 yield values[index:index + size]
 
-        def load_existing_grab_identifiers(transaction_ids, long_order_ids, short_order_ids):
+        def load_existing_grab_identifiers(transaction_ids, long_order_ids):
             existing_transaction_ids = set()
             existing_long_order_ids = set()
-            existing_short_order_ids = set()
 
             for batch in chunks(transaction_ids):
                 existing_transaction_ids.update(
@@ -1305,44 +1322,29 @@ def upload_report_grab():
                     if identifier
                 )
 
-            for batch in chunks(short_order_ids):
-                existing_short_order_ids.update(
-                    identifier
-                    for (identifier,) in db.session.query(GrabFoodReport.id_pesanan_pendek)
-                    .filter(GrabFoodReport.id_pesanan_pendek.in_(batch))
-                    .all()
-                    if identifier
-                )
-
-            return existing_transaction_ids, existing_long_order_ids, existing_short_order_ids
+            return existing_transaction_ids, existing_long_order_ids
 
         def has_duplicate_grab_identifier(
             transaction_id,
             long_order_id,
-            short_order_id,
             existing_transaction_ids,
             existing_long_order_ids,
-            existing_short_order_ids,
         ):
             if transaction_id and transaction_id in seen_transaction_ids:
-                return True
+                return 'Duplicate transaction ID within upload'
             if long_order_id and long_order_id in seen_long_order_ids:
-                return True
-            if short_order_id and short_order_id in seen_short_order_ids:
-                return True
-            return (
-                (transaction_id and transaction_id in existing_transaction_ids)
-                or (long_order_id and long_order_id in existing_long_order_ids)
-                or (short_order_id and short_order_id in existing_short_order_ids)
-            )
+                return 'Duplicate long order ID within upload'
+            if transaction_id and transaction_id in existing_transaction_ids:
+                return 'Duplicate transaction ID already exists'
+            if long_order_id and long_order_id in existing_long_order_ids:
+                return 'Duplicate long order ID already exists'
+            return None
 
-        def remember_grab_identifiers(transaction_id, long_order_id, short_order_id):
+        def remember_grab_identifiers(transaction_id, long_order_id):
             if transaction_id:
                 seen_transaction_ids.add(transaction_id)
             if long_order_id:
                 seen_long_order_ids.add(long_order_id)
-            if short_order_id:
-                seen_short_order_ids.add(short_order_id)
 
         for file in files:
             file_contents = file.read().decode('utf-8')
@@ -1352,26 +1354,24 @@ def upload_report_grab():
 
             transaction_ids = set()
             long_order_ids = set()
-            short_order_ids = set()
             for row in rows:
                 transaction_id = clean_identifier(row.get('ID transaksi'))
                 long_order_id = clean_identifier(row_value(row, 'ID pesanan (panjang)', 'ID pesanan panjang'))
-                short_order_id = clean_identifier(row_value(row, 'ID pesanan (pendek)', 'ID pesanan pendek'))
                 if transaction_id:
                     transaction_ids.add(transaction_id)
                 if long_order_id:
                     long_order_ids.add(long_order_id)
-                if short_order_id:
-                    short_order_ids.add(short_order_id)
 
-            existing_transaction_ids, existing_long_order_ids, existing_short_order_ids = load_existing_grab_identifiers(
+            existing_transaction_ids, existing_long_order_ids = load_existing_grab_identifiers(
                 transaction_ids,
                 long_order_ids,
-                short_order_ids,
             )
             
             reports = []
-            for row in rows:
+            for row_number, row in enumerate(rows, start=2):
+                if is_blank_row(row):
+                    continue
+
                 store_name = row.get('Nama toko', '').strip()
                 store_id = row.get('ID toko')
                 if store_name and store_id:
@@ -1383,20 +1383,22 @@ def upload_report_grab():
                 if not outlet and store_name:
                     outlet = outlets_by_name.get(store_name)
                 if not outlet:
+                    skipped_reports += 1
+                    add_skipped_debug(row_number, 'Outlet not found for Grab store ID or name', row)
                     continue
 
                 transaction_id = clean_identifier(row.get('ID transaksi'))
                 long_order_id = clean_identifier(row_value(row, 'ID pesanan (panjang)', 'ID pesanan panjang'))
                 short_order_id = clean_identifier(row_value(row, 'ID pesanan (pendek)', 'ID pesanan pendek'))
-                if has_duplicate_grab_identifier(
+                duplicate_reason = has_duplicate_grab_identifier(
                     transaction_id,
                     long_order_id,
-                    short_order_id,
                     existing_transaction_ids,
                     existing_long_order_ids,
-                    existing_short_order_ids,
-                ):
+                )
+                if duplicate_reason:
                     skipped_reports += 1
+                    add_skipped_debug(row_number, duplicate_reason, row)
                     continue
 
                 try:
@@ -1413,6 +1415,7 @@ def upload_report_grab():
                     total = safe_float(row.get('Total'))
                     if amount == 0 or total == 0:
                         skipped_reports += 1
+                        add_skipped_debug(row_number, 'Amount or total is zero', row)
                         continue
 
                     report = {
@@ -1435,11 +1438,13 @@ def upload_report_grab():
                         'penjualan_bersih': safe_float(row.get('Penjualan bersih')),
                     }
                     reports.append(report)
-                    remember_grab_identifiers(transaction_id, long_order_id, short_order_id)
+                    remember_grab_identifiers(transaction_id, long_order_id)
                     affected_outlets.add((outlet.outlet_code, tanggal_diperbarui.date()))
                     total_reports += 1
                 except (ValueError, TypeError) as e:
                     print(f"Error processing row: {e}")
+                    skipped_reports += 1
+                    add_skipped_debug(row_number, f'Parse error: {str(e)}', row)
                     continue
 
             if reports:
@@ -1456,12 +1461,13 @@ def upload_report_grab():
             'msg': 'Reports uploaded and consolidated successfully',
             'total_records': total_reports,
             'skipped_records': skipped_reports,
-            'store_ids_updated': updated_count
+            'store_ids_updated': updated_count,
+            'skipped_rows_debug': debug_skipped
         }), 201
 
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': str(e), 'skipped_rows_debug': debug_skipped}), 500
 
 
 @reports_bp.route('/upload/shopee', methods=['POST'])
