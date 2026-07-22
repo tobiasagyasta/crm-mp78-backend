@@ -1262,6 +1262,13 @@ def upload_report_grab():
             value = str(value).strip()
             return value or None
 
+        def row_value(row, *field_names):
+            for field_name in field_names:
+                value = row.get(field_name)
+                if value not in (None, ''):
+                    return value
+            return None
+
         def safe_float(value):
             if not value:
                 return 0
@@ -1348,8 +1355,8 @@ def upload_report_grab():
             short_order_ids = set()
             for row in rows:
                 transaction_id = clean_identifier(row.get('ID transaksi'))
-                long_order_id = clean_identifier(row.get('ID pesanan (panjang)'))
-                short_order_id = clean_identifier(row.get('ID pesanan (pendek)'))
+                long_order_id = clean_identifier(row_value(row, 'ID pesanan (panjang)', 'ID pesanan panjang'))
+                short_order_id = clean_identifier(row_value(row, 'ID pesanan (pendek)', 'ID pesanan pendek'))
                 if transaction_id:
                     transaction_ids.add(transaction_id)
                 if long_order_id:
@@ -1379,8 +1386,8 @@ def upload_report_grab():
                     continue
 
                 transaction_id = clean_identifier(row.get('ID transaksi'))
-                long_order_id = clean_identifier(row.get('ID pesanan (panjang)'))
-                short_order_id = clean_identifier(row.get('ID pesanan (pendek)'))
+                long_order_id = clean_identifier(row_value(row, 'ID pesanan (panjang)', 'ID pesanan panjang'))
+                short_order_id = clean_identifier(row_value(row, 'ID pesanan (pendek)', 'ID pesanan pendek'))
                 if has_duplicate_grab_identifier(
                     transaction_id,
                     long_order_id,
@@ -1402,7 +1409,7 @@ def upload_report_grab():
                     except ValueError:
                         tanggal_dibuat = datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S')
                         tanggal_diperbarui = datetime.strptime(date_made_str, '%Y-%m-%d %H:%M:%S')
-                    amount = safe_float(row.get('Amount'))
+                    amount = safe_float(row_value(row, 'Amount', 'Jumlah'))
                     total = safe_float(row.get('Total'))
                     if amount == 0 or total == 0:
                         skipped_reports += 1
