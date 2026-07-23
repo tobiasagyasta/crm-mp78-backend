@@ -1,6 +1,6 @@
 from io import BytesIO
 from fpdf import FPDF
-from flask import Blueprint, jsonify, request, Response, send_file
+from flask import Blueprint, jsonify, request, Response, send_file, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.models.gojek_reports import GojekReport
 from app.models.shopee_reports import ShopeeReport
@@ -717,11 +717,19 @@ def upload_report_gojek():
         files = [request.files.get('file')]
     
     if not files or not files[0]:
-        return jsonify({'msg': 'No files uploaded'}), 400
+        return jsonify({
+            'status': 'error',
+            'msg': 'Tidak ada file yang diupload',
+            'message': 'Tidak ada file yang diupload'
+        }), 400
 
+    debug_skipped = []
+    affected_rows = []
     try:
         total_reports = 0
         skipped_reports = 0
+        total_rows = 0
+        files_processed = 0
         store_id_map = {}
         affected_outlets = set()
         seen_transaction_references = set()
@@ -744,6 +752,27 @@ def upload_report_gojek():
                 return float(str(value).replace(',', '').replace("'", ''))
             except (ValueError, TypeError):
                 return 0
+
+        def add_row_detail(status, row_number, reason, row, outlet=None, transaction_date=None):
+            detail = {
+                'platform': 'gojek',
+                'row_number': row_number,
+                'status': status,
+                'reason': reason,
+                'store_name': row.get('Merchant name'),
+                'store_id': row.get('Merchant ID'),
+                'outlet_code': outlet.outlet_code if outlet else None,
+                'transaction_id': clean_identifier(row.get('Transaction ID')),
+                'transaction_reference': clean_identifier(row.get('Transaction Reference')),
+                'order_id': clean_identifier(row.get('Order ID')),
+                'amount': safe_float(row.get('Amount')),
+                'nett_amount': safe_float(row.get('Nett Amount')),
+                'transaction_date': transaction_date.isoformat() if transaction_date else row.get('Transaction Date'),
+            }
+            if len(affected_rows) < 200:
+                affected_rows.append(detail)
+            if status == 'skipped' and len(debug_skipped) < 50:
+                debug_skipped.append(detail)
 
         def chunks(values, size=1000):
             values = list(values)
@@ -792,10 +821,12 @@ def upload_report_gojek():
                 seen_transaction_ids.add(transaction_id)
 
         for file in files:
+            files_processed += 1
             file_contents = file.read().decode('utf-8')
             csv_file = StringIO(file_contents)
             reader = csv.DictReader(csv_file)
             rows = list(reader)
+            total_rows += len(rows)
 
             transaction_references = set()
             transaction_ids = set()
@@ -813,7 +844,7 @@ def upload_report_gojek():
             )
             
             reports = []
-            for row in rows:
+            for row_number, row in enumerate(rows, start=2):
                 merchant_name = row.get('Merchant name', '').strip()
                 merchant_id = row.get('Merchant ID')
                 if merchant_name and merchant_id:
@@ -825,6 +856,16 @@ def upload_report_gojek():
                 if not outlet and merchant_name:
                     outlet = outlets_by_name.get(merchant_name)
                 if not outlet:
+                    skipped_reports += 1
+                    reason = 'Outlet tidak ditemukan berdasarkan ID merchant atau nama merchant'
+                    add_row_detail('skipped', row_number, reason, row)
+                    current_app.logger.warning(
+                        'Baris upload Gojek dilewati: baris=%s alasan=%s merchant=%s merchant_id=%s',
+                        row_number,
+                        reason,
+                        merchant_name,
+                        merchant_id,
+                    )
                     continue
 
                 transaction_id = clean_identifier(row.get('Transaction ID'))
@@ -837,6 +878,16 @@ def upload_report_gojek():
                     existing_transaction_ids,
                 ):
                     skipped_reports += 1
+                    reason = 'Transaksi duplikat di file upload atau sudah pernah diupload'
+                    add_row_detail('skipped', row_number, reason, row, outlet=outlet)
+                    current_app.logger.warning(
+                        'Baris upload Gojek dilewati: baris=%s alasan=%s transaksi=%s referensi=%s outlet=%s',
+                        row_number,
+                        reason,
+                        transaction_id,
+                        transaction_reference,
+                        outlet.outlet_code,
+                    )
                     continue
 
                 try:
@@ -846,6 +897,16 @@ def upload_report_gojek():
                     try:
                         transaction_date = datetime.strptime(date_str, '%m/%d/%Y').date()
                     except ValueError:
+                        skipped_reports += 1
+                        reason = 'Format tanggal transaksi tidak valid'
+                        add_row_detail('skipped', row_number, reason, row, outlet=outlet)
+                        current_app.logger.warning(
+                            'Baris upload Gojek dilewati: baris=%s alasan=%s tanggal=%s transaksi=%s',
+                            row_number,
+                            reason,
+                            date_str,
+                            transaction_id,
+                        )
                         continue
 
                     try:
@@ -882,8 +943,16 @@ def upload_report_gojek():
                     remember_gojek_identifiers(transaction_reference, transaction_id)
                     affected_outlets.add((outlet.outlet_code, transaction_date))
                     total_reports += 1
+                    add_row_detail('imported', row_number, 'Berhasil diproses', row, outlet=outlet, transaction_date=transaction_date)
                 except (ValueError, TypeError) as e:
-                    print(f"Error processing row: {e}")
+                    skipped_reports += 1
+                    reason = f'Gagal membaca data baris: {str(e)}'
+                    add_row_detail('skipped', row_number, reason, row, outlet=outlet)
+                    current_app.logger.warning(
+                        'Baris upload Gojek dilewati: baris=%s alasan=%s',
+                        row_number,
+                        reason,
+                    )
                     continue
 
             if reports:
@@ -895,17 +964,42 @@ def upload_report_gojek():
         db.session.commit()
 
         updated_count = update_store_ids_batch(store_id_map, 'gojek')
+        warnings = []
+        if total_reports + skipped_reports > len(affected_rows):
+            warnings.append('Detail baris dibatasi sampai 200 baris pertama agar response tidak terlalu besar.')
         
         return jsonify({
-            'msg': 'Reports uploaded and consolidated successfully',
+            'status': 'success',
+            'msg': 'Upload laporan Gojek selesai dan data harian berhasil diperbarui',
+            'message': f'Upload Gojek selesai. {total_reports} baris berhasil diproses, {skipped_reports} baris dilewati.',
+            'summary': {
+                'platform': 'gojek',
+                'files_processed': files_processed,
+                'total_rows': total_rows,
+                'imported_rows': total_reports,
+                'skipped_rows': skipped_reports,
+                'store_ids_updated': updated_count,
+                'affected_outlets': len(affected_outlets),
+            },
             'total_records': total_reports,
             'skipped_records': skipped_reports,
-            'store_ids_updated': updated_count
+            'store_ids_updated': updated_count,
+            'affected_rows': affected_rows,
+            'skipped_rows_debug': debug_skipped,
+            'warnings': warnings,
         }), 201
 
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': str(e)}), 500
+        current_app.logger.exception('Gagal memproses upload laporan Gojek')
+        return jsonify({
+            'status': 'error',
+            'msg': 'Terjadi kesalahan saat memproses upload Gojek',
+            'message': 'Terjadi kesalahan saat memproses upload Gojek. Silakan coba lagi atau hubungi admin.',
+            'error': 'Terjadi kesalahan saat memproses upload Gojek',
+            'affected_rows': affected_rows,
+            'skipped_rows_debug': debug_skipped,
+        }), 500
 
 @reports_bp.route('/upload/shopeepay', methods=['POST'])
 def upload_report_shopeepay():
@@ -1241,16 +1335,23 @@ def upload_report_grab():
         files = [request.files.get('file')]
     
     if not files or not files[0]:
-        return jsonify({'msg': 'No files uploaded'}), 400
+        return jsonify({
+            'status': 'error',
+            'msg': 'Tidak ada file yang diupload',
+            'message': 'Tidak ada file yang diupload'
+        }), 400
 
+    debug_skipped = []
+    affected_rows = []
     try:
         total_reports = 0
         skipped_reports = 0
+        total_rows = 0
+        files_processed = 0
         store_id_map = {}
         affected_outlets = set()
         seen_transaction_ids = set()
         seen_long_order_ids = set()
-        debug_skipped = []
 
         outlets = Outlet.query.all()
         outlets_by_store_id = {outlet.store_id_grab: outlet for outlet in outlets if outlet.store_id_grab}
@@ -1272,20 +1373,21 @@ def upload_report_grab():
         def is_blank_row(row):
             return not any(str(value).strip() for value in row.values() if value is not None)
 
-        def add_skipped_debug(row_number, reason, row):
-            if len(debug_skipped) >= 50:
-                return
-            debug_skipped.append({
+        def add_row_detail(status, row_number, reason, row, tanggal_dibuat=None, tanggal_diperbarui=None, total=None):
+            detail = {
+                'platform': 'grab',
                 'row_number': row_number,
+                'status': status,
                 'reason': reason,
-                'store_name': row.get('Nama toko'),
-                'store_id': row.get('ID toko'),
-                'transaction_id': row.get('ID transaksi'),
-                'long_order_id': row_value(row, 'ID pesanan (panjang)', 'ID pesanan panjang'),
-                'short_order_id': row_value(row, 'ID pesanan (pendek)', 'ID pesanan pendek'),
-                'amount': row_value(row, 'Amount', 'Jumlah'),
-                'total': row.get('Total'),
-            })
+                'id_transaksi': clean_identifier(row.get('ID transaksi')),
+                'tanggal_dibuat': tanggal_dibuat.isoformat() if tanggal_dibuat else row.get('Tanggal dibuat'),
+                'tanggal_diperbarui': tanggal_diperbarui.isoformat() if tanggal_diperbarui else row.get('Diperbarui Pada'),
+                'total': total if total is not None else row.get('Total'),
+            }
+            if len(affected_rows) < 200:
+                affected_rows.append(detail)
+            if status == 'skipped' and len(debug_skipped) < 50:
+                debug_skipped.append(detail)
 
         def safe_float(value):
             if not value:
@@ -1331,13 +1433,13 @@ def upload_report_grab():
             existing_long_order_ids,
         ):
             if transaction_id and transaction_id in seen_transaction_ids:
-                return 'Duplicate transaction ID within upload'
+                return 'ID transaksi duplikat di file upload'
             if long_order_id and long_order_id in seen_long_order_ids:
-                return 'Duplicate long order ID within upload'
+                return 'ID pesanan panjang duplikat di file upload'
             if transaction_id and transaction_id in existing_transaction_ids:
-                return 'Duplicate transaction ID already exists'
+                return 'ID transaksi sudah pernah diupload'
             if long_order_id and long_order_id in existing_long_order_ids:
-                return 'Duplicate long order ID already exists'
+                return 'ID pesanan panjang sudah pernah diupload'
             return None
 
         def remember_grab_identifiers(transaction_id, long_order_id):
@@ -1347,10 +1449,12 @@ def upload_report_grab():
                 seen_long_order_ids.add(long_order_id)
 
         for file in files:
+            files_processed += 1
             file_contents = file.read().decode('utf-8')
             csv_file = StringIO(file_contents)
             reader = csv.DictReader(csv_file)
             rows = list(reader)
+            total_rows += len(rows)
 
             transaction_ids = set()
             long_order_ids = set()
@@ -1384,7 +1488,15 @@ def upload_report_grab():
                     outlet = outlets_by_name.get(store_name)
                 if not outlet:
                     skipped_reports += 1
-                    add_skipped_debug(row_number, 'Outlet not found for Grab store ID or name', row)
+                    reason = 'Outlet tidak ditemukan berdasarkan ID toko atau nama toko'
+                    add_row_detail('skipped', row_number, reason, row)
+                    current_app.logger.warning(
+                        'Baris upload Grab dilewati: baris=%s alasan=%s nama_toko=%s id_toko=%s',
+                        row_number,
+                        reason,
+                        store_name,
+                        store_id,
+                    )
                     continue
 
                 transaction_id = clean_identifier(row.get('ID transaksi'))
@@ -1398,7 +1510,14 @@ def upload_report_grab():
                 )
                 if duplicate_reason:
                     skipped_reports += 1
-                    add_skipped_debug(row_number, duplicate_reason, row)
+                    add_row_detail('skipped', row_number, duplicate_reason, row)
+                    current_app.logger.warning(
+                        'Baris upload Grab dilewati: baris=%s alasan=%s id_transaksi=%s id_pesanan_panjang=%s',
+                        row_number,
+                        duplicate_reason,
+                        transaction_id,
+                        long_order_id,
+                    )
                     continue
 
                 try:
@@ -1415,7 +1534,15 @@ def upload_report_grab():
                     total = safe_float(row.get('Total'))
                     if amount == 0 or total == 0:
                         skipped_reports += 1
-                        add_skipped_debug(row_number, 'Amount or total is zero', row)
+                        reason = 'Nominal atau total bernilai 0'
+                        add_row_detail('skipped', row_number, reason, row, tanggal_dibuat, tanggal_diperbarui, total)
+                        current_app.logger.warning(
+                            'Baris upload Grab dilewati: baris=%s alasan=%s id_transaksi=%s total=%s',
+                            row_number,
+                            reason,
+                            transaction_id,
+                            total,
+                        )
                         continue
 
                     report = {
@@ -1441,10 +1568,16 @@ def upload_report_grab():
                     remember_grab_identifiers(transaction_id, long_order_id)
                     affected_outlets.add((outlet.outlet_code, tanggal_diperbarui.date()))
                     total_reports += 1
+                    add_row_detail('imported', row_number, 'Berhasil diproses', row, tanggal_dibuat, tanggal_diperbarui, total)
                 except (ValueError, TypeError) as e:
-                    print(f"Error processing row: {e}")
                     skipped_reports += 1
-                    add_skipped_debug(row_number, f'Parse error: {str(e)}', row)
+                    reason = f'Gagal membaca data baris: {str(e)}'
+                    add_row_detail('skipped', row_number, reason, row)
+                    current_app.logger.warning(
+                        'Baris upload Grab dilewati: baris=%s alasan=%s',
+                        row_number,
+                        reason,
+                    )
                     continue
 
             if reports:
@@ -1456,18 +1589,42 @@ def upload_report_grab():
         db.session.commit()
 
         updated_count = update_store_ids_batch(store_id_map, 'grab')
+        warnings = []
+        if total_reports + skipped_reports > len(affected_rows):
+            warnings.append('Detail baris dibatasi sampai 200 baris pertama agar response tidak terlalu besar.')
         
         return jsonify({
-            'msg': 'Reports uploaded and consolidated successfully',
+            'status': 'success',
+            'msg': 'Upload laporan Grab selesai dan data harian berhasil diperbarui',
+            'message': f'Upload Grab selesai. {total_reports} baris berhasil diproses, {skipped_reports} baris dilewati.',
+            'summary': {
+                'platform': 'grab',
+                'files_processed': files_processed,
+                'total_rows': total_rows,
+                'imported_rows': total_reports,
+                'skipped_rows': skipped_reports,
+                'store_ids_updated': updated_count,
+                'affected_outlets': len(affected_outlets),
+            },
             'total_records': total_reports,
             'skipped_records': skipped_reports,
             'store_ids_updated': updated_count,
-            'skipped_rows_debug': debug_skipped
+            'affected_rows': affected_rows,
+            'skipped_rows_debug': debug_skipped,
+            'warnings': warnings,
         }), 201
 
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': str(e), 'skipped_rows_debug': debug_skipped}), 500
+        current_app.logger.exception('Gagal memproses upload laporan Grab')
+        return jsonify({
+            'status': 'error',
+            'msg': 'Terjadi kesalahan saat memproses upload Grab',
+            'message': 'Terjadi kesalahan saat memproses upload Grab. Silakan coba lagi atau hubungi admin.',
+            'error': 'Terjadi kesalahan saat memproses upload Grab',
+            'affected_rows': affected_rows,
+            'skipped_rows_debug': debug_skipped,
+        }), 500
 
 
 @reports_bp.route('/upload/shopee', methods=['POST'])
