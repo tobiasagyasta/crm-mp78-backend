@@ -266,8 +266,8 @@ class ClosingSheet(BaseSheet):
         total_income = (
             self._get_closing_grand_total_income_contribution('main', 'Gojek_Mutation') +
             self._get_closing_grand_total_income_contribution('main', 'Grab_Net', grab_net_total) +
-            self._get_closing_grand_total_income_contribution('main', 'Shopee_Net') +
-            self._get_closing_grand_total_income_contribution('main', 'ShopeePay_Net') +
+            self._get_closing_grand_total_income_contribution('main', 'Shopee_Mutation') +
+            self._get_closing_grand_total_income_contribution('main', 'ShopeePay_Mutation') +
             self._get_closing_grand_total_income_contribution('main', 'Tiktok_Net') +
             self._get_closing_grand_total_income_contribution('main', self.QPON_AC_HEADER) +
             self._get_closing_grand_total_income_contribution('main', 'Webshop_Net') +
@@ -777,8 +777,8 @@ class ClosingSheet(BaseSheet):
             return [
                 ('Gojek (ac)', 'Gojek_Mutation', 'main'),
                 ('Grab (ac)', 'Grab_Net', 'main'),
-                ('ShopeeFood', 'Shopee_Net', 'main'),
-                ('ShopeePay', 'ShopeePay_Net', 'main'),
+                ('ShopeeFood', 'Shopee_Mutation', 'main'),
+                ('ShopeePay', 'ShopeePay_Mutation', 'main'),
                 ('Tiktok (ac)', 'Tiktok_Net', 'main'),
                 ('Qpon (ac)', self.QPON_AC_HEADER, 'main'),
                 ('Webshop', 'Webshop_Net', 'main'),
@@ -787,8 +787,8 @@ class ClosingSheet(BaseSheet):
         return [
             ('Gojek', 'Gojek_Mutation', 'main'),
             ('Grab', 'Grab_Net', 'main'),
-            ('ShopeeFood', 'Shopee_Net', 'main'),
-            ('ShopeePay', 'ShopeePay_Net', 'main'),
+            ('ShopeeFood', 'Shopee_Mutation', 'main'),
+            ('ShopeePay', 'ShopeePay_Mutation', 'main'),
             ('Tiktok', 'Tiktok_Net', 'main'),
             ('Qpon (ac)', self.QPON_AC_HEADER, 'main'),
             ('Webshop', 'Webshop_Net', 'main'),
