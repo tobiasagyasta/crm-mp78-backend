@@ -22,7 +22,7 @@ from sqlalchemy.orm import aliased
 
 GRAB_REPORTS_TRANSFERRED_ONLY = False
 GRAB_TRANSFERRED_STATUSES = ('Transferred', 'Ditransfer')
-EXCLUDE_COMPLETED_GRAB_REPORTS = True
+EXCLUDE_COMPLETED_GRAB_REPORTS = False
 COMPLETED_GRAB_STATUSES = ('Selesai', 'Completed')
 SHOW_MUTATIONS_WITHOUT_PLATFORM_DATA = True
 
@@ -37,6 +37,31 @@ def _is_transferred_grab_report(report):
 
 def _is_completed_grab_report(report):
     return (report.status or '').strip() in COMPLETED_GRAB_STATUSES
+
+def _matching_completed_grab_dates(reports, daily_totals):
+    transferred_totals = defaultdict(float)
+    completed_totals = defaultdict(float)
+
+    for report in reports:
+        report_datetime = _grab_report_date(report)
+        if not report_datetime:
+            continue
+
+        date = report_datetime.date()
+        if date not in daily_totals:
+            continue
+
+        total = float(report.total or 0)
+        if _is_transferred_grab_report(report):
+            transferred_totals[date] += total
+        elif _is_completed_grab_report(report):
+            completed_totals[date] += total
+
+    return {
+        date
+        for date, completed_total in completed_totals.items()
+        if date in transferred_totals and round(transferred_totals[date], 2) == round(completed_total, 2)
+    }
 
 def get_report_data(outlet_code: str, start_date: datetime, end_date: datetime) -> dict:
     """
@@ -188,6 +213,8 @@ def _aggregate_grab(daily_totals, reports, brand):
     grabovo_gross_total = 0
     grabfood_net_total = 0
     grabovo_net_total = 0
+    completed_dates_to_skip = _matching_completed_grab_dates(reports, daily_totals)
+
     for report in reports:
         if GRAB_REPORTS_TRANSFERRED_ONLY and not _is_transferred_grab_report(report):
             continue
@@ -200,6 +227,8 @@ def _aggregate_grab(daily_totals, reports, brand):
 
         date = report_datetime.date()
         if date not in daily_totals:
+            continue
+        if _is_completed_grab_report(report) and date in completed_dates_to_skip:
             continue
 
         daily_totals[date]['Grab_Net'] += float(report.total or 0)
