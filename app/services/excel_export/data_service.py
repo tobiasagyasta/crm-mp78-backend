@@ -17,11 +17,13 @@ from app.models.income_category import IncomeCategory
 from app.models.expense_category import ExpenseCategory
 from app.utils.transaction_matcher import TransactionMatcher
 from app.utils.pkb_mutation import get_minus_manual_entries
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import aliased
 
 GRAB_REPORTS_TRANSFERRED_ONLY = False
 GRAB_TRANSFERRED_STATUSES = ('Transferred', 'Ditransfer')
+EXCLUDE_COMPLETED_GRAB_REPORTS = True
+COMPLETED_GRAB_STATUSES = ('Selesai', 'Completed')
 SHOW_MUTATIONS_WITHOUT_PLATFORM_DATA = True
 
 def _grab_report_datetime_col():
@@ -32,6 +34,9 @@ def _grab_report_date(report):
 
 def _is_transferred_grab_report(report):
     return (report.status or '').strip() in GRAB_TRANSFERRED_STATUSES
+
+def _is_completed_grab_report(report):
+    return (report.status or '').strip() in COMPLETED_GRAB_STATUSES
 
 def get_report_data(outlet_code: str, start_date: datetime, end_date: datetime) -> dict:
     """
@@ -62,6 +67,8 @@ def get_report_data(outlet_code: str, start_date: datetime, end_date: datetime) 
     )
     if GRAB_REPORTS_TRANSFERRED_ONLY:
         grab_query = grab_query.filter(GrabFoodReport.status.in_(GRAB_TRANSFERRED_STATUSES))
+    if EXCLUDE_COMPLETED_GRAB_REPORTS:
+        grab_query = grab_query.filter(or_(GrabFoodReport.status.is_(None), ~GrabFoodReport.status.in_(COMPLETED_GRAB_STATUSES)))
     grab_reports = grab_query.all()
     shopee_reports = ShopeeReport.query.filter(ShopeeReport.outlet_code == outlet_code, ShopeeReport.order_create_time >= start_date, ShopeeReport.order_create_time <= end_date_inclusive).all()
     shopeepay_reports = ShopeepayReport.query.filter(ShopeepayReport.outlet_code == outlet_code, ShopeepayReport.create_time >= start_date, ShopeepayReport.create_time <= end_date_inclusive).all()
@@ -183,6 +190,8 @@ def _aggregate_grab(daily_totals, reports, brand):
     grabovo_net_total = 0
     for report in reports:
         if GRAB_REPORTS_TRANSFERRED_ONLY and not _is_transferred_grab_report(report):
+            continue
+        if EXCLUDE_COMPLETED_GRAB_REPORTS and _is_completed_grab_report(report):
             continue
 
         report_datetime = _grab_report_date(report)
