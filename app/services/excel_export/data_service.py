@@ -38,9 +38,8 @@ def _is_transferred_grab_report(report):
 def _is_completed_grab_report(report):
     return (report.status or '').strip() in COMPLETED_GRAB_STATUSES
 
-def _matching_completed_grab_dates(reports, daily_totals):
-    transferred_totals = defaultdict(float)
-    completed_totals = defaultdict(float)
+def _matching_completed_grab_report_ids(reports, daily_totals):
+    transferred_totals_by_date = defaultdict(lambda: defaultdict(int))
 
     for report in reports:
         report_datetime = _grab_report_date(report)
@@ -53,15 +52,26 @@ def _matching_completed_grab_dates(reports, daily_totals):
 
         total = float(report.total or 0)
         if _is_transferred_grab_report(report):
-            transferred_totals[date] += total
-        elif _is_completed_grab_report(report):
-            completed_totals[date] += total
+            transferred_totals_by_date[date][round(total, 2)] += 1
 
-    return {
-        date
-        for date, completed_total in completed_totals.items()
-        if date in transferred_totals and round(transferred_totals[date], 2) == round(completed_total, 2)
-    }
+    completed_report_ids = set()
+    for report in reports:
+        report_datetime = _grab_report_date(report)
+        if not report_datetime:
+            continue
+
+        date = report_datetime.date()
+        if date not in daily_totals:
+            continue
+        if not _is_completed_grab_report(report):
+            continue
+
+        total = round(float(report.total or 0), 2)
+        if transferred_totals_by_date[date][total] > 0:
+            completed_report_ids.add(id(report))
+            transferred_totals_by_date[date][total] -= 1
+
+    return completed_report_ids
 
 def get_report_data(outlet_code: str, start_date: datetime, end_date: datetime) -> dict:
     """
@@ -213,7 +223,7 @@ def _aggregate_grab(daily_totals, reports, brand):
     grabovo_gross_total = 0
     grabfood_net_total = 0
     grabovo_net_total = 0
-    completed_dates_to_skip = _matching_completed_grab_dates(reports, daily_totals)
+    completed_report_ids_to_skip = _matching_completed_grab_report_ids(reports, daily_totals)
 
     for report in reports:
         if GRAB_REPORTS_TRANSFERRED_ONLY and not _is_transferred_grab_report(report):
@@ -228,7 +238,7 @@ def _aggregate_grab(daily_totals, reports, brand):
         date = report_datetime.date()
         if date not in daily_totals:
             continue
-        if _is_completed_grab_report(report) and date in completed_dates_to_skip:
+        if id(report) in completed_report_ids_to_skip:
             continue
 
         daily_totals[date]['Grab_Net'] += float(report.total or 0)
