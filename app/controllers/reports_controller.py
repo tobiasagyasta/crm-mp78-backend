@@ -2509,6 +2509,7 @@ def monthly_mpr_commission_report():
 
     json_data = request.get_json(silent=True) or {}
     year = json_data.get("year", datetime.now().year)
+    brand_name = (json_data.get("brand_name") or json_data.get("brand") or "All").strip()
     start_date, end_date, date_range_error = parse_date_range(request.args)
     if date_range_error:
         return jsonify({"error": date_range_error}), 400
@@ -2518,6 +2519,7 @@ def monthly_mpr_commission_report():
             year,
             start_date=start_date,
             end_date=end_date,
+            brand_name=brand_name,
         )
         if not data:
             return jsonify({"error": "No data found for the given criteria"}), 404
@@ -2535,10 +2537,11 @@ def monthly_mpr_commission_report():
 
         if start_date and end_date:
             download_name = (
-                f"Monthly_mpr_commission_MPR_{start_date.isoformat()}_to_{end_date.isoformat()}.xlsx"
+                f"Monthly_mpr_commission_{data.get('brand_name', brand_name)}_"
+                f"{start_date.isoformat()}_to_{end_date.isoformat()}.xlsx"
             )
         else:
-            download_name = f"Monthly_mpr_commission_MPR_{year}.xlsx"
+            download_name = f"Monthly_mpr_commission_{data.get('brand_name', brand_name)}_{year}.xlsx"
 
         response = send_file(
             output,
@@ -2549,6 +2552,8 @@ def monthly_mpr_commission_report():
         response.headers['Access-Control-Expose-Headers'] = 'Content-Disposition'
         response.headers['Referrer-Policy'] = 'no-referrer-when-downgrade'
         return response
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
