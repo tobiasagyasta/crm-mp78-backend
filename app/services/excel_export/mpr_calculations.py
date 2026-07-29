@@ -54,6 +54,17 @@ def mpr_qris_ovo_commission_rate():
     return 1 - mpr_qris_ovo_net_rate()
 
 
+def mpr_gojek_grab_qris_ovo_net_rate():
+    if ENABLE_MPR_QRIS_OVO_COMMISSION:
+        return MPR_QRIS_OVO_NET_RATE
+
+    return MPR_STANDARD_NET_RATE
+
+
+def mpr_gojek_grab_qris_ovo_commission_rate():
+    return 1 - mpr_gojek_grab_qris_ovo_net_rate()
+
+
 def mpr_after_commission_value(value):
     return value * MPR_STANDARD_NET_RATE
 
@@ -67,7 +78,7 @@ def gojek_qris_value(totals, is_mpr=False):
     return rated_value(
         totals.get('Gojek_QRIS', 0),
         is_mpr,
-        mpr_qris_ovo_net_rate()
+        mpr_gojek_grab_qris_ovo_net_rate()
     )
 
 
@@ -82,7 +93,7 @@ def gojek_net_ac_value(totals):
     gojek_qris = totals.get('Gojek_QRIS', 0)
     gofood = totals.get('Gojek_Net', 0) - gojek_qris
     return (
-        (gojek_qris * mpr_qris_ovo_net_rate())
+        (gojek_qris * mpr_gojek_grab_qris_ovo_net_rate())
         + (gofood * MPR_STANDARD_NET_RATE)
         + (totals.get('Gojek_Difference') or 0)
     )
@@ -97,7 +108,7 @@ def grab_ovo_value(totals, is_mpr=False):
     return rated_value(
         totals.get('GrabOVO_Net', 0),
         is_mpr,
-        mpr_qris_ovo_net_rate()
+        mpr_gojek_grab_qris_ovo_net_rate()
     )
 
 

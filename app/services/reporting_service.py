@@ -447,6 +447,9 @@ def generate_monthly_mpr_commission_data(
     def _qris_ovo_commission(amount: float) -> float:
         return amount * mpr_calc.mpr_qris_ovo_commission_rate()
 
+    def _gojek_grab_qris_ovo_commission(amount: float) -> float:
+        return amount * mpr_calc.mpr_gojek_grab_qris_ovo_commission_rate()
+
     def _shopee_commission(amount: float) -> float:
         return amount * (1 - mpr_calc.MPR_SHOPEE_NET_RATE)
 
@@ -507,7 +510,7 @@ def generate_monthly_mpr_commission_data(
     for report in gojek_query.all():
         amount = float(report.nett_amount or 0)
         commission = (
-            _qris_ovo_commission(amount)
+            _gojek_grab_qris_ovo_commission(amount)
             if report.payment_type == 'QRIS'
             else _standard_commission(amount)
         )
@@ -527,7 +530,7 @@ def generate_monthly_mpr_commission_data(
             continue
         amount = float(report.total or 0)
         commission = (
-            _qris_ovo_commission(amount)
+            _gojek_grab_qris_ovo_commission(amount)
             if getattr(report, 'jenis', None) == 'OVO'
             else _standard_commission(amount)
         )
@@ -608,7 +611,7 @@ def generate_monthly_mpr_commission_data(
             'commission_rate': commission_rate,
             'commission_rates': {
                 'standard': 1 - mpr_calc.MPR_STANDARD_NET_RATE,
-                'qris_ovo': mpr_calc.mpr_qris_ovo_commission_rate(),
+                'qris_ovo': mpr_calc.mpr_gojek_grab_qris_ovo_commission_rate(),
                 'shopee': 1 - mpr_calc.MPR_SHOPEE_NET_RATE,
                 'tiktok': 1 - mpr_calc.MPR_TIKTOK_NET_RATE,
             },
@@ -630,7 +633,7 @@ def generate_monthly_mpr_commission_data(
         'commission_rate': commission_rate,
         'commission_rates': {
             'standard': 1 - mpr_calc.MPR_STANDARD_NET_RATE,
-            'qris_ovo': mpr_calc.mpr_qris_ovo_commission_rate(),
+            'qris_ovo': mpr_calc.mpr_gojek_grab_qris_ovo_commission_rate(),
             'shopee': 1 - mpr_calc.MPR_SHOPEE_NET_RATE,
             'tiktok': 1 - mpr_calc.MPR_TIKTOK_NET_RATE,
         },

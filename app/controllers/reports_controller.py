@@ -175,6 +175,7 @@ from app.services.reporting_service import (
     generate_monthly_mpr_commission_data,
     generate_monthly_net_income_data,
 )
+from app.services.excel_export import mpr_calculations as mpr_calc
 from app.services.mpr_totals_service import (
     calculate_mpr_totals,
     get_mpr_mapping_for_outlet,
@@ -1967,8 +1968,13 @@ def get_reports_totals():
 
         if outlet_code.upper() != "ALL":
             outlet, mapping = get_mpr_mapping_for_outlet(outlet_code)
-            if outlet and outlet.brand in ("MP78", "MPR") and mapping:
+            mpr_outlet_code = None
+            if outlet and outlet.brand == "MP78" and mapping:
                 mpr_outlet_code = mapping.mpr_outlet_code
+            elif outlet and mpr_calc.is_mpr_brand(outlet.brand):
+                mpr_outlet_code = outlet.outlet_code
+
+            if mpr_outlet_code:
                 mpr_totals = calculate_mpr_totals(
                     mpr_outlet_code,
                     start_date,
