@@ -445,7 +445,7 @@ def generate_monthly_mpr_commission_data(
         return amount * (1 - mpr_calc.MPR_STANDARD_NET_RATE)
 
     def _qris_ovo_commission(amount: float) -> float:
-        return amount * (1 - mpr_calc.MPR_QRIS_OVO_NET_RATE)
+        return amount * mpr_calc.mpr_qris_ovo_commission_rate()
 
     def _shopee_commission(amount: float) -> float:
         return amount * (1 - mpr_calc.MPR_SHOPEE_NET_RATE)
@@ -608,7 +608,7 @@ def generate_monthly_mpr_commission_data(
             'commission_rate': commission_rate,
             'commission_rates': {
                 'standard': 1 - mpr_calc.MPR_STANDARD_NET_RATE,
-                'qris_ovo': 1 - mpr_calc.MPR_QRIS_OVO_NET_RATE,
+                'qris_ovo': mpr_calc.mpr_qris_ovo_commission_rate(),
                 'shopee': 1 - mpr_calc.MPR_SHOPEE_NET_RATE,
                 'tiktok': 1 - mpr_calc.MPR_TIKTOK_NET_RATE,
             },
@@ -630,7 +630,7 @@ def generate_monthly_mpr_commission_data(
         'commission_rate': commission_rate,
         'commission_rates': {
             'standard': 1 - mpr_calc.MPR_STANDARD_NET_RATE,
-            'qris_ovo': 1 - mpr_calc.MPR_QRIS_OVO_NET_RATE,
+            'qris_ovo': mpr_calc.mpr_qris_ovo_commission_rate(),
             'shopee': 1 - mpr_calc.MPR_SHOPEE_NET_RATE,
             'tiktok': 1 - mpr_calc.MPR_TIKTOK_NET_RATE,
         },

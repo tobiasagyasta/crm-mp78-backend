@@ -6,6 +6,7 @@ MPR_TIKTOK_NET_RATE = 0.95
 MANAGEMENT_COMMISSION_RATE = 1 / 74
 TIKTOK_MANAGEMENT_COMMISSION_RATE = 0.05
 QPON_COMMISSION_RATE = 0.01
+ENABLE_MPR_QRIS_OVO_COMMISSION = False
 ENABLE_MP78_MANAGEMENT_AC = True
 MPR_BRANDS = ("MPR", "MPR Mandiri", "MPR Non MP78")
 
@@ -42,6 +43,17 @@ def rated_value(value, is_mpr, rate):
     return value
 
 
+def mpr_qris_ovo_net_rate():
+    if ENABLE_MPR_QRIS_OVO_COMMISSION:
+        return MPR_QRIS_OVO_NET_RATE
+
+    return 1
+
+
+def mpr_qris_ovo_commission_rate():
+    return 1 - mpr_qris_ovo_net_rate()
+
+
 def mpr_after_commission_value(value):
     return value * MPR_STANDARD_NET_RATE
 
@@ -55,7 +67,7 @@ def gojek_qris_value(totals, is_mpr=False):
     return rated_value(
         totals.get('Gojek_QRIS', 0),
         is_mpr,
-        MPR_QRIS_OVO_NET_RATE
+        mpr_qris_ovo_net_rate()
     )
 
 
@@ -70,7 +82,7 @@ def gojek_net_ac_value(totals):
     gojek_qris = totals.get('Gojek_QRIS', 0)
     gofood = totals.get('Gojek_Net', 0) - gojek_qris
     return (
-        (gojek_qris * MPR_QRIS_OVO_NET_RATE)
+        (gojek_qris * mpr_qris_ovo_net_rate())
         + (gofood * MPR_STANDARD_NET_RATE)
         + (totals.get('Gojek_Difference') or 0)
     )
@@ -85,7 +97,7 @@ def grab_ovo_value(totals, is_mpr=False):
     return rated_value(
         totals.get('GrabOVO_Net', 0),
         is_mpr,
-        MPR_QRIS_OVO_NET_RATE
+        mpr_qris_ovo_net_rate()
     )
 
 
@@ -128,13 +140,13 @@ def shopeepay_net_value(totals, is_mpr=False):
     return rated_value(
         totals.get('ShopeePay_Net', 0),
         is_mpr,
-        MPR_QRIS_OVO_NET_RATE
+        mpr_qris_ovo_net_rate()
     )
 
 
 def shopeepay_net_ac_value(totals):
     return (
-        (totals.get('ShopeePay_Net', 0) * MPR_QRIS_OVO_NET_RATE)
+        (totals.get('ShopeePay_Net', 0) * mpr_qris_ovo_net_rate())
         + (totals.get('ShopeePay_Difference') or 0)
     )
 

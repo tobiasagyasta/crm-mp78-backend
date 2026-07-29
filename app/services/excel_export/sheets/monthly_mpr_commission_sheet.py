@@ -39,7 +39,7 @@ class MonthlyMprCommissionSheet(BaseSheet):
             "net_key": "shopeepay_net",
             "commission_key": "shopeepay_commission",
             "after_key": "shopeepay_net_after_commission",
-            "rate": 1 - mpr_calc.MPR_QRIS_OVO_NET_RATE,
+            "rate": mpr_calc.mpr_qris_ovo_commission_rate(),
         },
         {
             "key": "tiktok",
