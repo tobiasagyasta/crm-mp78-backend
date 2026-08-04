@@ -177,7 +177,7 @@ class DailySheet(BaseSheet):
         return mpr_calc.grab_net_value(totals)
 
     def _get_shopee_net_value(self, totals):
-        return mpr_calc.shopee_net_value(totals, self._is_mpr_brand())
+        return totals.get('Shopee_Net', 0)
 
     def _get_shopee_net_ac_value(self, totals):
         if self._is_mpr_brand():
@@ -189,7 +189,7 @@ class DailySheet(BaseSheet):
         return self._get_value_with_mutation_fallback(totals, 'Shopee_Mutation', 'Shopee_Net')
 
     def _get_shopeepay_net_value(self, totals):
-        return mpr_calc.shopeepay_net_value(totals)
+        return totals.get('ShopeePay_Net', 0)
 
     def _get_shopeepay_net_ac_value(self, totals):
         if self._is_mpr_brand():
