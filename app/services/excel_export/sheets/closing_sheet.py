@@ -260,7 +260,7 @@ class ClosingSheet(BaseSheet):
         self.ws.cell(row=row_start + 1, column=col_start).fill = BLUE_FILL
 
         grab_net_total = self._get_grand_total_with_fallback('Grab_Net') or 0
-        grab_management_expense = self._get_grab_management_commission_expense(grab_net_total)
+        grab_management_expense = self._get_closing_grab_management_commission_expense(grab_net_total)
         mp78_income_total = self._get_mp78_mutation_total(mp78_mutations, 'income')
         mp78_expense_total = self._get_mp78_mutation_total(mp78_mutations, 'expense')
         total_income = (
@@ -750,6 +750,12 @@ class ClosingSheet(BaseSheet):
 
         outlet = self._get_outlet_for_report_type(report_type)
         return is_platform_disabled(outlet, platform)
+
+    def _get_closing_grab_management_commission_expense(self, grab_net_total):
+        if self._is_closing_platform_disabled('Grab_Net', 'main'):
+            return 0
+
+        return self._get_grab_management_commission_expense(grab_net_total)
 
     def _get_outlet_for_report_type(self, report_type):
         if report_type == 'mpr':
