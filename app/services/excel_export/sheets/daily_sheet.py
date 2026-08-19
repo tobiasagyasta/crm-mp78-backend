@@ -40,7 +40,6 @@ class DailySheet(BaseSheet):
         self._write_headers()
         self._write_data()
         self._write_grand_total()
-        self._write_admin_crosscheck_rows()
         self._set_column_widths()
 
     def _write_title(self):

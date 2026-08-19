@@ -22,6 +22,7 @@ class ClosingSheet(BaseSheet):
     def __init__(self, workbook, data):
         super().__init__(workbook, 'Closing Sheet', data)
         self.main_table_col_end = None
+        self.main_table_row_end = None
         self.grand_total_col_start = None
         self.grand_total_col_end = None
         self.grand_total_row_start = None
@@ -44,6 +45,7 @@ class ClosingSheet(BaseSheet):
 
     def generate(self):
         self._write_main_table()
+        self._write_admin_crosscheck_rows()
         self._write_grand_total_section()
         self._write_store_id_table()
         self._write_rekening_table()
@@ -123,6 +125,47 @@ class ClosingSheet(BaseSheet):
             closing_row += 1
 
         self.main_table_col_end = len(platform_definitions) + 1
+        self.main_table_row_end = closing_row - 1
+
+    def _write_admin_crosscheck_rows(self):
+        platform_definitions = self._get_admin_crosscheck_platforms()
+        if not platform_definitions:
+            return
+
+        label_row = (self.main_table_row_end or self.ws.max_row) + 3
+        header_row = label_row + 1
+        admin_input_row = header_row + 1
+        computed_total_row = header_row + 2
+
+        self.ws.cell(row=label_row, column=1, value='Admin Crosscheck')
+
+        for col, (name, header, report_type) in enumerate(platform_definitions, 1):
+            header_cell = self.ws.cell(row=header_row, column=col, value=name)
+            header_cell.alignment = CENTER_ALIGN
+
+            input_cell = self.ws.cell(row=admin_input_row, column=col, value=None)
+            input_cell.alignment = CENTER_ALIGN
+
+            value = self._get_platform_grand_total_with_fallback(report_type, header)
+            total_cell = self.ws.cell(row=computed_total_row, column=col, value=value)
+            total_cell.alignment = CENTER_ALIGN
+            if isinstance(value, (int, float)):
+                total_cell.number_format = '#,##0'
+
+        for row in self.ws.iter_rows(
+            min_row=header_row,
+            max_row=computed_total_row,
+            min_col=1,
+            max_col=len(platform_definitions),
+        ):
+            for cell in row:
+                cell.border = THIN_BORDER
+
+    def _get_admin_crosscheck_platforms(self):
+        return [
+            definition for definition in self._get_main_table_platforms()
+            if 'Net' in definition[1] and '_Ac' not in definition[1] and not definition[1].endswith('_Raw')
+        ]
 
     def _write_main_table_group_headers(self, row, platform_definitions):
         if not self.data.get('mpr_report_data'):
