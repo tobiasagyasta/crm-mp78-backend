@@ -5,7 +5,7 @@ from app.services.excel_export import mpr_calculations as mpr_calc
 from app.services.excel_export.utils.excel_utils import (
     HEADER_FONT, YELLOW_FILL, CENTER_ALIGN, GOJEK_FILL, GRAB_FILL, SHOPEE_FILL,
     SHOPEEPAY_FILL, TIKTOK_FILL, CASH_FILL, DATE_FILL, DIFFERENCE_FILL,
-    set_column_widths
+    THIN_BORDER, set_column_widths
 )
 
 class DailySheet(BaseSheet):
@@ -40,6 +40,7 @@ class DailySheet(BaseSheet):
         self._write_headers()
         self._write_data()
         self._write_grand_total()
+        self._write_admin_crosscheck_rows()
         self._set_column_widths()
 
     def _write_title(self):
@@ -315,6 +316,51 @@ class DailySheet(BaseSheet):
             cell.alignment = CENTER_ALIGN
             if isinstance(value, (int, float)):
                 cell.number_format = '#,##0'
+
+    def _write_admin_crosscheck_rows(self):
+        headers = self._get_headers()
+        crosscheck_headers = self._get_admin_crosscheck_headers(headers)
+        if not crosscheck_headers:
+            return
+
+        grand_totals = self.data['grand_totals']
+        all_dates = self.data['all_dates']
+        minusan_by_date = self.data['minusan_by_date']
+        grand_total_value_map = self._get_grand_total_value_map(grand_totals, all_dates, minusan_by_date)
+        label_row = self.ws.max_row + 3
+        header_row = label_row + 1
+        admin_input_row = header_row + 1
+        computed_total_row = header_row + 2
+
+        self.ws.cell(row=label_row, column=1, value='Admin Crosscheck')
+
+        for col, header in enumerate(crosscheck_headers, 1):
+            header_cell = self.ws.cell(row=header_row, column=col, value=header)
+            header_cell.alignment = CENTER_ALIGN
+
+            input_cell = self.ws.cell(row=admin_input_row, column=col, value=None)
+            input_cell.alignment = CENTER_ALIGN
+
+            value = grand_total_value_map[header]() if header in grand_total_value_map else None
+            total_cell = self.ws.cell(row=computed_total_row, column=col, value=value)
+            total_cell.alignment = CENTER_ALIGN
+            if isinstance(value, (int, float)):
+                total_cell.number_format = '#,##0'
+
+        for row in self.ws.iter_rows(
+            min_row=header_row,
+            max_row=computed_total_row,
+            min_col=1,
+            max_col=len(crosscheck_headers),
+        ):
+            for cell in row:
+                cell.border = THIN_BORDER
+
+    def _get_admin_crosscheck_headers(self, headers):
+        return [
+            header for header in headers
+            if 'Net' in header and '(ac)' not in header and header != 'Sisa Cash (Admin)'
+        ]
 
     def _get_daily_value_map(self):
         return {
