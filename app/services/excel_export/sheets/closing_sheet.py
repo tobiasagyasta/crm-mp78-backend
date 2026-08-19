@@ -139,9 +139,10 @@ class ClosingSheet(BaseSheet):
 
         self.ws.cell(row=label_row, column=1, value='Admin Crosscheck')
 
-        for col, (name, header, report_type) in enumerate(platform_definitions, 1):
+        for col, (name, header, report_type) in enumerate(platform_definitions, 2):
             header_cell = self.ws.cell(row=header_row, column=col, value=name)
             header_cell.alignment = CENTER_ALIGN
+            header_cell.fill = YELLOW_FILL
 
             input_cell = self.ws.cell(row=admin_input_row, column=col, value=None)
             input_cell.alignment = CENTER_ALIGN
@@ -155,8 +156,8 @@ class ClosingSheet(BaseSheet):
         for row in self.ws.iter_rows(
             min_row=header_row,
             max_row=computed_total_row,
-            min_col=1,
-            max_col=len(platform_definitions),
+            min_col=2,
+            max_col=len(platform_definitions) + 1,
         ):
             for cell in row:
                 cell.border = THIN_BORDER
