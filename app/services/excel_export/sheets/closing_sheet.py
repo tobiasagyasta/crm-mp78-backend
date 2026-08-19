@@ -937,10 +937,10 @@ class ClosingSheet(BaseSheet):
 
     def _apply_styles(self):
         # Apply borders to the main table
-        if self.main_table_col_end:
+        if self.main_table_col_end and self.main_table_row_end:
             for row in self.ws.iter_rows(
                 min_row=1,
-                max_row=self.ws.max_row,
+                max_row=self.main_table_row_end,
                 min_col=1,
                 max_col=self.main_table_col_end,
             ):
