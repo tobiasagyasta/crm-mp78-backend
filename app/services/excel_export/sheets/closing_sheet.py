@@ -1,7 +1,7 @@
 from app.services.excel_export.base_sheet import BaseSheet
 from app.services.excel_export import mpr_calculations as mpr_calc
 from app.services.excel_export.utils.excel_utils import (
-    HEADER_FONT, YELLOW_FILL, CENTER_ALIGN, GOJEK_FILL, GRAB_FILL, SHOPEE_FILL,GREY_FILL,
+    HEADER_FONT, BOLD_RED_FONT, YELLOW_FILL, CENTER_ALIGN, GOJEK_FILL, GRAB_FILL, SHOPEE_FILL, GREY_FILL,
     TIKTOK_FILL, BLUE_FILL, DIFFERENCE_FILL, THIN_BORDER, auto_fit_columns, LEFT_ALIGN, RIGHT_ALIGN,
     CLOSED_OFF_FILL
 )
@@ -33,6 +33,12 @@ class ClosingSheet(BaseSheet):
         self.rekening_col_end = None
         self.rekening_row = None
         self.rekening_row_end = None
+        self.documentation_col_start = None
+        self.documentation_col_end = None
+        self.documentation_row = None
+        self.documentation_row_end = None
+        self.documentation_ranges = []
+        self.grab_management_cell = None
         self._mpr_mapping = None
         self._mpr_mapping_loaded = False
 
@@ -41,6 +47,7 @@ class ClosingSheet(BaseSheet):
         self._write_grand_total_section()
         self._write_store_id_table()
         self._write_rekening_table()
+        self._write_admin_documentation_section()
         self._apply_styles()
         auto_fit_columns(self.ws)
 
@@ -341,6 +348,7 @@ class ClosingSheet(BaseSheet):
                 )
                 management_cell_value.number_format = '#,##0'
                 management_cell_value.alignment = RIGHT_ALIGN
+                self.grab_management_cell = management_cell_value.coordinate
                 final_i += 1
 
         mpr_rows = [
@@ -555,6 +563,92 @@ class ClosingSheet(BaseSheet):
             value_cell.font = HEADER_FONT
             value_cell.alignment = CENTER_ALIGN
             value_cell.fill = GREY_FILL
+
+    def _write_admin_documentation_section(self):
+        start_row = max(self.store_id_row_end or 0, self.rekening_row_end or 0) + 4
+        expense_col_start = self.store_id_col_start or 1
+        checklist_col_start = self.rekening_col_start or (expense_col_start + 4)
+        expense_rows = [
+            ('Grab Manag 1%', f'={self.grab_management_cell}' if self.grab_management_cell else None),
+            ('Adm Kantor', None),
+            ('Adm Gudang', None),
+            ('Sosmed', None),
+        ]
+        checklist_sections = [
+            ('Name 1 :', [
+                'Cek total semua report',
+                'Cek tagihan',
+                'Cek data manual entry',
+                'Cek tagihan',
+                'Cek tagihan',
+            ]),
+            ('Name 2 :', [
+                'Upload semua report',
+                'Input Tiktok',
+                'Input Qpon',
+                'Input Webshop',
+                'Input tagihan',
+                'Input Adm Kantor',
+                'Input Adm Gudang',
+                'Input Sosmed',
+            ]),
+        ]
+
+        self.documentation_col_start = min(expense_col_start, checklist_col_start)
+        self.documentation_col_end = checklist_col_start + 2
+        self.documentation_row = start_row
+        self.documentation_ranges = []
+
+        for offset, (label, amount) in enumerate(expense_rows):
+            row = start_row + offset
+            label_cell = self.ws.cell(row=row, column=expense_col_start, value=label)
+            label_cell.font = HEADER_FONT
+            label_cell.alignment = LEFT_ALIGN
+            if offset > 0:
+                label_cell.font = BOLD_RED_FONT
+
+            amount_cell = self.ws.cell(row=row, column=expense_col_start + 1, value=amount)
+            amount_cell.font = HEADER_FONT
+            amount_cell.alignment = RIGHT_ALIGN
+            amount_cell.number_format = '#,##0'
+
+        total_row = start_row + len(expense_rows)
+        total_formula = (
+            f'=SUM({self.ws.cell(start_row, expense_col_start + 1).coordinate}:'
+            f'{self.ws.cell(total_row - 1, expense_col_start + 1).coordinate})'
+        )
+        total_cell = self.ws.cell(row=total_row, column=expense_col_start + 1, value=total_formula)
+        total_cell.font = HEADER_FONT
+        total_cell.alignment = RIGHT_ALIGN
+        total_cell.number_format = '#,##0'
+        total_cell.fill = YELLOW_FILL
+        self.documentation_ranges.append((start_row, total_row, expense_col_start, expense_col_start + 1))
+
+        current_row = start_row
+        for section_label, checks in checklist_sections:
+            section_cell = self.ws.cell(row=current_row, column=checklist_col_start, value=section_label)
+            section_cell.font = HEADER_FONT
+            section_cell.alignment = LEFT_ALIGN
+
+            for idx, check_text in enumerate(checks, start=1):
+                row = current_row + idx
+                check_cell = self.ws.cell(row=row, column=checklist_col_start, value=f'{idx}. {check_text}')
+                check_cell.alignment = LEFT_ALIGN
+
+                for checkbox_col in (checklist_col_start + 1, checklist_col_start + 2):
+                    checkbox_cell = self.ws.cell(row=row, column=checkbox_col, value='')
+                    checkbox_cell.alignment = CENTER_ALIGN
+                    checkbox_cell.fill = GREY_FILL
+
+            self.documentation_ranges.append((
+                current_row,
+                current_row + len(checks),
+                checklist_col_start,
+                checklist_col_start + 2,
+            ))
+            current_row += len(checks) + 3
+
+        self.documentation_row_end = max(total_row, current_row - 2)
 
     def _get_mapped_mpr_outlet(self):
         if not self._is_mp78_brand():
@@ -844,6 +938,17 @@ class ClosingSheet(BaseSheet):
                 max_row=self.rekening_row_end,
                 min_col=self.rekening_col_start,
                 max_col=self.rekening_col_end,
+            ):
+                for cell in row:
+                    cell.border = THIN_BORDER
+
+        # Apply borders to the admin documentation/checklist section separately.
+        for min_row, max_row, min_col, max_col in self.documentation_ranges:
+            for row in self.ws.iter_rows(
+                min_row=min_row,
+                max_row=max_row,
+                min_col=min_col,
+                max_col=max_col,
             ):
                 for cell in row:
                     cell.border = THIN_BORDER
