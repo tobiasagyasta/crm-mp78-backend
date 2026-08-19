@@ -128,7 +128,7 @@ class ClosingSheet(BaseSheet):
         self.main_table_row_end = closing_row - 1
 
     def _write_admin_crosscheck_rows(self):
-        platform_definitions = self._get_admin_crosscheck_platforms()
+        platform_definitions = self._get_main_table_platforms()
         if not platform_definitions:
             return
 
@@ -160,12 +160,6 @@ class ClosingSheet(BaseSheet):
         ):
             for cell in row:
                 cell.border = THIN_BORDER
-
-    def _get_admin_crosscheck_platforms(self):
-        return [
-            definition for definition in self._get_main_table_platforms()
-            if 'Net' in definition[1] and '_Ac' not in definition[1] and not definition[1].endswith('_Raw')
-        ]
 
     def _write_main_table_group_headers(self, row, platform_definitions):
         if not self.data.get('mpr_report_data'):
