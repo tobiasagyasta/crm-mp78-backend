@@ -55,17 +55,17 @@ class TiktokReport(db.Model):
             brand_name = outlet.brand if outlet else None
             outlet_code = outlet.outlet_code if outlet else None
 
-            store_name = row[7].strip()
-            order_time_str = row[4].strip()
+            store_name = row[8].strip()
+            order_time_str = row[5].strip()
             order_time = datetime.strptime(order_time_str, '%Y-%m-%d')
-            settlement_time_str = row[24].strip()
+            settlement_time_str = row[25].strip()
             settlement_time = datetime.strptime(settlement_time_str, '%Y-%m-%d')
-            gross_amount = TiktokReport._parse_amount(row[14])
-            price_before_tax = TiktokReport._parse_amount(row[15])
-            total_price = TiktokReport._parse_amount(row[16])
-            estimated_tax = TiktokReport._parse_amount(row[17])
-            final_tax = TiktokReport._parse_amount(row[18])
-            net_amount = TiktokReport._parse_amount(row[23])
+            gross_amount = TiktokReport._parse_amount(row[15])
+            price_before_tax = TiktokReport._parse_amount(row[16])
+            total_price = TiktokReport._parse_amount(row[17])
+            estimated_tax = TiktokReport._parse_amount(row[18])
+            final_tax = TiktokReport._parse_amount(row[19])
+            net_amount = TiktokReport._parse_amount(row[24])
 
 
             return {
