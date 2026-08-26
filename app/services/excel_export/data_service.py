@@ -15,6 +15,7 @@ from app.models.pukis import Pukis
 from app.models.ultra_voucher import VoucherReport
 from app.models.income_category import IncomeCategory
 from app.models.expense_category import ExpenseCategory
+from app.services.excel_export import mpr_calculations as mpr_calc
 from app.utils.transaction_matcher import TransactionMatcher
 from app.utils.pkb_mutation import get_minus_manual_entries
 from sqlalchemy import func, or_
@@ -253,8 +254,14 @@ def _aggregate_grab(daily_totals, reports, brand):
                 grabfood_gross_total += float(report.amount or 0)
                 grabfood_net_total += float(report.total or 0)
     for date in daily_totals:
-        if brand not in ["Pukis & Martabak Kota Baru"]:
-            daily_totals[date]['Grab_Commission'] = daily_totals[date]['Grab_Net'] * 1/74
+        if mpr_calc.is_mp78_brand(brand):
+            daily_totals[date]['Grab_Commission'] = (
+                daily_totals[date]['Grab_Net'] * mpr_calc.MP78_GRAB_MANAGEMENT_COMMISSION_RATE
+            )
+        elif brand not in ["Pukis & Martabak Kota Baru"]:
+            daily_totals[date]['Grab_Commission'] = (
+                daily_totals[date]['Grab_Net'] * mpr_calc.MANAGEMENT_COMMISSION_RATE
+            )
         else:
             daily_totals[date]['Grab_Commission'] = 0
     return {

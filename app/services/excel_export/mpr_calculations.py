@@ -13,11 +13,11 @@ MPR_BRANDS = ("MPR", "MPR Mandiri", "MPR Non MP78")
 
 
 def is_mpr_brand(brand):
-    return brand in MPR_BRANDS
+    return (brand or '').strip() in MPR_BRANDS
 
 
 def is_mp78_brand(brand):
-    return brand == 'MP78'
+    return (brand or '').strip().upper() == 'MP78'
 
 
 def tiktok_commission_rate_for_brand(brand):

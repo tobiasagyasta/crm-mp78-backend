@@ -593,7 +593,7 @@ class ClosingSheet(BaseSheet):
             rate_cell = self.ws.cell(row=data_row, column=start_column + 1, value=rate)
             rate_cell.font = HEADER_FONT
             rate_cell.alignment = CENTER_ALIGN
-            rate_cell.number_format = '0%'
+            rate_cell.number_format = '0.0000%'
             rate_cell.fill = GREY_FILL
 
     def _write_rekening_table(self):
@@ -807,7 +807,7 @@ class ClosingSheet(BaseSheet):
         return None
 
     def _is_mp78_brand(self):
-        return self.data['outlet'].brand == 'MP78'
+        return mpr_calc.is_mp78_brand(self.data['outlet'].brand)
 
     def _is_mpr_brand(self):
         return mpr_calc.is_mpr_brand(self.data['outlet'].brand)

@@ -132,7 +132,7 @@ class DailySheet(BaseSheet):
         return mpr_calc.is_mpr_brand(self.data['outlet'].brand)
 
     def _is_mp78_brand(self):
-        return self.data['outlet'].brand == 'MP78'
+        return mpr_calc.is_mp78_brand(self.data['outlet'].brand)
 
     def _uses_mp78_management_ac(self):
         return self._is_mp78_brand() and mpr_calc.ENABLE_MP78_MANAGEMENT_AC
