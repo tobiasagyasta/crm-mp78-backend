@@ -263,6 +263,9 @@ class ClosingSheet(BaseSheet):
         special_value = self._get_main_table_special_value(header)
         if special_value is not None:
             return special_value
+        ac_value = self._get_main_ac_display_value(header)
+        if ac_value is not None:
+            return ac_value
         if self._uses_mp78_management_ac():
             return self._get_mp78_display_value(header)
         return self._get_grand_total_with_fallback(header)
@@ -281,6 +284,9 @@ class ClosingSheet(BaseSheet):
         special_value = self._get_main_table_special_value(header, date)
         if special_value is not None:
             return special_value
+        ac_value = self._get_main_ac_display_value(header, date)
+        if ac_value is not None:
+            return ac_value
         if self._uses_mp78_management_ac():
             return self._get_mp78_display_value(header, date)
         return self._get_report_value_with_fallback(self.data, header, date)
@@ -803,6 +809,31 @@ class ClosingSheet(BaseSheet):
 
         if header == 'Grab_Net_Raw':
             return totals.get('Grab_Net', 0)
+
+        return None
+
+    def _get_main_ac_display_value(self, header, date=None):
+        totals = self.data.get('grand_totals', {})
+        if date is not None:
+            totals = self.data.get('daily_totals', {}).get(date, {})
+
+        if header == 'Gojek_Mutation':
+            return mpr_calc.management_net_ac_value(totals, 'Gojek_Net', 'Gojek_Mutation')
+        if header == 'Grab_Net':
+            rate = (
+                mpr_calc.MP78_GRAB_MANAGEMENT_COMMISSION_RATE
+                if self._is_mp78_brand()
+                else mpr_calc.MANAGEMENT_COMMISSION_RATE
+            )
+            return mpr_calc.net_after_commission_value(totals, 'Grab_Net', rate)
+        if header == 'Shopee_Mutation':
+            return mpr_calc.management_net_ac_value(totals, 'Shopee_Net', 'Shopee_Mutation')
+        if header == 'ShopeePay_Mutation':
+            return mpr_calc.management_net_ac_value(totals, 'ShopeePay_Net', 'ShopeePay_Mutation')
+        if header == self.TIKTOK_NET_HEADER:
+            return mpr_calc.tiktok_net_ac_value_for_brand(totals, self.data['outlet'].brand)
+        if header == 'Webshop_Net':
+            return mpr_calc.management_net_ac_value(totals, 'Webshop_Net')
 
         return None
 
