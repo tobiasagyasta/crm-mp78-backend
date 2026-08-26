@@ -207,7 +207,11 @@ class DailySheet(BaseSheet):
         if self._is_mp78_brand():
             return mpr_calc.mp78_ac_value_for_header(totals, 'Grab_Net')
 
-        return mpr_calc.management_net_ac_value(totals, 'Grab_Net', 'Grab_Mutation')
+        return mpr_calc.net_after_commission_value(
+            totals,
+            'Grab_Net',
+            mpr_calc.MANAGEMENT_COMMISSION_RATE,
+        )
 
     def _get_standard_net_ac_value(self, totals, net_key):
         if net_key == 'Tiktok_Net':

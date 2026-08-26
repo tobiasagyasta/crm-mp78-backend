@@ -593,7 +593,7 @@ class ClosingSheet(BaseSheet):
             rate_cell = self.ws.cell(row=data_row, column=start_column + 1, value=rate)
             rate_cell.font = HEADER_FONT
             rate_cell.alignment = CENTER_ALIGN
-            rate_cell.number_format = '0.0000%'
+            rate_cell.number_format = '0.00%'
             rate_cell.fill = GREY_FILL
 
     def _write_rekening_table(self):
@@ -924,8 +924,6 @@ class ClosingSheet(BaseSheet):
 
     def _get_closing_grand_total_income_value(self, header, grab_net_total=None):
         if header == 'Grab_Net':
-            if self._uses_mp78_management_ac():
-                return self._get_mp78_display_value(header)
             if grab_net_total is not None:
                 return grab_net_total
             return self._get_grand_total_with_fallback(header)
