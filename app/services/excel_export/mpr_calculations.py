@@ -90,7 +90,7 @@ def gojek_net_value(totals, is_mpr=False):
 
 
 def gojek_net_ac_value(totals):
-    return totals.get('Gojek_Net', 0) * MPR_STANDARD_NET_RATE
+    return value_with_mutation_fallback(totals, 'Gojek_Mutation', 'Gojek_Net') * MPR_STANDARD_NET_RATE
 
 
 def grabfood_value(totals, is_mpr=False):
@@ -123,7 +123,7 @@ def tiktok_net_ac_value(totals, is_mpr=False, commission_rate=None):
 
 
 def grab_net_ac_value(totals):
-    return totals.get('Grab_Net', 0) * MPR_STANDARD_NET_RATE
+    return value_with_mutation_fallback(totals, 'Grab_Mutation', 'Grab_Net') * MPR_STANDARD_NET_RATE
 
 
 def shopee_net_value(totals, is_mpr=False):
@@ -135,10 +135,7 @@ def shopee_net_value(totals, is_mpr=False):
 
 
 def shopee_net_ac_value(totals):
-    return (
-        (totals.get('Shopee_Net', 0) * MPR_SHOPEE_NET_RATE)
-        + (totals.get('Shopee_Difference') or 0)
-    )
+    return value_with_mutation_fallback(totals, 'Shopee_Mutation', 'Shopee_Net') * MPR_SHOPEE_NET_RATE
 
 
 def shopeepay_net_value(totals, is_mpr=False):
@@ -150,20 +147,16 @@ def shopeepay_net_value(totals, is_mpr=False):
 
 
 def shopeepay_net_ac_value(totals):
-    return (
-        (totals.get('ShopeePay_Net', 0) * mpr_qris_ovo_net_rate())
-        + (totals.get('ShopeePay_Difference') or 0)
-    )
+    return value_with_mutation_fallback(totals, 'ShopeePay_Mutation', 'ShopeePay_Net') * mpr_qris_ovo_net_rate()
 
 
 def standard_net_ac_value(totals, net_key):
     return totals.get(net_key, 0) * MPR_STANDARD_NET_RATE
 
 
-def management_net_ac_value(totals, net_key, difference_key=None):
-    net = totals.get(net_key, 0)
-    difference = (totals.get(difference_key) or 0) if difference_key else 0
-    return net - (net * MANAGEMENT_COMMISSION_RATE) + difference
+def management_net_ac_value(totals, net_key, mutation_key=None):
+    net = value_with_mutation_fallback(totals, mutation_key, net_key) if mutation_key else totals.get(net_key, 0)
+    return net - (net * MANAGEMENT_COMMISSION_RATE)
 
 
 def qpon_net_ac_value(totals, net_key='Qpon_Net'):
@@ -173,9 +166,9 @@ def qpon_net_ac_value(totals, net_key='Qpon_Net'):
 
 def mp78_ac_value_for_header(totals, header):
     if header == 'Gojek_Mutation':
-        return management_net_ac_value(totals, 'Gojek_Net', 'Gojek_Difference')
+        return management_net_ac_value(totals, 'Gojek_Net', 'Gojek_Mutation')
     if header == 'Grab_Net':
-        return management_net_ac_value(totals, 'Grab_Net', 'Grab_Difference')
+        return management_net_ac_value(totals, 'Grab_Net', 'Grab_Mutation')
     if header == 'Tiktok_Net':
         return tiktok_net_ac_value(totals, commission_rate=TIKTOK_MANAGEMENT_COMMISSION_RATE)
 

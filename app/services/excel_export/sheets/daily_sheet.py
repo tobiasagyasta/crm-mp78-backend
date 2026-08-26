@@ -126,7 +126,7 @@ class DailySheet(BaseSheet):
             self._get_value_with_mutation_fallback(totals, mutation_key, net_key)
             if mutation_key else totals.get(net_key, 0)
         )
-        return display_value - (self.MPR_COMMISSION_RATE * totals.get(net_key, 0))
+        return display_value - (self.MPR_COMMISSION_RATE * display_value)
 
     def _is_mpr_brand(self):
         return mpr_calc.is_mpr_brand(self.data['outlet'].brand)
@@ -207,7 +207,7 @@ class DailySheet(BaseSheet):
         if self._uses_mp78_management_ac():
             return mpr_calc.mp78_ac_value_for_header(totals, 'Grab_Net')
 
-        return mpr_calc.management_net_ac_value(totals, 'Grab_Net')
+        return mpr_calc.management_net_ac_value(totals, 'Grab_Net', 'Grab_Mutation')
 
     def _get_standard_net_ac_value(self, totals, net_key):
         if net_key == 'Tiktok_Net':
@@ -219,7 +219,8 @@ class DailySheet(BaseSheet):
         if self._uses_mp78_management_ac():
             return mpr_calc.mp78_ac_value_for_header(totals, net_key)
 
-        return self._get_mpr_adjusted_value(totals, net_key)
+        mutation_key = net_key.replace('_Net', '_Mutation')
+        return self._get_mpr_adjusted_value(totals, net_key, mutation_key)
 
     def _get_tiktok_settlement_time_value(self, totals):
         settlement_times = totals.get('Tiktok_Settlement_Time')
