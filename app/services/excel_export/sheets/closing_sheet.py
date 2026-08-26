@@ -30,6 +30,10 @@ class ClosingSheet(BaseSheet):
         self.store_id_col_end = None
         self.store_id_row = None
         self.store_id_row_end = None
+        self.rate_table_col_start = None
+        self.rate_table_col_end = None
+        self.rate_table_row = None
+        self.rate_table_row_end = None
         self.rekening_col_start = None
         self.rekening_col_end = None
         self.rekening_row = None
@@ -49,6 +53,7 @@ class ClosingSheet(BaseSheet):
         self._write_grand_total_section()
         self._write_store_id_table()
         self._write_rekening_table()
+        self._write_rate_table()
         self._write_admin_documentation_section()
         self._apply_styles()
         auto_fit_columns(self.ws)
@@ -541,6 +546,51 @@ class ClosingSheet(BaseSheet):
             value_cell.alignment = CENTER_ALIGN
             value_cell.fill = fill
 
+    def _write_rate_table(self):
+        row = 3
+        start_column = (self.rekening_col_end + 2) if self.rekening_col_end else 24
+        rate_rows = [
+            ('Gojek MP78', mpr_calc.MANAGEMENT_COMMISSION_RATE),
+            ('Grab MP78', mpr_calc.MANAGEMENT_COMMISSION_RATE),
+            ('Shopee MP78', mpr_calc.MANAGEMENT_COMMISSION_RATE),
+            ('Tiktok MP78', mpr_calc.TIKTOK_MANAGEMENT_COMMISSION_RATE),
+            ('Gojek MPR', 1 - mpr_calc.MPR_STANDARD_NET_RATE),
+            ('Grab MPR', 1 - mpr_calc.MPR_STANDARD_NET_RATE),
+            ('Shopee MPR', 1 - mpr_calc.MPR_SHOPEE_NET_RATE),
+            ('Tiktok MPR', 1 - mpr_calc.MPR_TIKTOK_NET_RATE),
+        ]
+
+        self.rate_table_col_start = start_column
+        self.rate_table_col_end = start_column + 1
+        self.rate_table_row = row
+        self.rate_table_row_end = row + len(rate_rows)
+        self.ws.row_dimensions[row].height = 18
+
+        header_cells = [
+            (start_column, 'Rate Name'),
+            (start_column + 1, 'Rate'),
+        ]
+        for column, value in header_cells:
+            cell = self.ws.cell(row=row, column=column, value=value)
+            cell.font = HEADER_FONT
+            cell.alignment = CENTER_ALIGN
+            cell.fill = BLUE_FILL
+
+        for offset, (label, rate) in enumerate(rate_rows, start=1):
+            data_row = row + offset
+            self.ws.row_dimensions[data_row].height = 18
+
+            label_cell = self.ws.cell(row=data_row, column=start_column, value=label)
+            label_cell.font = HEADER_FONT
+            label_cell.alignment = LEFT_ALIGN
+            label_cell.fill = GREY_FILL
+
+            rate_cell = self.ws.cell(row=data_row, column=start_column + 1, value=rate)
+            rate_cell.font = HEADER_FONT
+            rate_cell.alignment = CENTER_ALIGN
+            rate_cell.number_format = '0%'
+            rate_cell.fill = GREY_FILL
+
     def _write_rekening_table(self):
         outlet = self.data['outlet']
         mpr_outlet = self._get_mapped_mpr_outlet()
@@ -965,6 +1015,17 @@ class ClosingSheet(BaseSheet):
                 max_row=self.store_id_row_end,
                 min_col=self.store_id_col_start,
                 max_col=self.store_id_col_end,
+            ):
+                for cell in row:
+                    cell.border = THIN_BORDER
+
+        # Apply borders to the rate table separately.
+        if self.rate_table_col_start and self.rate_table_col_end and self.rate_table_row and self.rate_table_row_end:
+            for row in self.ws.iter_rows(
+                min_row=self.rate_table_row,
+                max_row=self.rate_table_row_end,
+                min_col=self.rate_table_col_start,
+                max_col=self.rate_table_col_end,
             ):
                 for cell in row:
                     cell.border = THIN_BORDER
