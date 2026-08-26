@@ -3,7 +3,7 @@ MPR_GRAB_MANAGEMENT_COMMISSION_RATE = 1 - MPR_STANDARD_NET_RATE
 MPR_QRIS_OVO_NET_RATE = 0.98
 MPR_SHOPEE_NET_RATE = 0.92
 MPR_TIKTOK_NET_RATE = 0.95
-MANAGEMENT_COMMISSION_RATE = 1 / 74
+MANAGEMENT_COMMISSION_RATE = 0.01
 TIKTOK_MANAGEMENT_COMMISSION_RATE = 0.05
 QPON_COMMISSION_RATE = 0.01
 ENABLE_MPR_QRIS_OVO_COMMISSION = False
@@ -90,13 +90,7 @@ def gojek_net_value(totals, is_mpr=False):
 
 
 def gojek_net_ac_value(totals):
-    gojek_qris = totals.get('Gojek_QRIS', 0)
-    gofood = totals.get('Gojek_Net', 0) - gojek_qris
-    return (
-        (gojek_qris * mpr_gojek_grab_qris_ovo_net_rate())
-        + (gofood * MPR_STANDARD_NET_RATE)
-        + (totals.get('Gojek_Difference') or 0)
-    )
+    return totals.get('Gojek_Net', 0) * MPR_STANDARD_NET_RATE
 
 
 def grabfood_value(totals, is_mpr=False):
@@ -129,7 +123,7 @@ def tiktok_net_ac_value(totals, is_mpr=False, commission_rate=None):
 
 
 def grab_net_ac_value(totals):
-    return grab_net_value(totals, is_mpr=True)
+    return totals.get('Grab_Net', 0) * MPR_STANDARD_NET_RATE
 
 
 def shopee_net_value(totals, is_mpr=False):
