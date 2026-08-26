@@ -549,16 +549,24 @@ class ClosingSheet(BaseSheet):
     def _write_rate_table(self):
         row = 3
         start_column = (self.rekening_col_end + 2) if self.rekening_col_end else 24
+        brand = self.data['outlet'].brand
         rate_rows = [
-            ('Gojek MP78', mpr_calc.MANAGEMENT_COMMISSION_RATE),
-            ('Grab MP78', mpr_calc.MANAGEMENT_COMMISSION_RATE),
-            ('Shopee MP78', mpr_calc.MANAGEMENT_COMMISSION_RATE),
-            ('Tiktok MP78', mpr_calc.TIKTOK_MANAGEMENT_COMMISSION_RATE),
-            ('Gojek MPR', 1 - mpr_calc.MPR_STANDARD_NET_RATE),
-            ('Grab MPR', 1 - mpr_calc.MPR_STANDARD_NET_RATE),
-            ('Shopee MPR', 1 - mpr_calc.MPR_SHOPEE_NET_RATE),
-            ('Tiktok MPR', 1 - mpr_calc.MPR_TIKTOK_NET_RATE),
+            (f'Gojek {brand}', mpr_calc.MANAGEMENT_COMMISSION_RATE),
+            (f'Grab {brand}', mpr_calc.MANAGEMENT_COMMISSION_RATE),
+            (f'Shopee {brand}', mpr_calc.MANAGEMENT_COMMISSION_RATE),
+            (f'Tiktok {brand}', mpr_calc.TIKTOK_MANAGEMENT_COMMISSION_RATE),
         ]
+
+        mpr_outlet = self._get_mapped_mpr_outlet()
+        mpr_report_data = self.data.get('mpr_report_data')
+        if mpr_report_data or mpr_outlet:
+            mpr_brand = getattr(mpr_report_data.get('outlet') if mpr_report_data else mpr_outlet, 'brand', 'MPR')
+            rate_rows.extend([
+                (f'Gojek {mpr_brand}', 1 - mpr_calc.MPR_STANDARD_NET_RATE),
+                (f'Grab {mpr_brand}', 1 - mpr_calc.MPR_STANDARD_NET_RATE),
+                (f'Shopee {mpr_brand}', 1 - mpr_calc.MPR_SHOPEE_NET_RATE),
+                (f'Tiktok {mpr_brand}', 1 - mpr_calc.MPR_TIKTOK_NET_RATE),
+            ])
 
         self.rate_table_col_start = start_column
         self.rate_table_col_end = start_column + 1
