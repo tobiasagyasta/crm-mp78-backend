@@ -234,10 +234,7 @@ class ClosingSheet(BaseSheet):
                 [
                     ('Grab Net', 'Grab_Net_Raw', 'main'),
                 ] +
-                [
-                    definition for definition in platform_definitions[1:]
-                    if definition[0] != 'Grab (ac)'
-                ]
+                platform_definitions[1:]
             )
 
         if not self.data.get('mpr_report_data'):
@@ -551,10 +548,10 @@ class ClosingSheet(BaseSheet):
         start_column = (self.rekening_col_end + 2) if self.rekening_col_end else 24
         brand = self.data['outlet'].brand
         rate_rows = [
-            (f'Gojek {brand}', mpr_calc.MANAGEMENT_COMMISSION_RATE),
+            (f'Gojek {brand}', self._get_gojek_commission_rate()),
             (f'Grab {brand}', self._get_grab_management_commission_rate()),
-            (f'Shopee {brand}', mpr_calc.MANAGEMENT_COMMISSION_RATE),
-            (f'Tiktok {brand}', mpr_calc.TIKTOK_MANAGEMENT_COMMISSION_RATE),
+            (f'Shopee {brand}', self._get_shopee_commission_rate()),
+            (f'Tiktok {brand}', self._get_tiktok_commission_rate()),
         ]
 
         mpr_outlet = self._get_mapped_mpr_outlet()
@@ -826,6 +823,15 @@ class ClosingSheet(BaseSheet):
 
         return mpr_calc.MANAGEMENT_COMMISSION_RATE
 
+    def _get_gojek_commission_rate(self):
+        return mpr_calc.MANAGEMENT_COMMISSION_RATE
+
+    def _get_shopee_commission_rate(self):
+        return mpr_calc.MANAGEMENT_COMMISSION_RATE
+
+    def _get_tiktok_commission_rate(self):
+        return mpr_calc.tiktok_commission_rate_for_brand(self.data['outlet'].brand)
+
     def _get_grab_management_commission_expense(self, grab_net_total):
         if self._is_mpr_brand():
             return grab_net_total - (self._get_direct_mpr_display_value('Grab_Net') or 0)
@@ -918,6 +924,8 @@ class ClosingSheet(BaseSheet):
 
     def _get_closing_grand_total_income_value(self, header, grab_net_total=None):
         if header == 'Grab_Net':
+            if self._uses_mp78_management_ac():
+                return self._get_mp78_display_value(header)
             if grab_net_total is not None:
                 return grab_net_total
             return self._get_grand_total_with_fallback(header)
