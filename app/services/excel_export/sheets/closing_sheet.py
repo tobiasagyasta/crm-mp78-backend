@@ -552,7 +552,7 @@ class ClosingSheet(BaseSheet):
         brand = self.data['outlet'].brand
         rate_rows = [
             (f'Gojek {brand}', mpr_calc.MANAGEMENT_COMMISSION_RATE),
-            (f'Grab {brand}', mpr_calc.MANAGEMENT_COMMISSION_RATE),
+            (f'Grab {brand}', self._get_grab_management_commission_rate()),
             (f'Shopee {brand}', mpr_calc.MANAGEMENT_COMMISSION_RATE),
             (f'Tiktok {brand}', mpr_calc.TIKTOK_MANAGEMENT_COMMISSION_RATE),
         ]
@@ -821,6 +821,8 @@ class ClosingSheet(BaseSheet):
     def _get_grab_management_commission_rate(self):
         if self._is_mpr_brand():
             return mpr_calc.MPR_GRAB_MANAGEMENT_COMMISSION_RATE
+        if self._is_mp78_brand():
+            return mpr_calc.MP78_GRAB_MANAGEMENT_COMMISSION_RATE
 
         return mpr_calc.MANAGEMENT_COMMISSION_RATE
 

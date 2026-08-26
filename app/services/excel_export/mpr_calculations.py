@@ -4,6 +4,7 @@ MPR_QRIS_OVO_NET_RATE = 0.98
 MPR_SHOPEE_NET_RATE = 0.92
 MPR_TIKTOK_NET_RATE = 0.95
 MANAGEMENT_COMMISSION_RATE = 0.01
+MP78_GRAB_MANAGEMENT_COMMISSION_RATE = 1 / 74
 TIKTOK_MANAGEMENT_COMMISSION_RATE = 0.05
 QPON_COMMISSION_RATE = 0.01
 ENABLE_MPR_QRIS_OVO_COMMISSION = False
@@ -154,9 +155,9 @@ def standard_net_ac_value(totals, net_key):
     return totals.get(net_key, 0) * MPR_STANDARD_NET_RATE
 
 
-def management_net_ac_value(totals, net_key, mutation_key=None):
+def management_net_ac_value(totals, net_key, mutation_key=None, commission_rate=MANAGEMENT_COMMISSION_RATE):
     net = value_with_mutation_fallback(totals, mutation_key, net_key) if mutation_key else totals.get(net_key, 0)
-    return net - (net * MANAGEMENT_COMMISSION_RATE)
+    return net - (net * commission_rate)
 
 
 def qpon_net_ac_value(totals, net_key='Qpon_Net'):
@@ -168,7 +169,12 @@ def mp78_ac_value_for_header(totals, header):
     if header == 'Gojek_Mutation':
         return management_net_ac_value(totals, 'Gojek_Net', 'Gojek_Mutation')
     if header == 'Grab_Net':
-        return management_net_ac_value(totals, 'Grab_Net', 'Grab_Mutation')
+        return management_net_ac_value(
+            totals,
+            'Grab_Net',
+            'Grab_Mutation',
+            MP78_GRAB_MANAGEMENT_COMMISSION_RATE,
+        )
     if header == 'Tiktok_Net':
         return tiktok_net_ac_value(totals, commission_rate=TIKTOK_MANAGEMENT_COMMISSION_RATE)
 
