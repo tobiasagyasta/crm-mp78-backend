@@ -594,13 +594,15 @@ class ClosingSheet(BaseSheet):
     def _write_rekening_table(self):
         outlet = self.data['outlet']
         mpr_outlet = self._get_mapped_mpr_outlet()
+        start_date = self.data.get('start_date')
+        end_date = self.data.get('end_date')
 
         row = 3
         start_column = (self.store_id_col_end + 2) if self.store_id_col_end else 22
-        rekening_rows = RekeningInfoService.get_outlet_rekenings(outlet)
+        rekening_rows = RekeningInfoService.get_outlet_rekenings(outlet, start_date, end_date)
 
         if mpr_outlet:
-            rekening_rows.extend(RekeningInfoService.get_outlet_rekenings(mpr_outlet))
+            rekening_rows.extend(RekeningInfoService.get_outlet_rekenings(mpr_outlet, start_date, end_date))
 
         if not rekening_rows:
             rekening_rows = [
