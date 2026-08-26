@@ -159,7 +159,7 @@ class DailySheet(BaseSheet):
         if self._uses_mp78_management_ac():
             return mpr_calc.mp78_ac_value_for_header(totals, 'Gojek_Mutation')
 
-        return self._get_value_with_mutation_fallback(totals, 'Gojek_Mutation', 'Gojek_Net')
+        return mpr_calc.management_net_ac_value(totals, 'Gojek_Net', 'Gojek_Mutation')
 
     def _get_grabfood_value(self, totals):
         return mpr_calc.grabfood_value(totals)

@@ -596,10 +596,9 @@ class ClosingSheet(BaseSheet):
             label_cell.alignment = LEFT_ALIGN
             label_cell.fill = GREY_FILL
 
-            rate_cell = self.ws.cell(row=data_row, column=start_column + 1, value=rate)
+            rate_cell = self.ws.cell(row=data_row, column=start_column + 1, value=f'{rate:.2%}')
             rate_cell.font = HEADER_FONT
             rate_cell.alignment = CENTER_ALIGN
-            rate_cell.number_format = '0.00%'
             rate_cell.fill = GREY_FILL
 
     def _write_rekening_table(self):
