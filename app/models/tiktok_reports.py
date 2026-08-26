@@ -71,7 +71,7 @@ class TiktokReport(db.Model):
             return {
                 'brand_name': brand_name,
                 'outlet_code': outlet_code,
-                'outlet_order_id': row[1].strip(),
+                'outlet_order_id': row[2].strip(),
                 'store_name': store_name,
                 'order_time': order_time,
                 'settlement_time': settlement_time,
