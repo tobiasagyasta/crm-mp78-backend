@@ -20,6 +20,9 @@ EXPENSE_CATEGORY_COLUMNS = (
     "Sosmed 777",
     "Fee PIC",
 )
+MAYORA_EXPENSE_CATEGORY_ID = 24
+MAYORA_OUTLET_COLUMN = "OUTLET NAME (GOJEK)"
+MAYORA_IGNORED_OUTLET_NAMES = {"total"}
 CSV_COLUMN_TO_EXPENSE_CATEGORY = {
     "Admin Kantor": "Admin Kantor",
     "Admin Gudang": "Admin Gudang",
@@ -44,7 +47,7 @@ class ManualEntryImportPayload:
 def _clean_str(value: object) -> str:
     if value is None:
         return ""
-    return str(value).strip()
+    return str(value).strip().capitalize()
 
 
 def _normalize_key(value: str) -> str:
@@ -133,6 +136,28 @@ def resolve_manual_entry_date_range(
     return start_date, end_date, False
 
 
+def resolve_current_month_closing_date_range(
+    closing_date: str | None, target_date: date
+) -> tuple[date, date, bool]:
+    closing_range = _parse_closing_range(closing_date)
+    if not closing_range:
+        start_date, end_date = _month_bounds(target_date)
+        return start_date, end_date, True
+
+    start_day, end_day = closing_range
+    start_date = date(
+        target_date.year,
+        target_date.month,
+        min(start_day, _month_last_day(target_date.year, target_date.month)),
+    )
+    end_date = date(
+        target_date.year,
+        target_date.month,
+        min(end_day, _month_last_day(target_date.year, target_date.month)),
+    )
+    return start_date, end_date, False
+
+
 def _build_description(start_date: date, end_date: date) -> str:
     return f" {start_date.isoformat()} to {end_date.isoformat()}"
 
@@ -167,6 +192,26 @@ def _load_outlets(outlet_codes: set[str]) -> dict[str, Outlet]:
 
     outlets = Outlet.query.filter(Outlet.outlet_code.in_(sorted(outlet_codes))).all()
     return {outlet.outlet_code: outlet for outlet in outlets}
+
+
+def _load_outlets_by_gojek_name() -> tuple[dict[str, Outlet], set[str]]:
+    outlets = Outlet.query.filter(Outlet.outlet_name_gojek.isnot(None)).all()
+    outlets_by_name: dict[str, Outlet] = {}
+    duplicate_names: set[str] = set()
+
+    for outlet in outlets:
+        normalized_name = _normalize_key(outlet.outlet_name_gojek)
+        if normalized_name == "":
+            continue
+        if normalized_name in outlets_by_name:
+            duplicate_names.add(normalized_name)
+            continue
+        outlets_by_name[normalized_name] = outlet
+
+    for duplicate_name in duplicate_names:
+        outlets_by_name.pop(duplicate_name, None)
+
+    return outlets_by_name, duplicate_names
 
 
 def _payload_key(payload: ManualEntryImportPayload) -> tuple[str, int, date, date, Decimal, str]:
@@ -230,6 +275,130 @@ def _read_adm_csv_rows(file_contents: str) -> list[dict[str, str]]:
         raise ValueError(f"Missing required CSV columns: {missing_str}")
 
     return list(reader)
+
+
+def _read_mayora_csv_rows(file_contents: str) -> tuple[list[str], list[dict[str, str]]]:
+    csv_file = StringIO(file_contents)
+    raw_reader = csv.reader(csv_file)
+    rows = list(raw_reader)
+    if len(rows) < 2:
+        raise ValueError("Mayora CSV must contain a title row and header row.")
+
+    headers = [_clean_str(header) for header in rows[1]]
+    if MAYORA_OUTLET_COLUMN not in headers:
+        raise ValueError(f"Missing required CSV column: {MAYORA_OUTLET_COLUMN}")
+
+    data_rows: list[dict[str, str]] = []
+    for row in rows[2:]:
+        padded_row = row + [""] * (len(headers) - len(row))
+        data_rows.append(dict(zip(headers, padded_row[: len(headers)])))
+
+    return headers, data_rows
+
+
+def import_manual_entries_from_mayora_csv_content(
+    file_contents: str,
+    uploaded_date: date,
+    source_name: str | None = None,
+) -> dict[str, object]:
+    headers, rows = _read_mayora_csv_rows(file_contents)
+    product_columns = [header for header in headers if header != MAYORA_OUTLET_COLUMN]
+    outlets_by_name, duplicate_outlet_names = _load_outlets_by_gojek_name()
+
+    payloads: list[ManualEntryImportPayload] = []
+    missing_outlet_names: set[str] = set()
+    ambiguous_outlet_names: set[str] = set()
+    fallback_calendar_ranges = 0
+    processed_rows = 0
+    skipped_total_rows = 0
+
+    for row_number, row in enumerate(rows, start=3):
+        outlet_name = _clean_str(row.get(MAYORA_OUTLET_COLUMN))
+        normalized_outlet_name = _normalize_key(outlet_name)
+        if normalized_outlet_name == "":
+            continue
+        if normalized_outlet_name in MAYORA_IGNORED_OUTLET_NAMES:
+            skipped_total_rows += 1
+            continue
+        if normalized_outlet_name in duplicate_outlet_names:
+            ambiguous_outlet_names.add(outlet_name)
+            continue
+
+        outlet = outlets_by_name.get(normalized_outlet_name)
+        if outlet is None:
+            missing_outlet_names.add(outlet_name)
+            continue
+
+        processed_rows += 1
+        start_date, end_date, used_fallback = resolve_current_month_closing_date_range(
+            outlet.closing_date, uploaded_date
+        )
+        if used_fallback:
+            fallback_calendar_ranges += 1
+
+        brand_name = _clean_str(outlet.brand)
+        if brand_name == "":
+            raise ValueError(
+                f"Missing brand for outlet '{outlet_name}' at CSV row {row_number}."
+            )
+
+        for product_column in product_columns:
+            amount = _parse_amount(row.get(product_column, ""), product_column, row_number)
+            if amount is None:
+                continue
+
+            payloads.append(
+                ManualEntryImportPayload(
+                    outlet_code=outlet.outlet_code,
+                    brand_name=brand_name,
+                    amount=amount,
+                    description=_clean_str(product_column),
+                    start_date=start_date,
+                    end_date=end_date,
+                    category_id=MAYORA_EXPENSE_CATEGORY_ID,
+                )
+            )
+
+    existing_keys = _load_existing_manual_entry_keys(payloads)
+
+    created_entries = 0
+    skipped_duplicates = 0
+    for payload in payloads:
+        payload_key = _payload_key(payload)
+        if payload_key in existing_keys:
+            skipped_duplicates += 1
+            continue
+
+        db.session.add(
+            ManualEntry(
+                outlet_code=payload.outlet_code,
+                brand_name=payload.brand_name,
+                entry_type="expense",
+                amount=payload.amount,
+                description=payload.description,
+                start_date=payload.start_date,
+                end_date=payload.end_date,
+                category_id=payload.category_id,
+            )
+        )
+        existing_keys.add(payload_key)
+        created_entries += 1
+
+    db.session.commit()
+
+    return {
+        "status": "ok",
+        "source_name": source_name or "uploaded_file",
+        "uploaded_date": uploaded_date.isoformat(),
+        "rows_in_csv": len(rows),
+        "processed_rows": processed_rows,
+        "created_entries": created_entries,
+        "skipped_duplicates": skipped_duplicates,
+        "skipped_total_rows": skipped_total_rows,
+        "fallback_calendar_ranges": fallback_calendar_ranges,
+        "missing_outlet_names": sorted(missing_outlet_names),
+        "ambiguous_outlet_names": sorted(ambiguous_outlet_names),
+    }
 
 
 def import_manual_entries_from_adm_csv_content(
