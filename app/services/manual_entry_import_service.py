@@ -54,6 +54,9 @@ def _normalize_key(value: str) -> str:
     return " ".join(_clean_str(value).lower().split())
 
 
+MAYORA_OUTLET_COLUMN_KEY = _normalize_key(MAYORA_OUTLET_COLUMN)
+
+
 def parse_uploaded_date(value: str | None) -> date:
     raw_value = _clean_str(value)
     if raw_value == "":
@@ -284,12 +287,25 @@ def _read_mayora_csv_rows(file_contents: str) -> tuple[list[str], list[dict[str,
     if len(rows) < 2:
         raise ValueError("Mayora CSV must contain a title row and header row.")
 
-    headers = [_clean_str(header) for header in rows[1]]
-    if MAYORA_OUTLET_COLUMN not in headers:
+    header_index = None
+    headers: list[str] = []
+    for index, row in enumerate(rows):
+        normalized_headers = [_normalize_key(header) for header in row]
+        if MAYORA_OUTLET_COLUMN_KEY in normalized_headers:
+            header_index = index
+            headers = [_clean_str(header) for header in row]
+            break
+
+    if header_index is None:
         raise ValueError(f"Missing required CSV column: {MAYORA_OUTLET_COLUMN}")
 
+    outlet_column_index = [
+        _normalize_key(header) for header in headers
+    ].index(MAYORA_OUTLET_COLUMN_KEY)
+    headers[outlet_column_index] = MAYORA_OUTLET_COLUMN
+
     data_rows: list[dict[str, str]] = []
-    for row in rows[2:]:
+    for row in rows[header_index + 1:]:
         padded_row = row + [""] * (len(headers) - len(row))
         data_rows.append(dict(zip(headers, padded_row[: len(headers)])))
 
