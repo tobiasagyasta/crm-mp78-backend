@@ -13,6 +13,10 @@ from datetime import datetime
 import re
 
 class ClosingSheet(BaseSheet):
+    GRAB_NET_CLOSING_BRANDS = {
+        'Martabak 777 Sinar Bulan',
+        'Martabak 999 Asli Bandung',
+    }
     TIKTOK_NET_HEADER = 'Tiktok_Net'
     TIKTOK_CLOSING_NET_HEADER = 'Tiktok_Closing_Net'
     QPON_NET_HEADER = 'Qpon_Net'
@@ -227,7 +231,7 @@ class ClosingSheet(BaseSheet):
 
     def _get_main_table_platforms(self):
         platform_definitions = self._get_main_platform_definitions_for_grand_total()
-        if self._is_mp78_brand():
+        if self._uses_grab_net_closing_label():
             platform_definitions = [
                 ('Grab Net', 'Grab_Net_Raw', report_type)
                 if header == 'Grab_Net' and report_type == 'main'
@@ -554,7 +558,6 @@ class ClosingSheet(BaseSheet):
         rate_rows = [
             (f'Gojek {brand}', self._get_gojek_commission_rate()),
             (f'Grab {brand}', self._get_grab_management_commission_rate()),
-            (f'Shopee {brand}', self._get_shopee_commission_rate()),
             (f'Tiktok {brand}', self._get_tiktok_commission_rate()),
         ]
 
@@ -565,7 +568,6 @@ class ClosingSheet(BaseSheet):
             rate_rows.extend([
                 (f'Gojek {mpr_brand}', 1 - mpr_calc.MPR_STANDARD_NET_RATE),
                 (f'Grab {mpr_brand}', 1 - mpr_calc.MPR_STANDARD_NET_RATE),
-                (f'Shopee {mpr_brand}', 1 - mpr_calc.MPR_SHOPEE_NET_RATE),
                 (f'Tiktok {mpr_brand}', 1 - mpr_calc.MPR_TIKTOK_NET_RATE),
             ])
 
@@ -836,6 +838,10 @@ class ClosingSheet(BaseSheet):
 
     def _is_mp78_brand(self):
         return mpr_calc.is_mp78_brand(self.data['outlet'].brand)
+
+    def _uses_grab_net_closing_label(self):
+        brand = (self.data['outlet'].brand or '').strip()
+        return self._is_mp78_brand() or brand in self.GRAB_NET_CLOSING_BRANDS
 
     def _is_mpr_brand(self):
         return mpr_calc.is_mpr_brand(self.data['outlet'].brand)
