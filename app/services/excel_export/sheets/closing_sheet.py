@@ -228,14 +228,13 @@ class ClosingSheet(BaseSheet):
 
     def _get_main_table_platforms(self):
         platform_definitions = self._get_main_platform_definitions_for_grand_total()
-        if self._uses_mp78_management_ac():
-            platform_definitions = (
-                platform_definitions[:1] +
-                [
-                    ('Grab Net', 'Grab_Net_Raw', 'main'),
-                ] +
-                platform_definitions[1:]
-            )
+        if self._is_mp78_brand():
+            platform_definitions = [
+                ('Grab Net', 'Grab_Net_Raw', report_type)
+                if header == 'Grab_Net' and report_type == 'main'
+                else (name, header, report_type)
+                for name, header, report_type in platform_definitions
+            ]
 
         if not self.data.get('mpr_report_data'):
             return platform_definitions
