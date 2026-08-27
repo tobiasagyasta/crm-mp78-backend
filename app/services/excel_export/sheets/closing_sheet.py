@@ -101,8 +101,7 @@ class ClosingSheet(BaseSheet):
             elif name in ['Grab', 'Grab Net', 'Grab (ac)', 'Grab MPR (ac)', 'Grab(OVO)']:
                 cell.fill = GRAB_FILL
             elif name in [
-                'ShopeeFood', 'ShopeeFood (ac)', 'ShopeePay', 'ShopeePay (ac)',
-                'Shopee MPR (ac)', 'ShopeePay MPR (ac)'
+                'ShopeeFood', 'ShopeePay'
             ]:
                 cell.fill = SHOPEE_FILL
             elif name in [
@@ -220,8 +219,8 @@ class ClosingSheet(BaseSheet):
         return [
             ('Gojek MPR (ac)', 'Gojek_Mutation', 'mpr'),
             ('Grab MPR (ac)', 'Grab_Net', 'mpr'),
-            ('Shopee MPR (ac)', 'Shopee_Net', 'mpr'),
-            ('ShopeePay MPR (ac)', 'ShopeePay_Net', 'mpr'),
+            ('ShopeeFood', 'Shopee_Net', 'mpr'),
+            ('ShopeePay', 'ShopeePay_Net', 'mpr'),
             ('Tiktok MPR (ac)', 'Tiktok_Net', 'mpr'),
             ('Qpon MPR (ac)', self.QPON_AC_HEADER, 'mpr'),
         ]
@@ -242,8 +241,8 @@ class ClosingSheet(BaseSheet):
         return platform_definitions + [
             ('Gojek MPR (ac)', 'Gojek_Mutation', 'mpr'),
             ('Grab MPR (ac)', 'Grab_Net', 'mpr'),
-            ('Shopee MPR (ac)', 'Shopee_Net', 'mpr'),
-            ('ShopeePay MPR (ac)', 'ShopeePay_Net', 'mpr'),
+            ('ShopeeFood', 'Shopee_Net', 'mpr'),
+            ('ShopeePay', 'ShopeePay_Net', 'mpr'),
             ('Tiktok MPR (ac)', 'Tiktok_Net', 'mpr'),
             ('Qpon MPR (ac)', self.QPON_AC_HEADER, 'mpr'),
         ]
@@ -825,9 +824,9 @@ class ClosingSheet(BaseSheet):
             )
             return mpr_calc.net_after_commission_value(totals, 'Grab_Net', rate)
         if header == 'Shopee_Mutation':
-            return mpr_calc.management_net_ac_value(totals, 'Shopee_Net', 'Shopee_Mutation')
+            return self._get_report_value_with_fallback(self.data, header, date)
         if header == 'ShopeePay_Mutation':
-            return mpr_calc.management_net_ac_value(totals, 'ShopeePay_Net', 'ShopeePay_Mutation')
+            return self._get_report_value_with_fallback(self.data, header, date)
         if header == self.TIKTOK_NET_HEADER:
             return mpr_calc.tiktok_net_ac_value_for_brand(totals, self.data['outlet'].brand)
         if header == 'Webshop_Net':
@@ -874,6 +873,9 @@ class ClosingSheet(BaseSheet):
         return 'Grab Manag 1%'
 
     def _get_mp78_display_value(self, header, date=None):
+        if header in ['Shopee_Net', 'ShopeePay_Net']:
+            return self._get_report_value_with_fallback(self.data, header, date)
+
         totals = self.data.get('grand_totals', {})
         if date is not None:
             totals = self.data.get('daily_totals', {}).get(date, {})
@@ -889,6 +891,9 @@ class ClosingSheet(BaseSheet):
         if not report_data:
             return None
 
+        if header in ['Shopee_Net', 'ShopeePay_Net']:
+            return self._get_report_value_with_fallback(report_data, header, date)
+
         totals = report_data.get('grand_totals', {})
         if date is not None:
             totals = report_data.get('daily_totals', {}).get(date, {})
@@ -900,6 +905,9 @@ class ClosingSheet(BaseSheet):
         return self._get_report_value_with_fallback(report_data, header, date)
 
     def _get_direct_mpr_display_value(self, header, date=None):
+        if header in ['Shopee_Net', 'ShopeePay_Net']:
+            return self._get_report_value_with_fallback(self.data, header, date)
+
         totals = self.data.get('grand_totals', {})
         if date is not None:
             totals = self.data.get('daily_totals', {}).get(date, {})
