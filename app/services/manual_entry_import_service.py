@@ -84,6 +84,12 @@ def _previous_month(year: int, month: int) -> tuple[int, int]:
     return year, month - 1
 
 
+def _next_month(year: int, month: int) -> tuple[int, int]:
+    if month == 12:
+        return year + 1, 1
+    return year, month + 1
+
+
 def _parse_closing_range(closing_date: str | None) -> tuple[int, int] | None:
     raw_value = _clean_str(closing_date)
     if "-" not in raw_value:
@@ -148,16 +154,15 @@ def resolve_current_month_closing_date_range(
         return start_date, end_date, True
 
     start_day, end_day = closing_range
-    start_date = date(
-        target_date.year,
-        target_date.month,
-        min(start_day, _month_last_day(target_date.year, target_date.month)),
-    )
-    end_date = date(
-        target_date.year,
-        target_date.month,
-        min(end_day, _month_last_day(target_date.year, target_date.month)),
-    )
+    start_year = target_date.year
+    start_month = target_date.month
+    end_year = target_date.year
+    end_month = target_date.month
+    if start_day > end_day:
+        end_year, end_month = _next_month(target_date.year, target_date.month)
+
+    start_date = date(start_year, start_month, min(start_day, _month_last_day(start_year, start_month)))
+    end_date = date(end_year, end_month, min(end_day, _month_last_day(end_year, end_month)))
     return start_date, end_date, False
 
 
