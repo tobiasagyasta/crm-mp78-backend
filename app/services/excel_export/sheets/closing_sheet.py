@@ -933,7 +933,15 @@ class ClosingSheet(BaseSheet):
         if date is not None:
             totals = report_data.get('daily_totals', {}).get(date, {})
 
-        return mpr_calc.tiktok_net_ac_value_for_brand(totals, self._get_outlet_for_report_type(report_type).brand)
+        net_key = (
+            self.TIKTOK_CLOSING_NET_HEADER
+            if mpr_calc.ENABLE_CLOSING_TIKTOK_SETTLEMENT_SHIFT
+            else self.TIKTOK_NET_HEADER
+        )
+        return mpr_calc.tiktok_net_ac_value_for_brand(
+            {self.TIKTOK_NET_HEADER: totals.get(net_key, 0)},
+            self._get_outlet_for_report_type(report_type).brand,
+        )
 
     def _get_qpon_closing_display_value(self, report_type, date=None):
         report_data = self.data.get('mpr_report_data') if report_type == 'mpr' else self.data

@@ -109,7 +109,9 @@ def get_report_data(outlet_code: str, start_date: datetime, end_date: datetime) 
     shopee_reports = ShopeeReport.query.filter(ShopeeReport.outlet_code == outlet_code, ShopeeReport.order_create_time >= start_date, ShopeeReport.order_create_time <= end_date_inclusive).all()
     shopeepay_reports = ShopeepayReport.query.filter(ShopeepayReport.outlet_code == outlet_code, ShopeepayReport.create_time >= start_date, ShopeepayReport.create_time <= end_date_inclusive).all()
     tiktok_reports = TiktokReport.query.filter(TiktokReport.outlet_code == outlet_code, TiktokReport.order_time >= start_date, TiktokReport.order_time <= end_date_inclusive).all()
-    tiktok_closing_reports = TiktokReport.query.filter(TiktokReport.outlet_code == outlet_code, TiktokReport.order_time >= start_date - timedelta(days=7), TiktokReport.order_time <= end_date_inclusive - timedelta(days=7)).all()
+    tiktok_closing_reports = []
+    if mpr_calc.ENABLE_CLOSING_TIKTOK_SETTLEMENT_SHIFT:
+        tiktok_closing_reports = TiktokReport.query.filter(TiktokReport.outlet_code == outlet_code, TiktokReport.order_time >= start_date - timedelta(days=7), TiktokReport.order_time <= end_date_inclusive - timedelta(days=7)).all()
     qpon_reports = QponReport.query.filter(QponReport.outlet_code == outlet_code, QponReport.bill_created_at >= start_date, QponReport.bill_created_at <= end_date_inclusive).all()
     qpon_closing_reports = QponReport.query.filter(QponReport.outlet_code == outlet_code, QponReport.bill_created_at >= start_date - timedelta(days=7), QponReport.bill_created_at <= end_date_inclusive - timedelta(days=7)).all()
     webshop_reports = WebshopReport.query.filter(WebshopReport.outlet_code == outlet_code, WebshopReport.created_at >= start_date, WebshopReport.created_at <= end_date_inclusive).all()
