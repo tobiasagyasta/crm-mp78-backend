@@ -102,7 +102,7 @@ class ClosingSheet(BaseSheet):
                 cell.fill = CLOSED_OFF_FILL
             elif name in ['Gojek', 'Gojek (ac)', 'Gojek MPR (ac)']:
                 cell.fill = GOJEK_FILL
-            elif name in ['Grab', 'Grab Net', 'Grab (ac)', 'Grab MPR (ac)', 'Grab(OVO)']:
+            elif name in ['Grab', 'Grab Net', 'Grab (net)', 'Grab (ac)', 'Grab MPR (ac)', 'Grab(OVO)']:
                 cell.fill = GRAB_FILL
             elif name in [
                 'ShopeeFood', 'ShopeePay'
@@ -233,7 +233,7 @@ class ClosingSheet(BaseSheet):
         platform_definitions = self._get_main_platform_definitions_for_grand_total()
         if self._uses_grab_net_closing_label():
             platform_definitions = [
-                ('Grab net', 'Grab_Net_Raw', report_type)
+                ('Grab (net)', 'Grab_Net_Raw', report_type)
                 if header == 'Grab_Net' and report_type == 'main'
                 else (name, header, report_type)
                 for name, header, report_type in platform_definitions
