@@ -832,7 +832,7 @@ class ClosingSheet(BaseSheet):
         if header == self.TIKTOK_NET_HEADER:
             return mpr_calc.tiktok_net_ac_value_for_brand(totals, self.data['outlet'].brand)
         if header == 'Webshop_Net':
-            return mpr_calc.management_net_ac_value(totals, 'Webshop_Net')
+            return totals.get('Webshop_Net', 0)
 
         return None
 
