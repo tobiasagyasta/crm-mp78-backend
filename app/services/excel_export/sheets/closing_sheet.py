@@ -967,11 +967,7 @@ class ClosingSheet(BaseSheet):
     def _get_closing_grand_total_income_value(self, header, grab_net_total=None):
         if header == 'Grab_Net':
             if grab_net_total is not None:
-                return mpr_calc.net_after_commission_value(
-                    {'Grab_Net': grab_net_total},
-                    'Grab_Net',
-                    self._get_grab_management_commission_rate(),
-                )
+                return grab_net_total
             return self._get_platform_grand_total_with_fallback('main', header)
 
         return self._get_platform_grand_total_with_fallback('main', header)
