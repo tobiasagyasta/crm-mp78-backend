@@ -231,7 +231,7 @@ class ClosingSheet(BaseSheet):
 
     def _get_main_table_platforms(self):
         platform_definitions = self._get_main_platform_definitions_for_grand_total()
-        if self._uses_grab_net_closing_label():
+        if self._uses_grab_net_closing_label() and not self._is_mp78_brand():
             platform_definitions = [
                 ('Grab Net', 'Grab_Net_Raw', report_type)
                 if header == 'Grab_Net' and report_type == 'main'
@@ -933,16 +933,7 @@ class ClosingSheet(BaseSheet):
         if date is not None:
             totals = report_data.get('daily_totals', {}).get(date, {})
 
-        closing_net = totals.get(self.TIKTOK_CLOSING_NET_HEADER, 0)
-        closing_totals = {self.TIKTOK_NET_HEADER: closing_net}
-
-        if report_type == 'mpr' or (report_type == 'main' and self._is_mpr_brand()):
-            return mpr_calc.tiktok_net_ac_value(closing_totals, is_mpr=True)
-
-        if self._uses_mp78_management_ac():
-            return mpr_calc.mp78_ac_value_for_header(closing_totals, self.TIKTOK_NET_HEADER)
-
-        return closing_net
+        return mpr_calc.tiktok_net_ac_value_for_brand(totals, self._get_outlet_for_report_type(report_type).brand)
 
     def _get_qpon_closing_display_value(self, report_type, date=None):
         report_data = self.data.get('mpr_report_data') if report_type == 'mpr' else self.data
@@ -968,8 +959,12 @@ class ClosingSheet(BaseSheet):
     def _get_closing_grand_total_income_value(self, header, grab_net_total=None):
         if header == 'Grab_Net':
             if grab_net_total is not None:
-                return grab_net_total
-            return self._get_grand_total_with_fallback(header)
+                return mpr_calc.net_after_commission_value(
+                    {'Grab_Net': grab_net_total},
+                    'Grab_Net',
+                    self._get_grab_management_commission_rate(),
+                )
+            return self._get_platform_grand_total_with_fallback('main', header)
 
         return self._get_platform_grand_total_with_fallback('main', header)
 
