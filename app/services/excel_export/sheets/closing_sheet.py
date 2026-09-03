@@ -231,9 +231,9 @@ class ClosingSheet(BaseSheet):
 
     def _get_main_table_platforms(self):
         platform_definitions = self._get_main_platform_definitions_for_grand_total()
-        if self._uses_grab_net_closing_label() and not self._is_mp78_brand():
+        if self._uses_grab_net_closing_label():
             platform_definitions = [
-                ('Grab (net)', 'Grab_Net_Raw', report_type)
+                ('Grab net', 'Grab_Net_Raw', report_type)
                 if header == 'Grab_Net' and report_type == 'main'
                 else (name, header, report_type)
                 for name, header, report_type in platform_definitions
