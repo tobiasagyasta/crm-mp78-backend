@@ -897,9 +897,6 @@ class ClosingSheet(BaseSheet):
         if not report_data:
             return None
 
-        if header in ['Shopee_Net', 'ShopeePay_Net']:
-            return self._get_report_value_with_fallback(report_data, header, date)
-
         totals = report_data.get('grand_totals', {})
         if date is not None:
             totals = report_data.get('daily_totals', {}).get(date, {})
@@ -911,9 +908,6 @@ class ClosingSheet(BaseSheet):
         return self._get_report_value_with_fallback(report_data, header, date)
 
     def _get_direct_mpr_display_value(self, header, date=None):
-        if header in ['Shopee_Net', 'ShopeePay_Net']:
-            return self._get_report_value_with_fallback(self.data, header, date)
-
         totals = self.data.get('grand_totals', {})
         if date is not None:
             totals = self.data.get('daily_totals', {}).get(date, {})

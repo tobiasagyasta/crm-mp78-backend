@@ -180,12 +180,18 @@ class DailySheet(BaseSheet):
         return totals.get('Shopee_Net', 0)
 
     def _get_shopee_net_ac_value(self, totals):
+        if self._is_mpr_brand():
+            return mpr_calc.shopee_net_ac_value(totals)
+
         return self._get_shopee_net_value(totals)
 
     def _get_shopeepay_net_value(self, totals):
         return totals.get('ShopeePay_Net', 0)
 
     def _get_shopeepay_net_ac_value(self, totals):
+        if self._is_mpr_brand():
+            return mpr_calc.shopeepay_net_ac_value(totals)
+
         return self._get_shopeepay_net_value(totals)
 
     def _get_grab_net_ac_value(self, totals):
