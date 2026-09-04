@@ -377,8 +377,8 @@ class ClosingSheet(BaseSheet):
             )
             value_cell.number_format = '#,##0'
             value_cell.alignment = RIGHT_ALIGN
-            if platform_disabled:
-                value_cell.fill = CLOSED_OFF_FILL
+            # if platform_disabled:
+            #     value_cell.fill = CLOSED_OFF_FILL
             final_i += 1
             if header == 'Grab_Net':
                 grab_mgmt_row = label_row + 1
@@ -994,9 +994,6 @@ class ClosingSheet(BaseSheet):
         return is_platform_disabled(outlet, platform)
 
     def _get_closing_grab_management_commission_expense(self, grab_net_total):
-        if self._is_closing_platform_disabled('Grab_Net', 'main'):
-            return 0
-
         return self._get_grab_management_commission_expense(grab_net_total)
 
     def _get_outlet_for_report_type(self, report_type):
