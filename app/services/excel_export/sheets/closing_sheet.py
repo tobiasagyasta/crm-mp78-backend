@@ -568,6 +568,7 @@ class ClosingSheet(BaseSheet):
             rate_rows.extend([
                 (f'Gojek {mpr_brand}', 1 - mpr_calc.MPR_STANDARD_NET_RATE),
                 (f'Grab {mpr_brand}', 1 - mpr_calc.MPR_STANDARD_NET_RATE),
+                (f'Shopee {mpr_brand}', 1 - mpr_calc.MPR_SHOPEE_NET_RATE),
                 (f'Tiktok {mpr_brand}', 1 - mpr_calc.MPR_TIKTOK_NET_RATE),
             ])
 
