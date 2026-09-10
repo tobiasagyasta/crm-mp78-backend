@@ -22,6 +22,8 @@ class ClosingSheet(BaseSheet):
     QPON_NET_HEADER = 'Qpon_Net'
     QPON_CLOSING_NET_HEADER = 'Qpon_Closing_Net'
     QPON_AC_HEADER = 'Qpon_Net_Ac'
+    GOFOOD_AC_HEADER = 'GoFood_Ac'
+    GRABFOOD_AC_HEADER = 'GrabFood_Ac'
 
     def __init__(self, workbook, data):
         super().__init__(workbook, 'Closing Sheet', data)
@@ -100,9 +102,9 @@ class ClosingSheet(BaseSheet):
             cell.alignment = CENTER_ALIGN
             if self._is_closing_platform_disabled(header, report_type):
                 cell.fill = CLOSED_OFF_FILL
-            elif name in ['Gojek', 'Gojek (ac)', 'Gojek MPR (ac)']:
+            elif name in ['Gojek', 'Gojek (ac)', 'Gojek MPR (ac)', 'GoFood (ac)']:
                 cell.fill = GOJEK_FILL
-            elif name in ['Grab', 'Grab Net', 'Grab (net)', 'Grab (ac)', 'Grab MPR (ac)', 'Grab(OVO)']:
+            elif name in ['Grab', 'Grab Net', 'Grab (net)', 'Grab (ac)', 'Grab MPR (ac)', 'Grab(OVO)', 'GrabFood (ac)']:
                 cell.fill = GRAB_FILL
             elif name in [
                 'ShopeeFood', 'ShopeePay'
@@ -258,6 +260,8 @@ class ClosingSheet(BaseSheet):
             return self._get_qpon_closing_display_value(report_type)
         if header == self.QPON_AC_HEADER:
             return self._get_qpon_closing_ac_display_value(report_type)
+        if header in [self.GOFOOD_AC_HEADER, self.GRABFOOD_AC_HEADER]:
+            return self._get_mpr_mandiri_food_ac_display_value(header, report_type)
         if report_type == 'mpr':
             return self._get_mpr_display_value(header)
         if self._is_mpr_brand():
@@ -279,6 +283,8 @@ class ClosingSheet(BaseSheet):
             return self._get_qpon_closing_display_value(report_type, date)
         if header == self.QPON_AC_HEADER:
             return self._get_qpon_closing_ac_display_value(report_type, date)
+        if header in [self.GOFOOD_AC_HEADER, self.GRABFOOD_AC_HEADER]:
+            return self._get_mpr_mandiri_food_ac_display_value(header, report_type, date)
         if report_type == 'mpr':
             return self._get_mpr_display_value(header, date)
         if self._is_mpr_brand():
@@ -847,6 +853,9 @@ class ClosingSheet(BaseSheet):
     def _is_mpr_brand(self):
         return mpr_calc.is_mpr_brand(self.data['outlet'].brand)
 
+    def _is_mpr_mandiri_brand(self):
+        return (self.data['outlet'].brand or '').strip() == 'MPR Mandiri'
+
     def _uses_mp78_management_ac(self):
         return self._is_mp78_brand() and mpr_calc.ENABLE_MP78_MANAGEMENT_AC
 
@@ -868,6 +877,8 @@ class ClosingSheet(BaseSheet):
         return mpr_calc.tiktok_commission_rate_for_brand(self.data['outlet'].brand)
 
     def _get_grab_management_commission_expense(self, grab_net_total):
+        if self._is_mpr_mandiri_brand():
+            return self._get_mpr_mandiri_food_ac_display_value(self.GRABFOOD_AC_HEADER, 'main') or 0
         if self._is_mpr_brand():
             return grab_net_total - (self._get_direct_mpr_display_value('Grab_Net') or 0)
 
@@ -959,6 +970,21 @@ class ClosingSheet(BaseSheet):
             self.QPON_CLOSING_NET_HEADER,
         )
 
+    def _get_mpr_mandiri_food_ac_display_value(self, header, report_type, date=None):
+        if report_type != 'main' or not self._is_mpr_mandiri_brand():
+            return None
+
+        totals = self.data.get('grand_totals', {})
+        if date is not None:
+            totals = self.data.get('daily_totals', {}).get(date, {})
+
+        if header == self.GOFOOD_AC_HEADER:
+            return mpr_calc.gofood_value(totals) * mpr_calc.MPR_GRAB_MANAGEMENT_COMMISSION_RATE
+        if header == self.GRABFOOD_AC_HEADER:
+            return mpr_calc.grabfood_value(totals) * mpr_calc.MPR_GRAB_MANAGEMENT_COMMISSION_RATE
+
+        return None
+
     def _get_closing_grand_total_income_value(self, header, grab_net_total=None):
         if header == 'Grab_Net':
             if grab_net_total is not None:
@@ -1013,6 +1039,19 @@ class ClosingSheet(BaseSheet):
         return label
 
     def _get_main_platform_definitions_for_grand_total(self):
+        if self._is_mpr_mandiri_brand():
+            return [
+                ('Gojek', 'Gojek_Mutation', 'main'),
+                ('GoFood (ac)', self.GOFOOD_AC_HEADER, 'main'),
+                ('Grab', 'Grab_Net', 'main'),
+                ('GrabFood (ac)', self.GRABFOOD_AC_HEADER, 'main'),
+                ('ShopeeFood', 'Shopee_Mutation', 'main'),
+                ('ShopeePay', 'ShopeePay_Mutation', 'main'),
+                ('Tiktok', 'Tiktok_Net', 'main'),
+                ('Qpon (ac)', self.QPON_AC_HEADER, 'main'),
+                ('Webshop', 'Webshop_Net', 'main'),
+            ]
+
         if self._uses_mp78_management_ac():
             return [
                 ('Gojek (ac)', 'Gojek_Mutation', 'main'),
