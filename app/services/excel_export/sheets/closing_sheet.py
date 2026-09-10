@@ -321,6 +321,7 @@ class ClosingSheet(BaseSheet):
         self.ws.cell(row=row_start + 1, column=col_start).fill = BLUE_FILL
 
         grab_net_total = self._get_grand_total_with_fallback('Grab_Net') or 0
+        gofood_management_expense = self._get_mpr_mandiri_gofood_commission_expense()
         grab_management_expense = self._get_closing_grab_management_commission_expense(grab_net_total)
         mp78_income_total = self._get_mp78_mutation_total(mp78_mutations, 'income')
         mp78_expense_total = self._get_mp78_mutation_total(mp78_mutations, 'expense')
@@ -351,6 +352,7 @@ class ClosingSheet(BaseSheet):
         total_expense = (
             sum(float(entry.amount) for entry, _, _ in manual_entries if entry.entry_type == 'expense') +
             mp78_expense_total +
+            gofood_management_expense +
             grab_management_expense
         )
         self.ws.cell(row=row_start + 1, column=col_start + 2, value=total_expense).font = HEADER_FONT
@@ -390,23 +392,32 @@ class ClosingSheet(BaseSheet):
             #     value_cell.fill = CLOSED_OFF_FILL
             final_i += 1
             if header == 'Grab_Net':
-                grab_mgmt_row = label_row + 1
-                management_label_cell = self.ws.cell(
-                    row=grab_mgmt_row,
-                    column=col_start,
-                    value=self._get_grab_management_commission_label()
+                self._write_management_commission_row(
+                    label_row + 1,
+                    col_start,
+                    self._get_grab_management_commission_label(),
+                    grab_management_expense,
                 )
-                management_label_cell.alignment = LEFT_ALIGN
-                management_label_cell.font = HEADER_FONT
-                management_cell_value = self.ws.cell(
-                    row=grab_mgmt_row,
-                    column=col_start + 2,
-                    value=grab_management_expense
-                )
-                management_cell_value.number_format = '#,##0'
-                management_cell_value.alignment = RIGHT_ALIGN
-                self.grab_management_cell = management_cell_value.coordinate
                 final_i += 1
+
+        if self._is_mpr_mandiri_brand():
+            gofood_mgmt_row = row_start + 1 + final_i + 1
+            self._write_management_commission_row(
+                gofood_mgmt_row,
+                col_start,
+                'GoFood Manag',
+                gofood_management_expense,
+            )
+            final_i += 1
+
+            grab_mgmt_row = row_start + 1 + final_i + 1
+            self._write_management_commission_row(
+                grab_mgmt_row,
+                col_start,
+                self._get_grab_management_commission_label(),
+                grab_management_expense,
+            )
+            final_i += 1
 
         mpr_rows = [
             (label, header)
@@ -494,6 +505,24 @@ class ClosingSheet(BaseSheet):
 
     def _is_mp78_expense_mutation(self, mutation):
         return (getattr(mutation, 'transaction_type', '') or '').upper() == 'DB'
+
+    def _write_management_commission_row(self, row, col_start, label, expense):
+        management_label_cell = self.ws.cell(
+            row=row,
+            column=col_start,
+            value=label
+        )
+        management_label_cell.alignment = LEFT_ALIGN
+        management_label_cell.font = HEADER_FONT
+        management_cell_value = self.ws.cell(
+            row=row,
+            column=col_start + 2,
+            value=expense
+        )
+        management_cell_value.number_format = '#,##0'
+        management_cell_value.alignment = RIGHT_ALIGN
+        if label == self._get_grab_management_commission_label():
+            self.grab_management_cell = management_cell_value.coordinate
 
     def _get_mp78_mutation_total(self, mutations, entry_type):
         total = 0
@@ -891,6 +920,13 @@ class ClosingSheet(BaseSheet):
         totals = self.data.get('grand_totals', {})
         return mpr_calc.grabfood_value(totals) * mpr_calc.MPR_GRAB_MANAGEMENT_COMMISSION_RATE
 
+    def _get_mpr_mandiri_gofood_commission_expense(self):
+        if not self._is_mpr_mandiri_brand():
+            return 0
+
+        totals = self.data.get('grand_totals', {})
+        return mpr_calc.gofood_value(totals) * mpr_calc.MPR_GRAB_MANAGEMENT_COMMISSION_RATE
+
     def _get_grab_management_commission_label(self):
         if self._is_mpr_brand():
             return 'Grab Manag MPR'
@@ -1052,7 +1088,6 @@ class ClosingSheet(BaseSheet):
         if self._is_mpr_mandiri_brand():
             return [
                 ('Gojek', 'Gojek_Mutation', 'main'),
-                ('GoFood (ac)', self.GOFOOD_AC_HEADER, 'main'),
                 ('GrabFood (ac)', self.GRABFOOD_AC_HEADER, 'main'),
                 ('ShopeeFood', 'Shopee_Mutation', 'main'),
                 ('ShopeePay', 'ShopeePay_Mutation', 'main'),
