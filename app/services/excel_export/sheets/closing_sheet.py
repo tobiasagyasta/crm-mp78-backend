@@ -878,11 +878,15 @@ class ClosingSheet(BaseSheet):
 
     def _get_grab_management_commission_expense(self, grab_net_total):
         if self._is_mpr_mandiri_brand():
-            return self._get_mpr_mandiri_food_ac_display_value(self.GRABFOOD_AC_HEADER, 'main') or 0
+            return self._get_mpr_mandiri_grabfood_commission_expense()
         if self._is_mpr_brand():
             return grab_net_total - (self._get_direct_mpr_display_value('Grab_Net') or 0)
 
         return grab_net_total * self._get_grab_management_commission_rate()
+
+    def _get_mpr_mandiri_grabfood_commission_expense(self):
+        totals = self.data.get('grand_totals', {})
+        return mpr_calc.grabfood_value(totals) * mpr_calc.MPR_GRAB_MANAGEMENT_COMMISSION_RATE
 
     def _get_grab_management_commission_label(self):
         if self._is_mpr_brand():
@@ -979,9 +983,9 @@ class ClosingSheet(BaseSheet):
             totals = self.data.get('daily_totals', {}).get(date, {})
 
         if header == self.GOFOOD_AC_HEADER:
-            return mpr_calc.gofood_value(totals) * mpr_calc.MPR_GRAB_MANAGEMENT_COMMISSION_RATE
+            return mpr_calc.gofood_value(totals) * mpr_calc.MPR_STANDARD_NET_RATE
         if header == self.GRABFOOD_AC_HEADER:
-            return mpr_calc.grabfood_value(totals) * mpr_calc.MPR_GRAB_MANAGEMENT_COMMISSION_RATE
+            return mpr_calc.grabfood_value(totals) * mpr_calc.MPR_STANDARD_NET_RATE
 
         return None
 

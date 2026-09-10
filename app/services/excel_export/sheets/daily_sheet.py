@@ -215,10 +215,10 @@ class DailySheet(BaseSheet):
         )
 
     def _get_gofood_commission_value(self, totals):
-        return self._get_gofood_value(totals) * self.MPR_COMMISSION_RATE
+        return self._get_gofood_value(totals) * mpr_calc.MPR_STANDARD_NET_RATE
 
     def _get_grabfood_commission_value(self, totals):
-        return self._get_grabfood_value(totals) * self.MPR_COMMISSION_RATE
+        return self._get_grabfood_value(totals) * mpr_calc.MPR_STANDARD_NET_RATE
 
     def _get_standard_net_ac_value(self, totals, net_key):
         if net_key == 'Tiktok_Net':
