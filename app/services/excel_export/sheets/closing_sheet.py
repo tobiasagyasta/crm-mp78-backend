@@ -26,8 +26,8 @@ class ClosingSheet(BaseSheet):
     GRABFOOD_AC_HEADER = 'GrabFood_Ac'
     GOFOOD_COMMISSION_HEADER = 'GoFood_Commission'
     GRABFOOD_COMMISSION_HEADER = 'GrabFood_Commission'
-    MPR_MANDIRI_GOJEK_MUTATION_HEADER = 'Mpr_Mandiri_Gojek_Mutation'
-    MPR_MANDIRI_GRAB_RAW_HEADER = 'Mpr_Mandiri_Grab_Raw'
+    MPR_MANDIRI_GOJEK_AC_HEADER = 'Mpr_Mandiri_Gojek_Ac'
+    MPR_MANDIRI_GRAB_AC_HEADER = 'Mpr_Mandiri_Grab_Ac'
 
     def __init__(self, workbook, data):
         super().__init__(workbook, 'Closing Sheet', data)
@@ -264,10 +264,10 @@ class ClosingSheet(BaseSheet):
             return self._get_qpon_closing_display_value(report_type)
         if header == self.QPON_AC_HEADER:
             return self._get_qpon_closing_ac_display_value(report_type)
-        if header == self.MPR_MANDIRI_GOJEK_MUTATION_HEADER:
-            return self._get_mpr_mandiri_gojek_mutation_display_value(report_type)
-        if header == self.MPR_MANDIRI_GRAB_RAW_HEADER:
-            return self._get_mpr_mandiri_grab_raw_display_value(report_type)
+        if header == self.MPR_MANDIRI_GOJEK_AC_HEADER:
+            return self._get_mpr_mandiri_gojek_ac_display_value(report_type)
+        if header == self.MPR_MANDIRI_GRAB_AC_HEADER:
+            return self._get_mpr_mandiri_grab_ac_display_value(report_type)
         if header in [self.GOFOOD_AC_HEADER, self.GRABFOOD_AC_HEADER]:
             return self._get_mpr_mandiri_food_ac_display_value(header, report_type)
         if header in [self.GOFOOD_COMMISSION_HEADER, self.GRABFOOD_COMMISSION_HEADER]:
@@ -293,10 +293,10 @@ class ClosingSheet(BaseSheet):
             return self._get_qpon_closing_display_value(report_type, date)
         if header == self.QPON_AC_HEADER:
             return self._get_qpon_closing_ac_display_value(report_type, date)
-        if header == self.MPR_MANDIRI_GOJEK_MUTATION_HEADER:
-            return self._get_mpr_mandiri_gojek_mutation_display_value(report_type, date)
-        if header == self.MPR_MANDIRI_GRAB_RAW_HEADER:
-            return self._get_mpr_mandiri_grab_raw_display_value(report_type, date)
+        if header == self.MPR_MANDIRI_GOJEK_AC_HEADER:
+            return self._get_mpr_mandiri_gojek_ac_display_value(report_type, date)
+        if header == self.MPR_MANDIRI_GRAB_AC_HEADER:
+            return self._get_mpr_mandiri_grab_ac_display_value(report_type, date)
         if header in [self.GOFOOD_AC_HEADER, self.GRABFOOD_AC_HEADER]:
             return self._get_mpr_mandiri_food_ac_display_value(header, report_type, date)
         if header in [self.GOFOOD_COMMISSION_HEADER, self.GRABFOOD_COMMISSION_HEADER]:
@@ -419,7 +419,7 @@ class ClosingSheet(BaseSheet):
                     grab_management_expense,
                 )
                 final_i += 1
-            if self._is_mpr_mandiri_brand() and header == self.MPR_MANDIRI_GOJEK_MUTATION_HEADER:
+            if self._is_mpr_mandiri_brand() and header == self.MPR_MANDIRI_GOJEK_AC_HEADER:
                 self._write_management_commission_row(
                     label_row + 1,
                     col_start,
@@ -427,7 +427,7 @@ class ClosingSheet(BaseSheet):
                     gofood_management_expense,
                 )
                 final_i += 1
-            if self._is_mpr_mandiri_brand() and header == self.MPR_MANDIRI_GRAB_RAW_HEADER:
+            if self._is_mpr_mandiri_brand() and header == self.MPR_MANDIRI_GRAB_AC_HEADER:
                 self._write_management_commission_row(
                     label_row + 1,
                     col_start,
@@ -1060,7 +1060,7 @@ class ClosingSheet(BaseSheet):
 
         return None
 
-    def _get_mpr_mandiri_grab_raw_display_value(self, report_type, date=None):
+    def _get_mpr_mandiri_grab_ac_display_value(self, report_type, date=None):
         if report_type != 'main' or not self._is_mpr_mandiri_brand():
             return None
 
@@ -1068,9 +1068,9 @@ class ClosingSheet(BaseSheet):
         if date is not None:
             totals = self.data.get('daily_totals', {}).get(date, {})
 
-        return totals.get('Grab_Net', 0)
+        return (mpr_calc.grabfood_value(totals) * mpr_calc.MPR_STANDARD_NET_RATE) + mpr_calc.grab_ovo_value(totals)
 
-    def _get_mpr_mandiri_gojek_mutation_display_value(self, report_type, date=None):
+    def _get_mpr_mandiri_gojek_ac_display_value(self, report_type, date=None):
         if report_type != 'main' or not self._is_mpr_mandiri_brand():
             return None
 
@@ -1078,7 +1078,7 @@ class ClosingSheet(BaseSheet):
         if date is not None:
             totals = self.data.get('daily_totals', {}).get(date, {})
 
-        return mpr_calc.value_with_mutation_fallback(totals, 'Gojek_Mutation', 'Gojek_Net')
+        return (mpr_calc.gofood_value(totals) * mpr_calc.MPR_STANDARD_NET_RATE) + mpr_calc.gojek_qris_value(totals)
 
     def _get_closing_grand_total_income_value(self, header, grab_net_total=None):
         if self._is_mpr_mandiri_brand() and header == self.GRABFOOD_AC_HEADER:
@@ -1139,10 +1139,8 @@ class ClosingSheet(BaseSheet):
     def _get_main_platform_definitions_for_grand_total(self):
         if self._is_mpr_mandiri_brand():
             return [
-                ('Gojek', self.MPR_MANDIRI_GOJEK_MUTATION_HEADER, 'main'),
-                ('GoFood Commission', self.GOFOOD_COMMISSION_HEADER, 'main'),
-                ('Grab', self.MPR_MANDIRI_GRAB_RAW_HEADER, 'main'),
-                ('GrabFood Commission', self.GRABFOOD_COMMISSION_HEADER, 'main'),
+                ('Gojek', self.MPR_MANDIRI_GOJEK_AC_HEADER, 'main'),
+                ('Grab', self.MPR_MANDIRI_GRAB_AC_HEADER, 'main'),
                 ('ShopeeFood', 'Shopee_Mutation', 'main'),
                 ('ShopeePay', 'ShopeePay_Mutation', 'main'),
                 ('Tiktok', 'Tiktok_Net', 'main'),
