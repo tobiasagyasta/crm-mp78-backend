@@ -404,7 +404,7 @@ class ClosingSheet(BaseSheet):
             value_cell = self.ws.cell(
                 row=label_row,
                 column=col_start + 1,
-                value=None if platform_disabled else self._get_closing_grand_total_income_value(header, grab_net_total)
+                value=None if platform_disabled else self._get_closing_grand_total_income_value_for_label(platform_label, header, grab_net_total)
             )
             value_cell.number_format = '#,##0'
             value_cell.alignment = RIGHT_ALIGN
@@ -1090,6 +1090,15 @@ class ClosingSheet(BaseSheet):
             return self._get_platform_grand_total_with_fallback('main', header)
 
         return self._get_platform_grand_total_with_fallback('main', header)
+
+    def _get_closing_grand_total_income_value_for_label(self, label, header, grab_net_total=None):
+        if self._is_mpr_mandiri_brand():
+            if label == 'Gojek':
+                return self._get_grand_total_with_fallback('Gojek_Mutation')
+            if label == 'Grab':
+                return grab_net_total if grab_net_total is not None else self._get_grand_total_with_fallback('Grab_Net')
+
+        return self._get_closing_grand_total_income_value(header, grab_net_total)
 
     def _get_closing_grand_total_income_contribution(self, report_type, header, grab_net_total=None):
         if self._is_closing_platform_disabled(header, report_type):
