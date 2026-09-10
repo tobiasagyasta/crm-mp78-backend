@@ -76,8 +76,8 @@ class DailySheet(BaseSheet):
             ]
 
             if self._is_mpr_mandiri_brand():
-                base_headers.insert(base_headers.index('Gojek Net (ac)') + 1, 'GoFood (ac)')
-                base_headers.insert(base_headers.index('Grab Net (ac)') + 1, 'GrabFood (ac)')
+                base_headers.insert(base_headers.index('Gojek Net (ac)'), 'GoFood (ac)')
+                base_headers.insert(base_headers.index('Grab Net (ac)'), 'GrabFood (ac)')
 
         if (
             user_role == "management"

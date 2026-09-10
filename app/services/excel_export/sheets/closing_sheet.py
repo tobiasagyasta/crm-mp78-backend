@@ -399,25 +399,22 @@ class ClosingSheet(BaseSheet):
                     grab_management_expense,
                 )
                 final_i += 1
-
-        if self._is_mpr_mandiri_brand():
-            gofood_mgmt_row = row_start + 1 + final_i + 1
-            self._write_management_commission_row(
-                gofood_mgmt_row,
-                col_start,
-                'GoFood Manag',
-                gofood_management_expense,
-            )
-            final_i += 1
-
-            grab_mgmt_row = row_start + 1 + final_i + 1
-            self._write_management_commission_row(
-                grab_mgmt_row,
-                col_start,
-                self._get_grab_management_commission_label(),
-                grab_management_expense,
-            )
-            final_i += 1
+            if self._is_mpr_mandiri_brand() and header == 'Gojek_Mutation':
+                self._write_management_commission_row(
+                    label_row + 1,
+                    col_start,
+                    'GoFood Manag',
+                    gofood_management_expense,
+                )
+                final_i += 1
+            if self._is_mpr_mandiri_brand() and header == 'Grab_Net':
+                self._write_management_commission_row(
+                    label_row + 1,
+                    col_start,
+                    self._get_grab_management_commission_label(),
+                    grab_management_expense,
+                )
+                final_i += 1
 
         mpr_rows = [
             (label, header)
@@ -1088,7 +1085,7 @@ class ClosingSheet(BaseSheet):
         if self._is_mpr_mandiri_brand():
             return [
                 ('Gojek', 'Gojek_Mutation', 'main'),
-                ('GrabFood (ac)', self.GRABFOOD_AC_HEADER, 'main'),
+                ('Grab', 'Grab_Net', 'main'),
                 ('ShopeeFood', 'Shopee_Mutation', 'main'),
                 ('ShopeePay', 'ShopeePay_Mutation', 'main'),
                 ('Tiktok', 'Tiktok_Net', 'main'),
