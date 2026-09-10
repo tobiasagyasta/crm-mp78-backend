@@ -75,7 +75,7 @@ class DailySheet(BaseSheet):
                 'UV'
             ]
 
-            if self._is_mpr_mandiri_brand():
+            if self._is_mpr_brand():
                 gojek_ac_index = base_headers.index('Gojek Net (ac)')
                 base_headers[gojek_ac_index] = 'Gojek Net Mutation (ac)'
                 base_headers.insert(gojek_ac_index, 'Gofood Commission')
@@ -140,9 +140,6 @@ class DailySheet(BaseSheet):
 
     def _is_mpr_brand(self):
         return mpr_calc.is_mpr_brand(self.data['outlet'].brand)
-
-    def _is_mpr_mandiri_brand(self):
-        return (self.data['outlet'].brand or '').strip() == 'MPR Mandiri'
 
     def _is_mp78_brand(self):
         return mpr_calc.is_mp78_brand(self.data['outlet'].brand)
