@@ -368,6 +368,9 @@ class ClosingSheet(BaseSheet):
 
         final_i = 0
         for platform_label, header, _ in platform_definitions:
+            if self._is_mpr_mandiri_brand() and header == self.GRABFOOD_AC_HEADER:
+                continue
+
             label_row = row_start + 1 + final_i + 1
             platform_label = self._get_closing_grand_total_platform_label(platform_label, header)
             platform_disabled = self._is_closing_platform_disabled(header, 'main')
@@ -990,6 +993,9 @@ class ClosingSheet(BaseSheet):
         return None
 
     def _get_closing_grand_total_income_value(self, header, grab_net_total=None):
+        if self._is_mpr_mandiri_brand() and header == self.GRABFOOD_AC_HEADER:
+            return None
+
         if header == 'Grab_Net':
             if grab_net_total is not None:
                 return grab_net_total
@@ -1047,7 +1053,6 @@ class ClosingSheet(BaseSheet):
             return [
                 ('Gojek', 'Gojek_Mutation', 'main'),
                 ('GoFood (ac)', self.GOFOOD_AC_HEADER, 'main'),
-                ('Grab', 'Grab_Net', 'main'),
                 ('GrabFood (ac)', self.GRABFOOD_AC_HEADER, 'main'),
                 ('ShopeeFood', 'Shopee_Mutation', 'main'),
                 ('ShopeePay', 'ShopeePay_Mutation', 'main'),
