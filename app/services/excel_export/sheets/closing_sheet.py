@@ -376,7 +376,11 @@ class ClosingSheet(BaseSheet):
 
         final_i = 0
         for platform_label, header, _ in platform_definitions:
-            if self._is_mpr_mandiri_brand() and header == self.GRABFOOD_AC_HEADER:
+            if self._is_mpr_mandiri_brand() and header in [
+                self.GOFOOD_COMMISSION_HEADER,
+                self.GRABFOOD_COMMISSION_HEADER,
+                self.GRABFOOD_AC_HEADER,
+            ]:
                 continue
 
             label_row = row_start + 1 + final_i + 1
@@ -409,7 +413,7 @@ class ClosingSheet(BaseSheet):
                 self._write_management_commission_row(
                     label_row + 1,
                     col_start,
-                    'GoFood Manag',
+                    'Gojek Manag MPR',
                     gofood_management_expense,
                 )
                 final_i += 1
@@ -1105,7 +1109,7 @@ class ClosingSheet(BaseSheet):
     def _get_main_platform_definitions_for_grand_total(self):
         if self._is_mpr_mandiri_brand():
             return [
-                ('Gojek', 'Gojek_Net', 'main'),
+                ('Gojek', 'Gojek_Mutation', 'main'),
                 ('GoFood Commission', self.GOFOOD_COMMISSION_HEADER, 'main'),
                 ('Grab', 'Grab_Net', 'main'),
                 ('GrabFood Commission', self.GRABFOOD_COMMISSION_HEADER, 'main'),
