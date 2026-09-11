@@ -9,6 +9,9 @@ from app.services.excel_export.utils.excel_utils import (
 )
 
 class DailySheet(BaseSheet):
+    NON_COMMISSION_BRANDS = {
+        'Es Ce Hun Tiau & Bongko Wendy',
+    }
     MPR_COMMISSION_RATE = 0.08
     MP78_MANAGEMENT_AC_HEADERS = {
         'Gojek Net (ac)',
@@ -92,15 +95,14 @@ class DailySheet(BaseSheet):
         ):
             base_headers.insert(8, 'Grab Net')
 
-        if outlet_brand == "Pukis & Martabak Kota Baru" or outlet_brand == "Es Ce Hun Tiau & Bongko Wendy":
+        if outlet_brand == "Pukis & Martabak Kota Baru" or self._is_non_commission_brand():
             base_headers.insert(4, 'Grab Net')
             if 'Grab Net (ac)' in base_headers:
                 base_headers.remove('Grab Net (ac)')
             base_headers += extra_headers
-        if outlet_brand == "Es Ce Hun Tiau & Bongko Wendy":
-            base_headers.insert(9, 'Grab Net (ac)')
-            if 'Grab Net' in base_headers:
-                base_headers.remove('Grab Net')
+
+        if self._is_non_commission_brand():
+            base_headers = [header for header in base_headers if '(ac)' not in header]
 
         if outlet_brand == 'MP78' and self._uses_mp78_management_ac():
             base_headers = self._add_mp78_management_ac_headers(base_headers)
@@ -140,6 +142,9 @@ class DailySheet(BaseSheet):
 
     def _is_mpr_brand(self):
         return mpr_calc.is_mpr_brand(self.data['outlet'].brand)
+
+    def _is_non_commission_brand(self):
+        return self.data['outlet'].brand in self.NON_COMMISSION_BRANDS
 
     def _is_mp78_brand(self):
         return mpr_calc.is_mp78_brand(self.data['outlet'].brand)

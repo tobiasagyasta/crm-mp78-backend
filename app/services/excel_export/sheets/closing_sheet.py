@@ -13,6 +13,9 @@ from datetime import datetime
 import re
 
 class ClosingSheet(BaseSheet):
+    NON_COMMISSION_BRANDS = {
+        'Es Ce Hun Tiau & Bongko Wendy',
+    }
     GRAB_NET_CLOSING_BRANDS = {
         'Martabak 777 Sinar Bulan',
         'Martabak 999 Asli Bandung',
@@ -411,7 +414,7 @@ class ClosingSheet(BaseSheet):
             # if platform_disabled:
             #     value_cell.fill = CLOSED_OFF_FILL
             final_i += 1
-            if header == 'Grab_Net':
+            if header == 'Grab_Net' and not self._is_non_commission_brand():
                 self._write_management_commission_row(
                     label_row + 1,
                     col_start,
@@ -868,6 +871,9 @@ class ClosingSheet(BaseSheet):
         return None
 
     def _get_main_ac_display_value(self, header, date=None):
+        if self._is_non_commission_brand():
+            return None
+
         totals = self.data.get('grand_totals', {})
         if date is not None:
             totals = self.data.get('daily_totals', {}).get(date, {})
@@ -901,6 +907,9 @@ class ClosingSheet(BaseSheet):
 
     def _is_mpr_brand(self):
         return mpr_calc.is_mpr_brand(self.data['outlet'].brand)
+
+    def _is_non_commission_brand(self):
+        return self.data['outlet'].brand in self.NON_COMMISSION_BRANDS
 
     def _uses_mp78_management_ac(self):
         return self._is_mp78_brand() and mpr_calc.ENABLE_MP78_MANAGEMENT_AC
@@ -1119,6 +1128,9 @@ class ClosingSheet(BaseSheet):
         return is_platform_disabled(outlet, platform)
 
     def _get_closing_grab_management_commission_expense(self, grab_net_total):
+        if self._is_non_commission_brand():
+            return 0
+
         return self._get_grab_management_commission_expense(grab_net_total)
 
     def _get_outlet_for_report_type(self, report_type):
@@ -1143,6 +1155,17 @@ class ClosingSheet(BaseSheet):
         return label
 
     def _get_main_platform_definitions_for_grand_total(self):
+        if self._is_non_commission_brand():
+            return [
+                ('Gojek', 'Gojek_Mutation', 'main'),
+                ('Grab', 'Grab_Net', 'main'),
+                ('ShopeeFood', 'Shopee_Mutation', 'main'),
+                ('ShopeePay', 'ShopeePay_Mutation', 'main'),
+                ('Tiktok', 'Tiktok_Net', 'main'),
+                ('Qpon', self.QPON_CLOSING_NET_HEADER, 'main'),
+                ('Webshop', 'Webshop_Net', 'main'),
+            ]
+
         if self._is_mpr_brand():
             return [
                 ('Gojek', self.MPR_GOJEK_AC_HEADER, 'main'),
