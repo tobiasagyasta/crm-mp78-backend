@@ -1250,7 +1250,7 @@ def upload_report_grab():
         store_id_map = {}
         affected_outlets = set()
         seen_transaction_ids = set()
-        seen_order_ids = set()
+        seen_order_id_pairs = set()
         debug_skipped = []
 
         outlets = Outlet.query.all()
@@ -1303,7 +1303,7 @@ def upload_report_grab():
 
         def load_existing_grab_identifiers(transaction_ids, short_order_ids):
             existing_transaction_ids = set()
-            existing_short_order_ids = set()
+            existing_order_id_pairs = set()
 
             for batch in chunks(transaction_ids):
                 existing_transaction_ids.update(
@@ -1315,37 +1315,42 @@ def upload_report_grab():
                 )
 
             for batch in chunks(short_order_ids):
-                existing_short_order_ids.update(
-                    identifier
-                    for (identifier,) in db.session.query(GrabFoodReport.id_pesanan_pendek)
+                existing_order_id_pairs.update(
+                    (short_order_id, long_order_id)
+                    for short_order_id, long_order_id in db.session.query(
+                        GrabFoodReport.id_pesanan_pendek,
+                        GrabFoodReport.id_pesanan_panjang,
+                    )
                     .filter(GrabFoodReport.id_pesanan_pendek.in_(batch))
                     .all()
-                    if identifier
+                    if short_order_id and long_order_id
                 )
 
-            return existing_transaction_ids, existing_short_order_ids
+            return existing_transaction_ids, existing_order_id_pairs
 
         def has_duplicate_grab_identifier(
             transaction_id,
             short_order_id,
+            long_order_id,
             existing_transaction_ids,
-            existing_short_order_ids,
+            existing_order_id_pairs,
         ):
+            order_id_pair = (short_order_id, long_order_id) if short_order_id and long_order_id else None
             if transaction_id and transaction_id in seen_transaction_ids:
                 return 'Duplicate transaction ID within upload'
-            if short_order_id and short_order_id in seen_order_ids:
-                return f'Duplicate short order ID within upload: {short_order_id}'
+            if order_id_pair and order_id_pair in seen_order_id_pairs:
+                return f'Duplicate order ID pair within upload: {short_order_id} / {long_order_id}'
             if transaction_id and transaction_id in existing_transaction_ids:
                 return 'Duplicate transaction ID already exists'
-            if short_order_id and short_order_id in existing_short_order_ids:
-                return f'Duplicate short order ID already exists: {short_order_id}'
+            if order_id_pair and order_id_pair in existing_order_id_pairs:
+                return f'Duplicate order ID pair already exists: {short_order_id} / {long_order_id}'
             return None
 
-        def remember_grab_identifiers(transaction_id, short_order_id):
+        def remember_grab_identifiers(transaction_id, short_order_id, long_order_id):
             if transaction_id:
                 seen_transaction_ids.add(transaction_id)
-            if short_order_id:
-                seen_order_ids.add(short_order_id)
+            if short_order_id and long_order_id:
+                seen_order_id_pairs.add((short_order_id, long_order_id))
 
         for file in files:
             file_contents = file.read().decode('utf-8')
@@ -1363,7 +1368,7 @@ def upload_report_grab():
                 if short_order_id:
                     short_order_ids.add(short_order_id)
 
-            existing_transaction_ids, existing_short_order_ids = load_existing_grab_identifiers(
+            existing_transaction_ids, existing_order_id_pairs = load_existing_grab_identifiers(
                 transaction_ids,
                 short_order_ids,
             )
@@ -1394,8 +1399,9 @@ def upload_report_grab():
                 duplicate_reason = has_duplicate_grab_identifier(
                     transaction_id,
                     short_order_id,
+                    long_order_id,
                     existing_transaction_ids,
-                    existing_short_order_ids,
+                    existing_order_id_pairs,
                 )
                 if duplicate_reason:
                     skipped_reports += 1
@@ -1439,7 +1445,7 @@ def upload_report_grab():
                         'penjualan_bersih': safe_float(row.get('Penjualan bersih')),
                     }
                     reports.append(report)
-                    remember_grab_identifiers(transaction_id, short_order_id)
+                    remember_grab_identifiers(transaction_id, short_order_id, long_order_id)
                     affected_outlets.add((outlet.outlet_code, tanggal_diperbarui.date()))
                     total_reports += 1
                 except (ValueError, TypeError) as e:
