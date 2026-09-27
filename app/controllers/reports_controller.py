@@ -1296,6 +1296,15 @@ def upload_report_grab():
             except (ValueError, TypeError):
                 return 0
 
+        def parse_grab_datetime(value):
+            value = str(value or '').strip()
+            for date_format in ('%d %b %Y %I:%M %p', '%Y-%m-%d %H:%M:%S', '%m/%d/%Y %H:%M'):
+                try:
+                    return datetime.strptime(value, date_format)
+                except ValueError:
+                    continue
+            raise ValueError(f"time data {value!r} does not match supported Grab date formats")
+
         def chunks(values, size=1000):
             values = list(values)
             for index in range(0, len(values), size):
@@ -1411,13 +1420,8 @@ def upload_report_grab():
                 try:
                     date_str = row.get('Tanggal dibuat', '')
                     date_made_str = row.get('Diperbarui Pada', '')
-                    try:
-                        tanggal_dibuat = datetime.strptime(date_str, '%d %b %Y %I:%M %p')
-                        tanggal_diperbarui = datetime.strptime(date_made_str, '%d %b %Y %I:%M %p')
-
-                    except ValueError:
-                        tanggal_dibuat = datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S')
-                        tanggal_diperbarui = datetime.strptime(date_made_str, '%Y-%m-%d %H:%M:%S')
+                    tanggal_dibuat = parse_grab_datetime(date_str)
+                    tanggal_diperbarui = parse_grab_datetime(date_made_str)
                     amount = safe_float(row_value(row, 'Amount', 'Jumlah'))
                     total = safe_float(row.get('Total'))
                     if amount == 0 or total == 0:
