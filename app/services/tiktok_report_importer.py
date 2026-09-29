@@ -74,6 +74,45 @@ def _flush_reports(reports):
     return len(reports)
 
 
+def _process_parsed_batch(parsed_batch, seen_keys, debug_skipped):
+    outlet_order_ids = {
+        parsed['outlet_order_id']
+        for _, _, parsed in parsed_batch
+        if parsed.get('outlet_order_id')
+    }
+    existing_keys = _load_existing_keys(outlet_order_ids)
+    reports = []
+    skipped_reports = 0
+
+    for row_number, row, parsed in parsed_batch:
+        key = _duplicate_key(parsed)
+
+        if key in seen_keys:
+            skipped_reports += 1
+            if len(debug_skipped) < 50:
+                debug_skipped.append({
+                    'row_number': row_number,
+                    'reason': 'Duplicate entry within upload',
+                    'row': row,
+                })
+            continue
+
+        if key in existing_keys:
+            skipped_reports += 1
+            if len(debug_skipped) < 50:
+                debug_skipped.append({
+                    'row_number': row_number,
+                    'reason': 'Duplicate entry already exists',
+                    'row': row,
+                })
+            continue
+
+        reports.append(parsed)
+        seen_keys.add(key)
+
+    return _flush_reports(reports), skipped_reports
+
+
 def import_tiktok_report_bytes(file_bytes, import_job_id=None, batch_size=1000):
     file_contents = file_bytes.decode('utf-8-sig')
     csv_file = StringIO(file_contents)
@@ -85,87 +124,96 @@ def import_tiktok_report_bytes(file_bytes, import_job_id=None, batch_size=1000):
             header = row
             break
 
-    data_rows = [row for row in reader if row and any(cell.strip() for cell in row)]
-
     _update_import_job_progress(
         import_job_id,
-        total_rows=len(data_rows),
         processed_rows=0,
         inserted_rows=0,
         skipped_rows=0,
         failed_rows=0,
     )
 
-    parsed_rows = []
+    total_rows = 0
+    processed_rows = 0
+    inserted_reports = 0
     skipped_reports = 0
     failed_reports = 0
     debug_skipped = []
+    seen_keys = set()
+    parsed_batch = []
 
-    for index, row in enumerate(data_rows, start=1):
+    for row_number, row in enumerate(reader, start=1):
+        if not row or not any(cell.strip() for cell in row):
+            continue
+
+        total_rows += 1
+        processed_rows += 1
         parsed = TiktokReport.parse_tiktok_row(row, header)
+
         if not parsed:
             skipped_reports += 1
             if len(debug_skipped) < 50:
                 debug_skipped.append({
-                    'row_number': index,
+                    'row_number': row_number,
                     'reason': 'Parse failed or outlet not found',
                     'row': row,
                 })
             continue
-        parsed_rows.append((index, row, parsed))
 
-    outlet_order_ids = {
-        parsed['outlet_order_id']
-        for _, _, parsed in parsed_rows
-        if parsed.get('outlet_order_id')
-    }
-    existing_keys = _load_existing_keys(outlet_order_ids)
-    seen_keys = set()
-    reports = []
-    inserted_reports = 0
-    processed_rows = 0
+        parsed_batch.append((row_number, row, parsed))
 
-    for index, row, parsed in parsed_rows:
-        processed_rows += 1
-        key = _duplicate_key(parsed)
-
-        if key in existing_keys or key in seen_keys:
-            skipped_reports += 1
-            if len(debug_skipped) < 50:
-                debug_skipped.append({
-                    'row_number': index,
-                    'reason': 'Duplicate entry',
-                    'row': row,
-                })
-            continue
-
-        reports.append(parsed)
-        seen_keys.add(key)
-
-        if len(reports) >= batch_size:
-            inserted_reports += _flush_reports(reports)
-            reports.clear()
+        if len(parsed_batch) >= batch_size:
+            batch_inserted, batch_skipped = _process_parsed_batch(
+                parsed_batch,
+                seen_keys,
+                debug_skipped,
+            )
+            inserted_reports += batch_inserted
+            skipped_reports += batch_skipped
+            db.session.commit()
+            parsed_batch.clear()
             _update_import_job_progress(
                 import_job_id,
+                total_rows=total_rows,
                 processed_rows=processed_rows,
                 inserted_rows=inserted_reports,
                 skipped_rows=skipped_reports,
                 failed_rows=failed_reports,
             )
+            db.session.commit()
+            print(
+                f'TikTok import job {import_job_id}: '
+                f'processed={processed_rows} inserted={inserted_reports} skipped={skipped_reports}'
+            )
 
-    inserted_reports += _flush_reports(reports)
+    if parsed_batch:
+        batch_inserted, batch_skipped = _process_parsed_batch(
+            parsed_batch,
+            seen_keys,
+            debug_skipped,
+        )
+        inserted_reports += batch_inserted
+        skipped_reports += batch_skipped
+
+    db.session.commit()
 
     _update_import_job_progress(
         import_job_id,
-        processed_rows=len(data_rows),
+        total_rows=total_rows,
+        processed_rows=processed_rows,
         inserted_rows=inserted_reports,
         skipped_rows=skipped_reports,
         failed_rows=failed_reports,
     )
+    db.session.commit()
+
+    print(
+        f'TikTok import job {import_job_id} complete: '
+        f'processed={processed_rows} inserted={inserted_reports} skipped={skipped_reports}'
+    )
 
     return {
-        'total_rows': len(data_rows),
-        'processed_rows': len(data_rows),
+        'total_rows': total_rows,
+        'processed_rows': processed_rows,
         'inserted_rows': inserted_reports,
         'skipped_rows': skipped_reports,
         'failed_rows': failed_reports,

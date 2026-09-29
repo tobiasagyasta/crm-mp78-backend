@@ -52,10 +52,11 @@ def _upload_report_import_job(report_type):
         queue = get_import_queue()
         response_jobs = []
         for import_job in import_jobs:
+            job_timeout = 7200 if report_type == 'tiktok' else 1800
             rq_job = queue.enqueue(
                 process_report_import_job,
                 import_job.id,
-                job_timeout=1800,
+                job_timeout=job_timeout,
                 result_ttl=300,
             )
             response_jobs.append({
