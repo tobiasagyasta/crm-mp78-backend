@@ -5,10 +5,13 @@ from app.services.excel_export import mpr_calculations as mpr_calc
 from app.services.excel_export.utils.excel_utils import (
     HEADER_FONT, YELLOW_FILL, CENTER_ALIGN, GOJEK_FILL, GRAB_FILL, SHOPEE_FILL,
     SHOPEEPAY_FILL, TIKTOK_FILL, CASH_FILL, DATE_FILL, DIFFERENCE_FILL,
-    set_column_widths
+    THIN_BORDER, set_column_widths
 )
 
 class DailySheet(BaseSheet):
+    NON_COMMISSION_BRANDS = {
+        'Es Ce Hun Tiau & Bongko Wendy',
+    }
     MPR_COMMISSION_RATE = 0.08
     MP78_MANAGEMENT_AC_HEADERS = {
         'Gojek Net (ac)',
@@ -64,9 +67,9 @@ class DailySheet(BaseSheet):
         if mpr_calc.is_mpr_brand(outlet_brand):
             base_headers = [
                 'Date',
-                'GoFood', 'GO-PAY QRIS', 'GoFood (ac)', 'GO-PAY QRIS (ac)',
+                'GoFood', 'GO-PAY QRIS',
                 'Gojek Net', 'Gojek Mutation', 'Gojek Difference', 'Gojek Net (ac)',
-                'GrabFood', 'GrabOVO', 'GrabFood (ac)', 'GrabOVO (ac)', 'Grab Net', 'Grab Net (ac)',
+                'GrabFood', 'GrabOVO', 'Grab Net', 'Grab Net (ac)',
                 'Shopee Net', 'Shopee Mutation', 'Shopee Difference', 'Shopee Net (ac)',
                 'ShopeePay Net', 'ShopeePay Mutation', 'ShopeePay Difference', 'ShopeePay Net (ac)',
                 'Tiktok Net', 'Tiktok Settlement Time', 'Tiktok Net (ac)',
@@ -75,22 +78,31 @@ class DailySheet(BaseSheet):
                 'UV'
             ]
 
+            if self._is_mpr_brand():
+                gojek_ac_index = base_headers.index('Gojek Net (ac)')
+                base_headers[gojek_ac_index] = 'Gojek Net Mutation (ac)'
+                base_headers.insert(gojek_ac_index, 'Gofood Commission')
+                base_headers.insert(gojek_ac_index + 2, 'GoFood x QRIS (ac)')
+
+                grab_ac_index = base_headers.index('Grab Net (ac)')
+                base_headers[grab_ac_index] = 'GrabFood x OVO (ac)'
+                base_headers.insert(grab_ac_index, 'Grab Commission')
+
         if (
             user_role == "management"
             and not mpr_calc.is_mpr_brand(outlet_brand)
             and outlet_brand not in ["Pukis & Martabak Kota Baru", "Es Ce Hun Tiau & Bongko Wendy"]
         ):
-            base_headers.insert(8, 'Grab Net')
+            base_headers.insert(base_headers.index('GrabOVO') + 1, 'Grab Net')
 
-        if outlet_brand == "Pukis & Martabak Kota Baru" or outlet_brand == "Es Ce Hun Tiau & Bongko Wendy":
-            base_headers.insert(4, 'Grab Net')
+        if outlet_brand == "Pukis & Martabak Kota Baru" or self._is_non_commission_brand():
+            base_headers.insert(base_headers.index('GrabOVO') + 1, 'Grab Net')
             if 'Grab Net (ac)' in base_headers:
                 base_headers.remove('Grab Net (ac)')
             base_headers += extra_headers
-        if outlet_brand == "Es Ce Hun Tiau & Bongko Wendy":
-            base_headers.insert(9, 'Grab Net (ac)')
-            if 'Grab Net' in base_headers:
-                base_headers.remove('Grab Net')
+
+        if self._is_non_commission_brand():
+            base_headers = [header for header in base_headers if '(ac)' not in header]
 
         if outlet_brand == 'MP78' and self._uses_mp78_management_ac():
             base_headers = self._add_mp78_management_ac_headers(base_headers)
@@ -126,13 +138,16 @@ class DailySheet(BaseSheet):
             self._get_value_with_mutation_fallback(totals, mutation_key, net_key)
             if mutation_key else totals.get(net_key, 0)
         )
-        return display_value - (self.MPR_COMMISSION_RATE * totals.get(net_key, 0))
+        return display_value - (self.MPR_COMMISSION_RATE * display_value)
 
     def _is_mpr_brand(self):
         return mpr_calc.is_mpr_brand(self.data['outlet'].brand)
 
+    def _is_non_commission_brand(self):
+        return self.data['outlet'].brand in self.NON_COMMISSION_BRANDS
+
     def _is_mp78_brand(self):
-        return self.data['outlet'].brand == 'MP78'
+        return mpr_calc.is_mp78_brand(self.data['outlet'].brand)
 
     def _uses_mp78_management_ac(self):
         return self._is_mp78_brand() and mpr_calc.ENABLE_MP78_MANAGEMENT_AC
@@ -159,7 +174,7 @@ class DailySheet(BaseSheet):
         if self._uses_mp78_management_ac():
             return mpr_calc.mp78_ac_value_for_header(totals, 'Gojek_Mutation')
 
-        return self._get_value_with_mutation_fallback(totals, 'Gojek_Mutation', 'Gojek_Net')
+        return mpr_calc.management_net_ac_value(totals, 'Gojek_Net', 'Gojek_Mutation')
 
     def _get_grabfood_value(self, totals):
         return mpr_calc.grabfood_value(totals)
@@ -177,37 +192,50 @@ class DailySheet(BaseSheet):
         return mpr_calc.grab_net_value(totals)
 
     def _get_shopee_net_value(self, totals):
-        return mpr_calc.shopee_net_value(totals, self._is_mpr_brand())
+        return totals.get('Shopee_Net', 0)
 
     def _get_shopee_net_ac_value(self, totals):
         if self._is_mpr_brand():
-            return mpr_calc.mpr_ac_value_for_header(totals, 'Shopee_Net')
+            return mpr_calc.shopee_net_ac_value(totals)
 
-        if self._uses_mp78_management_ac():
-            return mpr_calc.mp78_ac_value_for_header(totals, 'Shopee_Net')
-
-        return self._get_value_with_mutation_fallback(totals, 'Shopee_Mutation', 'Shopee_Net')
+        return self._get_shopee_net_value(totals)
 
     def _get_shopeepay_net_value(self, totals):
-        return mpr_calc.shopeepay_net_value(totals)
+        return totals.get('ShopeePay_Net', 0)
 
     def _get_shopeepay_net_ac_value(self, totals):
         if self._is_mpr_brand():
-            return mpr_calc.mpr_ac_value_for_header(totals, 'ShopeePay_Net')
+            return mpr_calc.shopeepay_net_ac_value(totals)
 
-        if self._uses_mp78_management_ac():
-            return mpr_calc.mp78_ac_value_for_header(totals, 'ShopeePay_Net')
-
-        return self._get_value_with_mutation_fallback(totals, 'ShopeePay_Mutation', 'ShopeePay_Net')
+        return self._get_shopeepay_net_value(totals)
 
     def _get_grab_net_ac_value(self, totals):
         if self._is_mpr_brand():
             return mpr_calc.mpr_ac_value_for_header(totals, 'Grab_Net')
 
-        if self._uses_mp78_management_ac():
+        if self._is_mp78_brand():
             return mpr_calc.mp78_ac_value_for_header(totals, 'Grab_Net')
 
-        return mpr_calc.management_net_ac_value(totals, 'Grab_Net')
+        return mpr_calc.net_after_commission_value(
+            totals,
+            'Grab_Net',
+            mpr_calc.MANAGEMENT_COMMISSION_RATE,
+        )
+
+    def _get_gofood_commission_value(self, totals):
+        return self._get_gofood_value(totals) * self.MPR_COMMISSION_RATE
+
+    def _get_gojek_net_mutation_ac_value(self, totals):
+        return self._get_value_with_mutation_fallback(totals, 'Gojek_Mutation', 'Gojek_Net') * mpr_calc.MPR_STANDARD_NET_RATE
+
+    def _get_gofood_gojek_qris_ac_value(self, totals):
+        return (self._get_gofood_value(totals) * mpr_calc.MPR_STANDARD_NET_RATE) + self._get_gojek_qris_value(totals)
+
+    def _get_grabfood_commission_value(self, totals):
+        return self._get_grabfood_value(totals) * self.MPR_COMMISSION_RATE
+
+    def _get_grabfood_ovo_ac_value(self, totals):
+        return (self._get_grabfood_value(totals) * mpr_calc.MPR_STANDARD_NET_RATE) + self._get_grab_ovo_value(totals)
 
     def _get_standard_net_ac_value(self, totals, net_key):
         if net_key == 'Tiktok_Net':
@@ -219,7 +247,8 @@ class DailySheet(BaseSheet):
         if self._uses_mp78_management_ac():
             return mpr_calc.mp78_ac_value_for_header(totals, net_key)
 
-        return self._get_mpr_adjusted_value(totals, net_key)
+        mutation_key = net_key.replace('_Net', '_Mutation')
+        return self._get_mpr_adjusted_value(totals, net_key, mutation_key)
 
     def _get_tiktok_settlement_time_value(self, totals):
         settlement_times = totals.get('Tiktok_Settlement_Time')
@@ -242,11 +271,14 @@ class DailySheet(BaseSheet):
     def _write_headers(self):
         headers = self._get_headers()
         header_colors = {
-            'Date': DATE_FILL, 'GoFood': GOJEK_FILL, 'GO-PAY QRIS': GOJEK_FILL, 'GoFood (ac)': GOJEK_FILL,
-            'GO-PAY QRIS (ac)': GOJEK_FILL, 'Gojek Net': GOJEK_FILL, 'Gojek Mutation': GOJEK_FILL,
+            'Date': DATE_FILL, 'GoFood': GOJEK_FILL, 'GO-PAY QRIS': GOJEK_FILL,
+            'Gojek Net': GOJEK_FILL, 'Gojek Mutation': GOJEK_FILL,
             'Gojek Difference': DIFFERENCE_FILL, 'GrabFood': GRAB_FILL, 'GrabOVO': GRAB_FILL,
-            'GrabFood (ac)': GRAB_FILL, 'GrabOVO (ac)': GRAB_FILL, 'Grab Net': GRAB_FILL, 'Grab Net (ac)': GRAB_FILL,
+            'Grab Net': GRAB_FILL, 'Grab Net (ac)': GRAB_FILL,
             'Gojek Net (ac)': GOJEK_FILL, 'Grab Net (ac)': GRAB_FILL,
+            'Gofood Commission': GOJEK_FILL, 'Gojek Net Mutation (ac)': GOJEK_FILL,
+            'GoFood x QRIS (ac)': GOJEK_FILL, 'Grab Commission': GRAB_FILL,
+            'GrabFood x OVO (ac)': GRAB_FILL,
             'Shopee Net (ac)': SHOPEE_FILL, 'ShopeePay Net (ac)': SHOPEEPAY_FILL,
             'Tiktok Net (ac)': TIKTOK_FILL, 'Qpon Net (ac)': TIKTOK_FILL,
             'Webshop Net (ac)': TIKTOK_FILL,
@@ -316,23 +348,69 @@ class DailySheet(BaseSheet):
             if isinstance(value, (int, float)):
                 cell.number_format = '#,##0'
 
+    def _write_admin_crosscheck_rows(self):
+        headers = self._get_headers()
+        crosscheck_headers = self._get_admin_crosscheck_headers(headers)
+        if not crosscheck_headers:
+            return
+
+        grand_totals = self.data['grand_totals']
+        all_dates = self.data['all_dates']
+        minusan_by_date = self.data['minusan_by_date']
+        grand_total_value_map = self._get_grand_total_value_map(grand_totals, all_dates, minusan_by_date)
+        label_row = self.ws.max_row + 3
+        header_row = label_row + 1
+        admin_input_row = header_row + 1
+        computed_total_row = header_row + 2
+
+        self.ws.cell(row=label_row, column=1, value='Admin Crosscheck')
+
+        for col, header in enumerate(crosscheck_headers, 1):
+            header_cell = self.ws.cell(row=header_row, column=col, value=header)
+            header_cell.alignment = CENTER_ALIGN
+
+            input_cell = self.ws.cell(row=admin_input_row, column=col, value=None)
+            input_cell.alignment = CENTER_ALIGN
+
+            value = grand_total_value_map[header]() if header in grand_total_value_map else None
+            total_cell = self.ws.cell(row=computed_total_row, column=col, value=value)
+            total_cell.alignment = CENTER_ALIGN
+            if isinstance(value, (int, float)):
+                total_cell.number_format = '#,##0'
+
+        for row in self.ws.iter_rows(
+            min_row=header_row,
+            max_row=computed_total_row,
+            min_col=1,
+            max_col=len(crosscheck_headers),
+        ):
+            for cell in row:
+                cell.border = THIN_BORDER
+
+    def _get_admin_crosscheck_headers(self, headers):
+        return [
+            header for header in headers
+            if 'Net' in header and '(ac)' not in header and header != 'Sisa Cash (Admin)'
+        ]
+
     def _get_daily_value_map(self):
         return {
             'Date': lambda totals, date, minusan_total: date,
             'GoFood': lambda totals, date, minusan_total: self._get_gofood_value(totals),
             'GO-PAY QRIS': lambda totals, date, minusan_total: self._get_gojek_qris_value(totals),
-            'GoFood (ac)': lambda totals, date, minusan_total: self._get_gofood_ac_value(totals),
-            'GO-PAY QRIS (ac)': lambda totals, date, minusan_total: self._get_gojek_qris_ac_value(totals),
             'Gojek Net': lambda totals, date, minusan_total: self._get_gojek_net_value(totals),
             'Gojek Mutation': lambda totals, date, minusan_total: totals.get('Gojek_Mutation', 0),
             'Gojek Net (ac)': lambda totals, date, minusan_total: self._get_gojek_net_ac_value(totals),
+            'Gofood Commission': lambda totals, date, minusan_total: self._get_gofood_commission_value(totals),
+            'Gojek Net Mutation (ac)': lambda totals, date, minusan_total: self._get_gojek_net_mutation_ac_value(totals),
+            'GoFood x QRIS (ac)': lambda totals, date, minusan_total: self._get_gofood_gojek_qris_ac_value(totals),
             'Gojek Difference': lambda totals, date, minusan_total: totals.get('Gojek_Difference', 0),
             'GrabFood': lambda totals, date, minusan_total: self._get_grabfood_value(totals),
             'GrabOVO': lambda totals, date, minusan_total: self._get_grab_ovo_value(totals),
-            'GrabFood (ac)': lambda totals, date, minusan_total: self._get_grabfood_ac_value(totals),
-            'GrabOVO (ac)': lambda totals, date, minusan_total: self._get_grab_ovo_ac_value(totals),
             'Grab Net': lambda totals, date, minusan_total: self._get_grab_net_value(totals),
             'Grab Net (ac)': lambda totals, date, minusan_total: self._get_grab_net_ac_value(totals),
+            'Grab Commission': lambda totals, date, minusan_total: self._get_grabfood_commission_value(totals),
+            'GrabFood x OVO (ac)': lambda totals, date, minusan_total: self._get_grabfood_ovo_ac_value(totals),
             'Shopee Net': lambda totals, date, minusan_total: self._get_shopee_net_value(totals),
             'Shopee Mutation': lambda totals, date, minusan_total: totals.get('Shopee_Mutation', 0),
             'Shopee Net (ac)': lambda totals, date, minusan_total: self._get_shopee_net_ac_value(totals),
@@ -360,18 +438,19 @@ class DailySheet(BaseSheet):
             'Date': lambda: 'Grand Total',
             'GoFood': lambda: self._get_gofood_value(grand_totals),
             'GO-PAY QRIS': lambda: self._get_gojek_qris_value(grand_totals),
-            'GoFood (ac)': lambda: self._get_gofood_ac_value(grand_totals),
-            'GO-PAY QRIS (ac)': lambda: self._get_gojek_qris_ac_value(grand_totals),
             'Gojek Net': lambda: self._get_gojek_net_value(grand_totals),
             'Gojek Mutation': lambda: grand_totals.get('Gojek_Mutation', 0),
             'Gojek Net (ac)': lambda: self._get_gojek_net_ac_value(grand_totals),
+            'Gofood Commission': lambda: self._get_gofood_commission_value(grand_totals),
+            'Gojek Net Mutation (ac)': lambda: self._get_gojek_net_mutation_ac_value(grand_totals),
+            'GoFood x QRIS (ac)': lambda: self._get_gofood_gojek_qris_ac_value(grand_totals),
             'Gojek Difference': lambda: grand_totals.get('Gojek_Difference', 0),
             'GrabFood': lambda: self._get_grabfood_value(grand_totals),
             'GrabOVO': lambda: self._get_grab_ovo_value(grand_totals),
-            'GrabFood (ac)': lambda: self._get_grabfood_ac_value(grand_totals),
-            'GrabOVO (ac)': lambda: self._get_grab_ovo_ac_value(grand_totals),
             'Grab Net': lambda: self._get_grab_net_value(grand_totals),
             'Grab Net (ac)': lambda: self._get_grab_net_ac_value(grand_totals),
+            'Grab Commission': lambda: self._get_grabfood_commission_value(grand_totals),
+            'GrabFood x OVO (ac)': lambda: self._get_grabfood_ovo_ac_value(grand_totals),
             'Shopee Net': lambda: self._get_shopee_net_value(grand_totals),
             'Shopee Mutation': lambda: grand_totals.get('Shopee_Mutation', 0),
             'Shopee Net (ac)': lambda: self._get_shopee_net_ac_value(grand_totals),

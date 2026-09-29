@@ -15,13 +15,16 @@ from app.models.pukis import Pukis
 from app.models.ultra_voucher import VoucherReport
 from app.models.income_category import IncomeCategory
 from app.models.expense_category import ExpenseCategory
+from app.services.excel_export import mpr_calculations as mpr_calc
 from app.utils.transaction_matcher import TransactionMatcher
 from app.utils.pkb_mutation import get_minus_manual_entries
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import aliased
 
 GRAB_REPORTS_TRANSFERRED_ONLY = False
 GRAB_TRANSFERRED_STATUSES = ('Transferred', 'Ditransfer')
+EXCLUDE_COMPLETED_GRAB_REPORTS = False
+COMPLETED_GRAB_STATUSES = ('Selesai', 'Completed')
 SHOW_MUTATIONS_WITHOUT_PLATFORM_DATA = True
 
 def _grab_report_datetime_col():
@@ -32,6 +35,44 @@ def _grab_report_date(report):
 
 def _is_transferred_grab_report(report):
     return (report.status or '').strip() in GRAB_TRANSFERRED_STATUSES
+
+def _is_completed_grab_report(report):
+    return (report.status or '').strip() in COMPLETED_GRAB_STATUSES
+
+def _matching_completed_grab_report_ids(reports, daily_totals):
+    transferred_totals_by_date = defaultdict(lambda: defaultdict(int))
+
+    for report in reports:
+        report_datetime = _grab_report_date(report)
+        if not report_datetime:
+            continue
+
+        date = report_datetime.date()
+        if date not in daily_totals:
+            continue
+
+        total = float(report.total or 0)
+        if _is_transferred_grab_report(report):
+            transferred_totals_by_date[date][round(total, 2)] += 1
+
+    completed_report_ids = set()
+    for report in reports:
+        report_datetime = _grab_report_date(report)
+        if not report_datetime:
+            continue
+
+        date = report_datetime.date()
+        if date not in daily_totals:
+            continue
+        if not _is_completed_grab_report(report):
+            continue
+
+        total = round(float(report.total or 0), 2)
+        if transferred_totals_by_date[date][total] > 0:
+            completed_report_ids.add(id(report))
+            transferred_totals_by_date[date][total] -= 1
+
+    return completed_report_ids
 
 def get_report_data(outlet_code: str, start_date: datetime, end_date: datetime) -> dict:
     """
@@ -62,11 +103,15 @@ def get_report_data(outlet_code: str, start_date: datetime, end_date: datetime) 
     )
     if GRAB_REPORTS_TRANSFERRED_ONLY:
         grab_query = grab_query.filter(GrabFoodReport.status.in_(GRAB_TRANSFERRED_STATUSES))
+    if EXCLUDE_COMPLETED_GRAB_REPORTS:
+        grab_query = grab_query.filter(or_(GrabFoodReport.status.is_(None), ~GrabFoodReport.status.in_(COMPLETED_GRAB_STATUSES)))
     grab_reports = grab_query.all()
     shopee_reports = ShopeeReport.query.filter(ShopeeReport.outlet_code == outlet_code, ShopeeReport.order_create_time >= start_date, ShopeeReport.order_create_time <= end_date_inclusive).all()
     shopeepay_reports = ShopeepayReport.query.filter(ShopeepayReport.outlet_code == outlet_code, ShopeepayReport.create_time >= start_date, ShopeepayReport.create_time <= end_date_inclusive).all()
     tiktok_reports = TiktokReport.query.filter(TiktokReport.outlet_code == outlet_code, TiktokReport.order_time >= start_date, TiktokReport.order_time <= end_date_inclusive).all()
-    tiktok_closing_reports = TiktokReport.query.filter(TiktokReport.outlet_code == outlet_code, TiktokReport.order_time >= start_date - timedelta(days=7), TiktokReport.order_time <= end_date_inclusive - timedelta(days=7)).all()
+    tiktok_closing_reports = []
+    if mpr_calc.ENABLE_CLOSING_TIKTOK_SETTLEMENT_SHIFT:
+        tiktok_closing_reports = TiktokReport.query.filter(TiktokReport.outlet_code == outlet_code, TiktokReport.order_time >= start_date - timedelta(days=7), TiktokReport.order_time <= end_date_inclusive - timedelta(days=7)).all()
     qpon_reports = QponReport.query.filter(QponReport.outlet_code == outlet_code, QponReport.bill_created_at >= start_date, QponReport.bill_created_at <= end_date_inclusive).all()
     qpon_closing_reports = QponReport.query.filter(QponReport.outlet_code == outlet_code, QponReport.bill_created_at >= start_date - timedelta(days=7), QponReport.bill_created_at <= end_date_inclusive - timedelta(days=7)).all()
     webshop_reports = WebshopReport.query.filter(WebshopReport.outlet_code == outlet_code, WebshopReport.created_at >= start_date, WebshopReport.created_at <= end_date_inclusive).all()
@@ -181,8 +226,12 @@ def _aggregate_grab(daily_totals, reports, brand):
     grabovo_gross_total = 0
     grabfood_net_total = 0
     grabovo_net_total = 0
+    completed_report_ids_to_skip = _matching_completed_grab_report_ids(reports, daily_totals)
+
     for report in reports:
         if GRAB_REPORTS_TRANSFERRED_ONLY and not _is_transferred_grab_report(report):
+            continue
+        if EXCLUDE_COMPLETED_GRAB_REPORTS and _is_completed_grab_report(report):
             continue
 
         report_datetime = _grab_report_date(report)
@@ -191,6 +240,8 @@ def _aggregate_grab(daily_totals, reports, brand):
 
         date = report_datetime.date()
         if date not in daily_totals:
+            continue
+        if id(report) in completed_report_ids_to_skip:
             continue
 
         daily_totals[date]['Grab_Net'] += float(report.total or 0)
@@ -205,8 +256,14 @@ def _aggregate_grab(daily_totals, reports, brand):
                 grabfood_gross_total += float(report.amount or 0)
                 grabfood_net_total += float(report.total or 0)
     for date in daily_totals:
-        if brand not in ["Pukis & Martabak Kota Baru"]:
-            daily_totals[date]['Grab_Commission'] = daily_totals[date]['Grab_Net'] * 1/74
+        if mpr_calc.is_mp78_brand(brand):
+            daily_totals[date]['Grab_Commission'] = (
+                daily_totals[date]['Grab_Net'] * mpr_calc.MP78_GRAB_MANAGEMENT_COMMISSION_RATE
+            )
+        elif brand not in ["Pukis & Martabak Kota Baru"]:
+            daily_totals[date]['Grab_Commission'] = (
+                daily_totals[date]['Grab_Net'] * mpr_calc.MANAGEMENT_COMMISSION_RATE
+            )
         else:
             daily_totals[date]['Grab_Commission'] = 0
     return {

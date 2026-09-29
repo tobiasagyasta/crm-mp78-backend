@@ -15,6 +15,7 @@ from app.controllers.manual_entry_controller import manual_entries_bp
 from app.controllers.export_controller import export_bp
 from app.controllers.reports_controller_s3 import reports_s3_bp
 from app.controllers.mutations_controller import mutations_bp
+from app.controllers.summary_controller import summary_bp
 from app.controllers.test_controller import test_bp
 from app.controllers.bi_controller import bi_bp
 from app.controllers import qpon_controller
@@ -68,6 +69,7 @@ def create_app():
     app.register_blueprint(export_bp)
     app.register_blueprint(reports_s3_bp)
     app.register_blueprint(mutations_bp)
+    app.register_blueprint(summary_bp)
     app.register_blueprint(test_bp)
     app.register_blueprint(bi_bp)
     app.register_blueprint(admin_tools_bp)

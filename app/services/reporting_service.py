@@ -328,6 +328,7 @@ def generate_monthly_mpr_commission_data(
     start_date: date | None = None,
     end_date: date | None = None,
     commission_rate: float = 0.08,
+    brand_name: str | None = None,
 ) -> dict:
     """
     Generates aggregated monthly MPR commission data across all MPR outlets.
@@ -335,8 +336,22 @@ def generate_monthly_mpr_commission_data(
     Data is sourced directly from the Gojek, Grab, Shopee, ShopeePay, and TikTok platform report tables
     by filtering rows where brand_name is one of the configured MPR brands and grouping by calendar month.
     """
+    normalized_brand_name = (brand_name or "").strip()
+    if not normalized_brand_name or normalized_brand_name.upper() == "ALL":
+        selected_brands = mpr_calc.MPR_BRANDS
+        report_brand_name = "All"
+    else:
+        brand_map = {brand.upper(): brand for brand in mpr_calc.MPR_BRANDS}
+        selected_brand = brand_map.get(normalized_brand_name.upper())
+        if not selected_brand:
+            raise ValueError(
+                f"brand_name must be one of: All, {', '.join(mpr_calc.MPR_BRANDS)}"
+            )
+        selected_brands = (selected_brand,)
+        report_brand_name = selected_brand
+
     outlets = Outlet.query.filter(
-        Outlet.brand.in_(mpr_calc.MPR_BRANDS),
+        Outlet.brand.in_(selected_brands),
         Outlet.status == 'Active',
     ).all()
     outlet_name_map = {
@@ -430,7 +445,10 @@ def generate_monthly_mpr_commission_data(
         return amount * (1 - mpr_calc.MPR_STANDARD_NET_RATE)
 
     def _qris_ovo_commission(amount: float) -> float:
-        return amount * (1 - mpr_calc.MPR_QRIS_OVO_NET_RATE)
+        return amount * mpr_calc.mpr_qris_ovo_commission_rate()
+
+    def _gojek_grab_qris_ovo_commission(amount: float) -> float:
+        return amount * mpr_calc.mpr_gojek_grab_qris_ovo_commission_rate()
 
     def _shopee_commission(amount: float) -> float:
         return amount * (1 - mpr_calc.MPR_SHOPEE_NET_RATE)
@@ -438,11 +456,11 @@ def generate_monthly_mpr_commission_data(
     def _tiktok_commission(amount: float) -> float:
         return amount * (1 - mpr_calc.MPR_TIKTOK_NET_RATE)
 
-    gojek_query = GojekReport.query.filter(GojekReport.brand_name.in_(mpr_calc.MPR_BRANDS))
-    grab_query = GrabFoodReport.query.filter(GrabFoodReport.brand_name.in_(mpr_calc.MPR_BRANDS))
-    shopee_query = ShopeeReport.query.filter(ShopeeReport.brand_name.in_(mpr_calc.MPR_BRANDS))
-    shopeepay_query = ShopeepayReport.query.filter(ShopeepayReport.brand_name.in_(mpr_calc.MPR_BRANDS))
-    tiktok_query = TiktokReport.query.filter(TiktokReport.brand_name.in_(mpr_calc.MPR_BRANDS))
+    gojek_query = GojekReport.query.filter(GojekReport.brand_name.in_(selected_brands))
+    grab_query = GrabFoodReport.query.filter(GrabFoodReport.brand_name.in_(selected_brands))
+    shopee_query = ShopeeReport.query.filter(ShopeeReport.brand_name.in_(selected_brands))
+    shopeepay_query = ShopeepayReport.query.filter(ShopeepayReport.brand_name.in_(selected_brands))
+    tiktok_query = TiktokReport.query.filter(TiktokReport.brand_name.in_(selected_brands))
 
     if range_mode:
         gojek_query = gojek_query.filter(
@@ -492,7 +510,7 @@ def generate_monthly_mpr_commission_data(
     for report in gojek_query.all():
         amount = float(report.nett_amount or 0)
         commission = (
-            _qris_ovo_commission(amount)
+            _gojek_grab_qris_ovo_commission(amount)
             if report.payment_type == 'QRIS'
             else _standard_commission(amount)
         )
@@ -512,7 +530,7 @@ def generate_monthly_mpr_commission_data(
             continue
         amount = float(report.total or 0)
         commission = (
-            _qris_ovo_commission(amount)
+            _gojek_grab_qris_ovo_commission(amount)
             if getattr(report, 'jenis', None) == 'OVO'
             else _standard_commission(amount)
         )
@@ -588,10 +606,12 @@ def generate_monthly_mpr_commission_data(
         return {
             'periods': periods,
             'outlets': data,
+            'brand_name': report_brand_name,
+            'selected_brands': list(selected_brands),
             'commission_rate': commission_rate,
             'commission_rates': {
                 'standard': 1 - mpr_calc.MPR_STANDARD_NET_RATE,
-                'qris_ovo': 1 - mpr_calc.MPR_QRIS_OVO_NET_RATE,
+                'qris_ovo': mpr_calc.mpr_gojek_grab_qris_ovo_commission_rate(),
                 'shopee': 1 - mpr_calc.MPR_SHOPEE_NET_RATE,
                 'tiktok': 1 - mpr_calc.MPR_TIKTOK_NET_RATE,
             },
@@ -608,10 +628,12 @@ def generate_monthly_mpr_commission_data(
     return {
         'periods': list(range(1, 13)),
         'outlets': data,
+        'brand_name': report_brand_name,
+        'selected_brands': list(selected_brands),
         'commission_rate': commission_rate,
         'commission_rates': {
             'standard': 1 - mpr_calc.MPR_STANDARD_NET_RATE,
-            'qris_ovo': 1 - mpr_calc.MPR_QRIS_OVO_NET_RATE,
+            'qris_ovo': mpr_calc.mpr_gojek_grab_qris_ovo_commission_rate(),
             'shopee': 1 - mpr_calc.MPR_SHOPEE_NET_RATE,
             'tiktok': 1 - mpr_calc.MPR_TIKTOK_NET_RATE,
         },

@@ -17,7 +17,7 @@ def get_mpr_mapping_for_outlet(outlet_code: str) -> tuple[Outlet | None, MprMapp
     if outlet.brand == "MP78":
         mapping = MprMapping.query.filter_by(mp78_outlet_code=outlet.outlet_code).first()
     else:
-        mapping = MprMapping.query.filter_by(mpr_outlet_code=outlet.outlet_code).first()
+        mapping = None
 
     return outlet, mapping
 

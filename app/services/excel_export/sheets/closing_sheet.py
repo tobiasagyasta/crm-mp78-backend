@@ -1,7 +1,7 @@
 from app.services.excel_export.base_sheet import BaseSheet
 from app.services.excel_export import mpr_calculations as mpr_calc
 from app.services.excel_export.utils.excel_utils import (
-    HEADER_FONT, YELLOW_FILL, CENTER_ALIGN, GOJEK_FILL, GRAB_FILL, SHOPEE_FILL,GREY_FILL,
+    HEADER_FONT, BOLD_RED_FONT, YELLOW_FILL, CENTER_ALIGN, GOJEK_FILL, GRAB_FILL, SHOPEE_FILL, GREY_FILL,
     TIKTOK_FILL, BLUE_FILL, DIFFERENCE_FILL, THIN_BORDER, auto_fit_columns, LEFT_ALIGN, RIGHT_ALIGN,
     CLOSED_OFF_FILL
 )
@@ -13,15 +13,29 @@ from datetime import datetime
 import re
 
 class ClosingSheet(BaseSheet):
+    NON_COMMISSION_BRANDS = {
+        'Es Ce Hun Tiau & Bongko Wendy',
+    }
+    GRAB_NET_CLOSING_BRANDS = {
+        'Martabak 777 Sinar Bulan',
+        'Martabak 999 Asli Bandung',
+    }
     TIKTOK_NET_HEADER = 'Tiktok_Net'
     TIKTOK_CLOSING_NET_HEADER = 'Tiktok_Closing_Net'
     QPON_NET_HEADER = 'Qpon_Net'
     QPON_CLOSING_NET_HEADER = 'Qpon_Closing_Net'
     QPON_AC_HEADER = 'Qpon_Net_Ac'
+    GOFOOD_AC_HEADER = 'GoFood_Ac'
+    GRABFOOD_AC_HEADER = 'GrabFood_Ac'
+    GOFOOD_COMMISSION_HEADER = 'GoFood_Commission'
+    GRABFOOD_COMMISSION_HEADER = 'GrabFood_Commission'
+    MPR_GOJEK_AC_HEADER = 'Mpr_Gojek_Ac'
+    MPR_GRAB_AC_HEADER = 'Mpr_Grab_Ac'
 
     def __init__(self, workbook, data):
         super().__init__(workbook, 'Closing Sheet', data)
         self.main_table_col_end = None
+        self.main_table_row_end = None
         self.grand_total_col_start = None
         self.grand_total_col_end = None
         self.grand_total_row_start = None
@@ -29,18 +43,31 @@ class ClosingSheet(BaseSheet):
         self.store_id_col_end = None
         self.store_id_row = None
         self.store_id_row_end = None
+        self.rate_table_col_start = None
+        self.rate_table_col_end = None
+        self.rate_table_row = None
+        self.rate_table_row_end = None
         self.rekening_col_start = None
         self.rekening_col_end = None
         self.rekening_row = None
         self.rekening_row_end = None
+        self.documentation_col_start = None
+        self.documentation_col_end = None
+        self.documentation_row = None
+        self.documentation_row_end = None
+        self.documentation_ranges = []
+        self.grab_management_cell = None
         self._mpr_mapping = None
         self._mpr_mapping_loaded = False
 
     def generate(self):
         self._write_main_table()
+        self._write_admin_crosscheck_rows()
         self._write_grand_total_section()
         self._write_store_id_table()
         self._write_rekening_table()
+        self._write_rate_table()
+        self._write_admin_documentation_section()
         self._apply_styles()
         auto_fit_columns(self.ws)
 
@@ -82,13 +109,12 @@ class ClosingSheet(BaseSheet):
             cell.alignment = CENTER_ALIGN
             if self._is_closing_platform_disabled(header, report_type):
                 cell.fill = CLOSED_OFF_FILL
-            elif name in ['Gojek', 'Gojek (ac)', 'Gojek MPR (ac)']:
+            elif name in ['Gojek', 'Gojek (ac)', 'Gojek MPR (ac)', 'GoFood (ac)', 'GoFood Commission']:
                 cell.fill = GOJEK_FILL
-            elif name in ['Grab', 'Grab Net', 'Grab (ac)', 'Grab MPR (ac)', 'Grab(OVO)']:
+            elif name in ['Grab', 'Grab Net', 'Grab (net)', 'Grab (ac)', 'Grab MPR (ac)', 'Grab(OVO)', 'GrabFood (ac)', 'GrabFood Commission']:
                 cell.fill = GRAB_FILL
             elif name in [
-                'ShopeeFood', 'ShopeeFood (ac)', 'ShopeePay', 'ShopeePay (ac)',
-                'Shopee MPR (ac)', 'ShopeePay MPR (ac)'
+                'ShopeeFood', 'ShopeePay'
             ]:
                 cell.fill = SHOPEE_FILL
             elif name in [
@@ -116,6 +142,42 @@ class ClosingSheet(BaseSheet):
             closing_row += 1
 
         self.main_table_col_end = len(platform_definitions) + 1
+        self.main_table_row_end = closing_row - 1
+
+    def _write_admin_crosscheck_rows(self):
+        platform_definitions = self._get_main_table_platforms()
+        if not platform_definitions:
+            return
+
+        label_row = (self.main_table_row_end or self.ws.max_row) + 3
+        header_row = label_row + 1
+        admin_input_row = header_row + 1
+        computed_total_row = header_row + 2
+
+        self.ws.cell(row=label_row, column=1, value='Admin Crosscheck')
+
+        for col, (name, header, report_type) in enumerate(platform_definitions, 2):
+            header_cell = self.ws.cell(row=header_row, column=col, value=name)
+            header_cell.alignment = CENTER_ALIGN
+            header_cell.fill = YELLOW_FILL
+
+            input_cell = self.ws.cell(row=admin_input_row, column=col, value=None)
+            input_cell.alignment = CENTER_ALIGN
+
+            value = self._get_platform_grand_total_with_fallback(report_type, header)
+            total_cell = self.ws.cell(row=computed_total_row, column=col, value=value)
+            total_cell.alignment = CENTER_ALIGN
+            if isinstance(value, (int, float)):
+                total_cell.number_format = '#,##0'
+
+        for row in self.ws.iter_rows(
+            min_row=header_row,
+            max_row=computed_total_row,
+            min_col=2,
+            max_col=len(platform_definitions) + 1,
+        ):
+            for cell in row:
+                cell.border = THIN_BORDER
 
     def _write_main_table_group_headers(self, row, platform_definitions):
         if not self.data.get('mpr_report_data'):
@@ -170,25 +232,21 @@ class ClosingSheet(BaseSheet):
         return [
             ('Gojek MPR (ac)', 'Gojek_Mutation', 'mpr'),
             ('Grab MPR (ac)', 'Grab_Net', 'mpr'),
-            ('Shopee MPR (ac)', 'Shopee_Net', 'mpr'),
-            ('ShopeePay MPR (ac)', 'ShopeePay_Net', 'mpr'),
+            ('ShopeeFood', 'Shopee_Net', 'mpr'),
+            ('ShopeePay', 'ShopeePay_Net', 'mpr'),
             ('Tiktok MPR (ac)', 'Tiktok_Net', 'mpr'),
             ('Qpon MPR (ac)', self.QPON_AC_HEADER, 'mpr'),
         ]
 
     def _get_main_table_platforms(self):
         platform_definitions = self._get_main_platform_definitions_for_grand_total()
-        if self._uses_mp78_management_ac():
-            platform_definitions = (
-                platform_definitions[:1] +
-                [
-                    ('Grab Net', 'Grab_Net_Raw', 'main'),
-                ] +
-                [
-                    definition for definition in platform_definitions[1:]
-                    if definition[0] != 'Grab (ac)'
-                ]
-            )
+        if self._uses_grab_net_closing_label():
+            platform_definitions = [
+                ('Grab (net)', 'Grab_Net_Raw', report_type)
+                if header == 'Grab_Net' and report_type == 'main'
+                else (name, header, report_type)
+                for name, header, report_type in platform_definitions
+            ]
 
         if not self.data.get('mpr_report_data'):
             return platform_definitions
@@ -196,8 +254,8 @@ class ClosingSheet(BaseSheet):
         return platform_definitions + [
             ('Gojek MPR (ac)', 'Gojek_Mutation', 'mpr'),
             ('Grab MPR (ac)', 'Grab_Net', 'mpr'),
-            ('Shopee MPR (ac)', 'Shopee_Net', 'mpr'),
-            ('ShopeePay MPR (ac)', 'ShopeePay_Net', 'mpr'),
+            ('ShopeeFood', 'Shopee_Net', 'mpr'),
+            ('ShopeePay', 'ShopeePay_Net', 'mpr'),
             ('Tiktok MPR (ac)', 'Tiktok_Net', 'mpr'),
             ('Qpon MPR (ac)', self.QPON_AC_HEADER, 'mpr'),
         ]
@@ -209,6 +267,14 @@ class ClosingSheet(BaseSheet):
             return self._get_qpon_closing_display_value(report_type)
         if header == self.QPON_AC_HEADER:
             return self._get_qpon_closing_ac_display_value(report_type)
+        if header == self.MPR_GOJEK_AC_HEADER:
+            return self._get_mpr_gojek_ac_display_value(report_type)
+        if header == self.MPR_GRAB_AC_HEADER:
+            return self._get_mpr_grab_ac_display_value(report_type)
+        if header in [self.GOFOOD_AC_HEADER, self.GRABFOOD_AC_HEADER]:
+            return self._get_mpr_food_ac_display_value(header, report_type)
+        if header in [self.GOFOOD_COMMISSION_HEADER, self.GRABFOOD_COMMISSION_HEADER]:
+            return self._get_mpr_food_commission_display_value(header, report_type)
         if report_type == 'mpr':
             return self._get_mpr_display_value(header)
         if self._is_mpr_brand():
@@ -216,6 +282,9 @@ class ClosingSheet(BaseSheet):
         special_value = self._get_main_table_special_value(header)
         if special_value is not None:
             return special_value
+        ac_value = self._get_main_ac_display_value(header)
+        if ac_value is not None:
+            return ac_value
         if self._uses_mp78_management_ac():
             return self._get_mp78_display_value(header)
         return self._get_grand_total_with_fallback(header)
@@ -227,6 +296,14 @@ class ClosingSheet(BaseSheet):
             return self._get_qpon_closing_display_value(report_type, date)
         if header == self.QPON_AC_HEADER:
             return self._get_qpon_closing_ac_display_value(report_type, date)
+        if header == self.MPR_GOJEK_AC_HEADER:
+            return self._get_mpr_gojek_ac_display_value(report_type, date)
+        if header == self.MPR_GRAB_AC_HEADER:
+            return self._get_mpr_grab_ac_display_value(report_type, date)
+        if header in [self.GOFOOD_AC_HEADER, self.GRABFOOD_AC_HEADER]:
+            return self._get_mpr_food_ac_display_value(header, report_type, date)
+        if header in [self.GOFOOD_COMMISSION_HEADER, self.GRABFOOD_COMMISSION_HEADER]:
+            return self._get_mpr_food_commission_display_value(header, report_type, date)
         if report_type == 'mpr':
             return self._get_mpr_display_value(header, date)
         if self._is_mpr_brand():
@@ -234,6 +311,9 @@ class ClosingSheet(BaseSheet):
         special_value = self._get_main_table_special_value(header, date)
         if special_value is not None:
             return special_value
+        ac_value = self._get_main_ac_display_value(header, date)
+        if ac_value is not None:
+            return ac_value
         if self._uses_mp78_management_ac():
             return self._get_mp78_display_value(header, date)
         return self._get_report_value_with_fallback(self.data, header, date)
@@ -260,14 +340,15 @@ class ClosingSheet(BaseSheet):
         self.ws.cell(row=row_start + 1, column=col_start).fill = BLUE_FILL
 
         grab_net_total = self._get_grand_total_with_fallback('Grab_Net') or 0
-        grab_management_expense = self._get_grab_management_commission_expense(grab_net_total)
+        gofood_management_expense = self._get_mpr_gofood_commission_expense()
+        grab_management_expense = self._get_closing_grab_management_commission_expense(grab_net_total)
         mp78_income_total = self._get_mp78_mutation_total(mp78_mutations, 'income')
         mp78_expense_total = self._get_mp78_mutation_total(mp78_mutations, 'expense')
         total_income = (
             self._get_closing_grand_total_income_contribution('main', 'Gojek_Mutation') +
             self._get_closing_grand_total_income_contribution('main', 'Grab_Net', grab_net_total) +
-            self._get_closing_grand_total_income_contribution('main', 'Shopee_Net') +
-            self._get_closing_grand_total_income_contribution('main', 'ShopeePay_Net') +
+            self._get_closing_grand_total_income_contribution('main', 'Shopee_Mutation') +
+            self._get_closing_grand_total_income_contribution('main', 'ShopeePay_Mutation') +
             self._get_closing_grand_total_income_contribution('main', 'Tiktok_Net') +
             self._get_closing_grand_total_income_contribution('main', self.QPON_AC_HEADER) +
             self._get_closing_grand_total_income_contribution('main', 'Webshop_Net') +
@@ -290,6 +371,7 @@ class ClosingSheet(BaseSheet):
         total_expense = (
             sum(float(entry.amount) for entry, _, _ in manual_entries if entry.entry_type == 'expense') +
             mp78_expense_total +
+            gofood_management_expense +
             grab_management_expense
         )
         self.ws.cell(row=row_start + 1, column=col_start + 2, value=total_expense).font = HEADER_FONT
@@ -307,6 +389,13 @@ class ClosingSheet(BaseSheet):
 
         final_i = 0
         for platform_label, header, _ in platform_definitions:
+            if self._is_mpr_brand() and header in [
+                self.GOFOOD_COMMISSION_HEADER,
+                self.GRABFOOD_COMMISSION_HEADER,
+                self.GRABFOOD_AC_HEADER,
+            ]:
+                continue
+
             label_row = row_start + 1 + final_i + 1
             platform_label = self._get_closing_grand_total_platform_label(platform_label, header)
             platform_disabled = self._is_closing_platform_disabled(header, 'main')
@@ -318,29 +407,36 @@ class ClosingSheet(BaseSheet):
             value_cell = self.ws.cell(
                 row=label_row,
                 column=col_start + 1,
-                value=None if platform_disabled else self._get_closing_grand_total_income_value(header, grab_net_total)
+                value=None if platform_disabled else self._get_closing_grand_total_income_value_for_label(platform_label, header, grab_net_total)
             )
             value_cell.number_format = '#,##0'
             value_cell.alignment = RIGHT_ALIGN
-            if platform_disabled:
-                value_cell.fill = CLOSED_OFF_FILL
+            # if platform_disabled:
+            #     value_cell.fill = CLOSED_OFF_FILL
             final_i += 1
-            if header == 'Grab_Net':
-                grab_mgmt_row = label_row + 1
-                management_label_cell = self.ws.cell(
-                    row=grab_mgmt_row,
-                    column=col_start,
-                    value=self._get_grab_management_commission_label()
+            if header == 'Grab_Net' and not self._is_non_commission_brand():
+                self._write_management_commission_row(
+                    label_row + 1,
+                    col_start,
+                    self._get_grab_management_commission_label(),
+                    grab_management_expense,
                 )
-                management_label_cell.alignment = LEFT_ALIGN
-                management_label_cell.font = HEADER_FONT
-                management_cell_value = self.ws.cell(
-                    row=grab_mgmt_row,
-                    column=col_start + 2,
-                    value=grab_management_expense
+                final_i += 1
+            if self._is_mpr_brand() and header == self.MPR_GOJEK_AC_HEADER:
+                self._write_management_commission_row(
+                    label_row + 1,
+                    col_start,
+                    'Gojek Manag MPR',
+                    gofood_management_expense,
                 )
-                management_cell_value.number_format = '#,##0'
-                management_cell_value.alignment = RIGHT_ALIGN
+                final_i += 1
+            if self._is_mpr_brand() and header == self.MPR_GRAB_AC_HEADER:
+                self._write_management_commission_row(
+                    label_row + 1,
+                    col_start,
+                    self._get_grab_management_commission_label(),
+                    grab_management_expense,
+                )
                 final_i += 1
 
         mpr_rows = [
@@ -430,6 +526,24 @@ class ClosingSheet(BaseSheet):
     def _is_mp78_expense_mutation(self, mutation):
         return (getattr(mutation, 'transaction_type', '') or '').upper() == 'DB'
 
+    def _write_management_commission_row(self, row, col_start, label, expense):
+        management_label_cell = self.ws.cell(
+            row=row,
+            column=col_start,
+            value=label
+        )
+        management_label_cell.alignment = LEFT_ALIGN
+        management_label_cell.font = HEADER_FONT
+        management_cell_value = self.ws.cell(
+            row=row,
+            column=col_start + 2,
+            value=expense
+        )
+        management_cell_value.number_format = '#,##0'
+        management_cell_value.alignment = RIGHT_ALIGN
+        if label == self._get_grab_management_commission_label():
+            self.grab_management_cell = management_cell_value.coordinate
+
     def _get_mp78_mutation_total(self, mutations, entry_type):
         total = 0
         for mutation in mutations:
@@ -495,16 +609,69 @@ class ClosingSheet(BaseSheet):
             value_cell.alignment = CENTER_ALIGN
             value_cell.fill = fill
 
+    def _write_rate_table(self):
+        row = 3
+        start_column = (self.rekening_col_end + 2) if self.rekening_col_end else 24
+        brand = self.data['outlet'].brand
+        rate_rows = [
+            (f'Gojek {brand}', self._get_gojek_commission_rate()),
+            (f'Grab {brand}', self._get_grab_management_commission_rate()),
+            (f'Tiktok {brand}', self._get_tiktok_commission_rate()),
+        ]
+
+        mpr_outlet = self._get_mapped_mpr_outlet()
+        mpr_report_data = self.data.get('mpr_report_data')
+        if mpr_report_data or mpr_outlet:
+            mpr_brand = getattr(mpr_report_data.get('outlet') if mpr_report_data else mpr_outlet, 'brand', 'MPR')
+            rate_rows.extend([
+                (f'Gojek {mpr_brand}', 1 - mpr_calc.MPR_STANDARD_NET_RATE),
+                (f'Grab {mpr_brand}', 1 - mpr_calc.MPR_STANDARD_NET_RATE),
+                (f'Shopee {mpr_brand}', 1 - mpr_calc.MPR_SHOPEE_NET_RATE),
+                (f'Tiktok {mpr_brand}', 1 - mpr_calc.MPR_TIKTOK_NET_RATE),
+            ])
+
+        self.rate_table_col_start = start_column
+        self.rate_table_col_end = start_column + 1
+        self.rate_table_row = row
+        self.rate_table_row_end = row + len(rate_rows)
+        self.ws.row_dimensions[row].height = 18
+
+        header_cells = [
+            (start_column, 'Rate Name'),
+            (start_column + 1, 'Rate'),
+        ]
+        for column, value in header_cells:
+            cell = self.ws.cell(row=row, column=column, value=value)
+            cell.font = HEADER_FONT
+            cell.alignment = CENTER_ALIGN
+            cell.fill = BLUE_FILL
+
+        for offset, (label, rate) in enumerate(rate_rows, start=1):
+            data_row = row + offset
+            self.ws.row_dimensions[data_row].height = 18
+
+            label_cell = self.ws.cell(row=data_row, column=start_column, value=label)
+            label_cell.font = HEADER_FONT
+            label_cell.alignment = LEFT_ALIGN
+            label_cell.fill = GREY_FILL
+
+            rate_cell = self.ws.cell(row=data_row, column=start_column + 1, value=f'{rate:.2%}')
+            rate_cell.font = HEADER_FONT
+            rate_cell.alignment = CENTER_ALIGN
+            rate_cell.fill = GREY_FILL
+
     def _write_rekening_table(self):
         outlet = self.data['outlet']
         mpr_outlet = self._get_mapped_mpr_outlet()
+        start_date = self.data.get('start_date')
+        end_date = self.data.get('end_date')
 
         row = 3
         start_column = (self.store_id_col_end + 2) if self.store_id_col_end else 22
-        rekening_rows = RekeningInfoService.get_outlet_rekenings(outlet)
+        rekening_rows = RekeningInfoService.get_outlet_rekenings(outlet, start_date, end_date)
 
         if mpr_outlet:
-            rekening_rows.extend(RekeningInfoService.get_outlet_rekenings(mpr_outlet))
+            rekening_rows.extend(RekeningInfoService.get_outlet_rekenings(mpr_outlet, start_date, end_date))
 
         if not rekening_rows:
             rekening_rows = [
@@ -555,6 +722,92 @@ class ClosingSheet(BaseSheet):
             value_cell.font = HEADER_FONT
             value_cell.alignment = CENTER_ALIGN
             value_cell.fill = GREY_FILL
+
+    def _write_admin_documentation_section(self):
+        start_row = max(self.store_id_row_end or 0, self.rekening_row_end or 0) + 4
+        expense_col_start = self.store_id_col_start or 1
+        checklist_col_start = self.rekening_col_start or (expense_col_start + 4)
+        expense_rows = [
+            ('Grab Manag 1%', f'={self.grab_management_cell}' if self.grab_management_cell else None),
+            ('Adm Kantor', None),
+            ('Adm Gudang', None),
+            ('Sosmed', None),
+        ]
+        checklist_sections = [
+            ('Name 1 :', [
+                'Cek total semua report',
+                'Cek tagihan',
+                'Cek data manual entry',
+                'Cek tagihan',
+                'Cek tagihan',
+            ]),
+            ('Name 2 :', [
+                'Upload semua report',
+                'Input Tiktok',
+                'Input Qpon',
+                'Input Webshop',
+                'Input tagihan',
+                'Input Adm Kantor',
+                'Input Adm Gudang',
+                'Input Sosmed',
+            ]),
+        ]
+
+        self.documentation_col_start = min(expense_col_start, checklist_col_start)
+        self.documentation_col_end = checklist_col_start + 2
+        self.documentation_row = start_row
+        self.documentation_ranges = []
+
+        for offset, (label, amount) in enumerate(expense_rows):
+            row = start_row + offset
+            label_cell = self.ws.cell(row=row, column=expense_col_start, value=label)
+            label_cell.font = HEADER_FONT
+            label_cell.alignment = LEFT_ALIGN
+            if offset > 0:
+                label_cell.font = BOLD_RED_FONT
+
+            amount_cell = self.ws.cell(row=row, column=expense_col_start + 1, value=amount)
+            amount_cell.font = HEADER_FONT
+            amount_cell.alignment = RIGHT_ALIGN
+            amount_cell.number_format = '#,##0'
+
+        total_row = start_row + len(expense_rows)
+        total_formula = (
+            f'=SUM({self.ws.cell(start_row, expense_col_start + 1).coordinate}:'
+            f'{self.ws.cell(total_row - 1, expense_col_start + 1).coordinate})'
+        )
+        total_cell = self.ws.cell(row=total_row, column=expense_col_start + 1, value=total_formula)
+        total_cell.font = HEADER_FONT
+        total_cell.alignment = RIGHT_ALIGN
+        total_cell.number_format = '#,##0'
+        total_cell.fill = YELLOW_FILL
+        self.documentation_ranges.append((start_row, total_row, expense_col_start, expense_col_start + 1))
+
+        current_row = start_row
+        for section_label, checks in checklist_sections:
+            section_cell = self.ws.cell(row=current_row, column=checklist_col_start, value=section_label)
+            section_cell.font = HEADER_FONT
+            section_cell.alignment = LEFT_ALIGN
+
+            for idx, check_text in enumerate(checks, start=1):
+                row = current_row + idx
+                check_cell = self.ws.cell(row=row, column=checklist_col_start, value=f'{idx}. {check_text}')
+                check_cell.alignment = LEFT_ALIGN
+
+                for checkbox_col in (checklist_col_start + 1, checklist_col_start + 2):
+                    checkbox_cell = self.ws.cell(row=row, column=checkbox_col, value='')
+                    checkbox_cell.alignment = CENTER_ALIGN
+                    checkbox_cell.fill = GREY_FILL
+
+            self.documentation_ranges.append((
+                current_row,
+                current_row + len(checks),
+                checklist_col_start,
+                checklist_col_start + 2,
+            ))
+            current_row += len(checks) + 3
+
+        self.documentation_row_end = max(total_row, current_row - 2)
 
     def _get_mapped_mpr_outlet(self):
         if not self._is_mp78_brand():
@@ -617,11 +870,46 @@ class ClosingSheet(BaseSheet):
 
         return None
 
+    def _get_main_ac_display_value(self, header, date=None):
+        if self._is_non_commission_brand():
+            return None
+
+        totals = self.data.get('grand_totals', {})
+        if date is not None:
+            totals = self.data.get('daily_totals', {}).get(date, {})
+
+        if header == 'Gojek_Mutation':
+            return mpr_calc.management_net_ac_value(totals, 'Gojek_Net', 'Gojek_Mutation')
+        if header == 'Grab_Net':
+            rate = (
+                mpr_calc.MP78_GRAB_MANAGEMENT_COMMISSION_RATE
+                if self._is_mp78_brand()
+                else mpr_calc.MANAGEMENT_COMMISSION_RATE
+            )
+            return mpr_calc.net_after_commission_value(totals, 'Grab_Net', rate)
+        if header == 'Shopee_Mutation':
+            return self._get_report_value_with_fallback(self.data, header, date)
+        if header == 'ShopeePay_Mutation':
+            return self._get_report_value_with_fallback(self.data, header, date)
+        if header == self.TIKTOK_NET_HEADER:
+            return mpr_calc.tiktok_net_ac_value_for_brand(totals, self.data['outlet'].brand)
+        if header == 'Webshop_Net':
+            return totals.get('Webshop_Net', 0)
+
+        return None
+
     def _is_mp78_brand(self):
-        return self.data['outlet'].brand == 'MP78'
+        return mpr_calc.is_mp78_brand(self.data['outlet'].brand)
+
+    def _uses_grab_net_closing_label(self):
+        brand = (self.data['outlet'].brand or '').strip()
+        return self._is_mp78_brand() or brand in self.GRAB_NET_CLOSING_BRANDS
 
     def _is_mpr_brand(self):
         return mpr_calc.is_mpr_brand(self.data['outlet'].brand)
+
+    def _is_non_commission_brand(self):
+        return self.data['outlet'].brand in self.NON_COMMISSION_BRANDS
 
     def _uses_mp78_management_ac(self):
         return self._is_mp78_brand() and mpr_calc.ENABLE_MP78_MANAGEMENT_AC
@@ -629,14 +917,38 @@ class ClosingSheet(BaseSheet):
     def _get_grab_management_commission_rate(self):
         if self._is_mpr_brand():
             return mpr_calc.MPR_GRAB_MANAGEMENT_COMMISSION_RATE
+        if self._is_mp78_brand():
+            return mpr_calc.MP78_GRAB_MANAGEMENT_COMMISSION_RATE
 
         return mpr_calc.MANAGEMENT_COMMISSION_RATE
 
+    def _get_gojek_commission_rate(self):
+        return mpr_calc.MANAGEMENT_COMMISSION_RATE
+
+    def _get_shopee_commission_rate(self):
+        return mpr_calc.MANAGEMENT_COMMISSION_RATE
+
+    def _get_tiktok_commission_rate(self):
+        return mpr_calc.tiktok_commission_rate_for_brand(self.data['outlet'].brand)
+
     def _get_grab_management_commission_expense(self, grab_net_total):
+        if self._is_mpr_brand():
+            return self._get_mpr_grabfood_commission_expense()
         if self._is_mpr_brand():
             return grab_net_total - (self._get_direct_mpr_display_value('Grab_Net') or 0)
 
         return grab_net_total * self._get_grab_management_commission_rate()
+
+    def _get_mpr_grabfood_commission_expense(self):
+        totals = self.data.get('grand_totals', {})
+        return mpr_calc.grabfood_value(totals) * mpr_calc.MPR_GRAB_MANAGEMENT_COMMISSION_RATE
+
+    def _get_mpr_gofood_commission_expense(self):
+        if not self._is_mpr_brand():
+            return 0
+
+        totals = self.data.get('grand_totals', {})
+        return mpr_calc.gofood_value(totals) * mpr_calc.MPR_GRAB_MANAGEMENT_COMMISSION_RATE
 
     def _get_grab_management_commission_label(self):
         if self._is_mpr_brand():
@@ -645,6 +957,9 @@ class ClosingSheet(BaseSheet):
         return 'Grab Manag 1%'
 
     def _get_mp78_display_value(self, header, date=None):
+        if header in ['Shopee_Net', 'ShopeePay_Net']:
+            return self._get_report_value_with_fallback(self.data, header, date)
+
         totals = self.data.get('grand_totals', {})
         if date is not None:
             totals = self.data.get('daily_totals', {}).get(date, {})
@@ -690,16 +1005,15 @@ class ClosingSheet(BaseSheet):
         if date is not None:
             totals = report_data.get('daily_totals', {}).get(date, {})
 
-        closing_net = totals.get(self.TIKTOK_CLOSING_NET_HEADER, 0)
-        closing_totals = {self.TIKTOK_NET_HEADER: closing_net}
-
-        if report_type == 'mpr' or (report_type == 'main' and self._is_mpr_brand()):
-            return mpr_calc.tiktok_net_ac_value(closing_totals, is_mpr=True)
-
-        if self._uses_mp78_management_ac():
-            return mpr_calc.mp78_ac_value_for_header(closing_totals, self.TIKTOK_NET_HEADER)
-
-        return closing_net
+        net_key = (
+            self.TIKTOK_CLOSING_NET_HEADER
+            if mpr_calc.ENABLE_CLOSING_TIKTOK_SETTLEMENT_SHIFT
+            else self.TIKTOK_NET_HEADER
+        )
+        return mpr_calc.tiktok_net_ac_value_for_brand(
+            {self.TIKTOK_NET_HEADER: totals.get(net_key, 0)},
+            self._get_outlet_for_report_type(report_type).brand,
+        )
 
     def _get_qpon_closing_display_value(self, report_type, date=None):
         report_data = self.data.get('mpr_report_data') if report_type == 'mpr' else self.data
@@ -722,13 +1036,75 @@ class ClosingSheet(BaseSheet):
             self.QPON_CLOSING_NET_HEADER,
         )
 
+    def _get_mpr_food_ac_display_value(self, header, report_type, date=None):
+        if report_type != 'main' or not self._is_mpr_brand():
+            return None
+
+        totals = self.data.get('grand_totals', {})
+        if date is not None:
+            totals = self.data.get('daily_totals', {}).get(date, {})
+
+        if header == self.GOFOOD_AC_HEADER:
+            return mpr_calc.gofood_value(totals) * mpr_calc.MPR_STANDARD_NET_RATE
+        if header == self.GRABFOOD_AC_HEADER:
+            return mpr_calc.grabfood_value(totals) * mpr_calc.MPR_STANDARD_NET_RATE
+
+        return None
+
+    def _get_mpr_food_commission_display_value(self, header, report_type, date=None):
+        if report_type != 'main' or not self._is_mpr_brand():
+            return None
+
+        totals = self.data.get('grand_totals', {})
+        if date is not None:
+            totals = self.data.get('daily_totals', {}).get(date, {})
+
+        if header == self.GOFOOD_COMMISSION_HEADER:
+            return mpr_calc.gofood_value(totals) * mpr_calc.MPR_GRAB_MANAGEMENT_COMMISSION_RATE
+        if header == self.GRABFOOD_COMMISSION_HEADER:
+            return mpr_calc.grabfood_value(totals) * mpr_calc.MPR_GRAB_MANAGEMENT_COMMISSION_RATE
+
+        return None
+
+    def _get_mpr_grab_ac_display_value(self, report_type, date=None):
+        if report_type != 'main' or not self._is_mpr_brand():
+            return None
+
+        totals = self.data.get('grand_totals', {})
+        if date is not None:
+            totals = self.data.get('daily_totals', {}).get(date, {})
+
+        return (mpr_calc.grabfood_value(totals) * mpr_calc.MPR_STANDARD_NET_RATE) + mpr_calc.grab_ovo_value(totals)
+
+    def _get_mpr_gojek_ac_display_value(self, report_type, date=None):
+        if report_type != 'main' or not self._is_mpr_brand():
+            return None
+
+        totals = self.data.get('grand_totals', {})
+        if date is not None:
+            totals = self.data.get('daily_totals', {}).get(date, {})
+
+        return (mpr_calc.gofood_value(totals) * mpr_calc.MPR_STANDARD_NET_RATE) + mpr_calc.gojek_qris_value(totals)
+
     def _get_closing_grand_total_income_value(self, header, grab_net_total=None):
+        if self._is_mpr_brand() and header == self.GRABFOOD_AC_HEADER:
+            return None
+
         if header == 'Grab_Net':
             if grab_net_total is not None:
                 return grab_net_total
-            return self._get_grand_total_with_fallback(header)
+            return self._get_platform_grand_total_with_fallback('main', header)
 
         return self._get_platform_grand_total_with_fallback('main', header)
+
+    def _get_closing_grand_total_income_value_for_label(self, label, header, grab_net_total=None):
+        if self._is_mpr_brand():
+            if label == 'Gojek':
+                return self._get_grand_total_with_fallback('Gojek_Net')
+            if label == 'Grab':
+                return grab_net_total if grab_net_total is not None else self._get_grand_total_with_fallback('Grab_Net')
+
+        return self._get_closing_grand_total_income_value(header, grab_net_total)
 
     def _get_closing_grand_total_income_contribution(self, report_type, header, grab_net_total=None):
         if self._is_closing_platform_disabled(header, report_type):
@@ -750,6 +1126,12 @@ class ClosingSheet(BaseSheet):
 
         outlet = self._get_outlet_for_report_type(report_type)
         return is_platform_disabled(outlet, platform)
+
+    def _get_closing_grab_management_commission_expense(self, grab_net_total):
+        if self._is_non_commission_brand():
+            return 0
+
+        return self._get_grab_management_commission_expense(grab_net_total)
 
     def _get_outlet_for_report_type(self, report_type):
         if report_type == 'mpr':
@@ -773,12 +1155,34 @@ class ClosingSheet(BaseSheet):
         return label
 
     def _get_main_platform_definitions_for_grand_total(self):
+        if self._is_non_commission_brand():
+            return [
+                ('Gojek', 'Gojek_Mutation', 'main'),
+                ('Grab', 'Grab_Net', 'main'),
+                ('ShopeeFood', 'Shopee_Mutation', 'main'),
+                ('ShopeePay', 'ShopeePay_Mutation', 'main'),
+                ('Tiktok', 'Tiktok_Net', 'main'),
+                ('Qpon', self.QPON_CLOSING_NET_HEADER, 'main'),
+                ('Webshop', 'Webshop_Net', 'main'),
+            ]
+
+        if self._is_mpr_brand():
+            return [
+                ('Gojek', self.MPR_GOJEK_AC_HEADER, 'main'),
+                ('Grab', self.MPR_GRAB_AC_HEADER, 'main'),
+                ('ShopeeFood', 'Shopee_Mutation', 'main'),
+                ('ShopeePay', 'ShopeePay_Mutation', 'main'),
+                ('Tiktok', 'Tiktok_Net', 'main'),
+                ('Qpon (ac)', self.QPON_AC_HEADER, 'main'),
+                ('Webshop', 'Webshop_Net', 'main'),
+            ]
+
         if self._uses_mp78_management_ac():
             return [
                 ('Gojek (ac)', 'Gojek_Mutation', 'main'),
                 ('Grab (ac)', 'Grab_Net', 'main'),
-                ('ShopeeFood', 'Shopee_Net', 'main'),
-                ('ShopeePay', 'ShopeePay_Net', 'main'),
+                ('ShopeeFood', 'Shopee_Mutation', 'main'),
+                ('ShopeePay', 'ShopeePay_Mutation', 'main'),
                 ('Tiktok (ac)', 'Tiktok_Net', 'main'),
                 ('Qpon (ac)', self.QPON_AC_HEADER, 'main'),
                 ('Webshop', 'Webshop_Net', 'main'),
@@ -787,8 +1191,8 @@ class ClosingSheet(BaseSheet):
         return [
             ('Gojek', 'Gojek_Mutation', 'main'),
             ('Grab', 'Grab_Net', 'main'),
-            ('ShopeeFood', 'Shopee_Net', 'main'),
-            ('ShopeePay', 'ShopeePay_Net', 'main'),
+            ('ShopeeFood', 'Shopee_Mutation', 'main'),
+            ('ShopeePay', 'ShopeePay_Mutation', 'main'),
             ('Tiktok', 'Tiktok_Net', 'main'),
             ('Qpon (ac)', self.QPON_AC_HEADER, 'main'),
             ('Webshop', 'Webshop_Net', 'main'),
@@ -799,10 +1203,10 @@ class ClosingSheet(BaseSheet):
 
     def _apply_styles(self):
         # Apply borders to the main table
-        if self.main_table_col_end:
+        if self.main_table_col_end and self.main_table_row_end:
             for row in self.ws.iter_rows(
                 min_row=1,
-                max_row=self.ws.max_row,
+                max_row=self.main_table_row_end,
                 min_col=1,
                 max_col=self.main_table_col_end,
             ):
@@ -831,6 +1235,17 @@ class ClosingSheet(BaseSheet):
                 for cell in row:
                     cell.border = THIN_BORDER
 
+        # Apply borders to the rate table separately.
+        if self.rate_table_col_start and self.rate_table_col_end and self.rate_table_row and self.rate_table_row_end:
+            for row in self.ws.iter_rows(
+                min_row=self.rate_table_row,
+                max_row=self.rate_table_row_end,
+                min_col=self.rate_table_col_start,
+                max_col=self.rate_table_col_end,
+            ):
+                for cell in row:
+                    cell.border = THIN_BORDER
+
         # Apply borders to the rekening table separately.
         if self.rekening_col_start and self.rekening_col_end and self.rekening_row and self.rekening_row_end:
             for row in self.ws.iter_rows(
@@ -838,6 +1253,17 @@ class ClosingSheet(BaseSheet):
                 max_row=self.rekening_row_end,
                 min_col=self.rekening_col_start,
                 max_col=self.rekening_col_end,
+            ):
+                for cell in row:
+                    cell.border = THIN_BORDER
+
+        # Apply borders to the admin documentation/checklist section separately.
+        for min_row, max_row, min_col, max_col in self.documentation_ranges:
+            for row in self.ws.iter_rows(
+                min_row=min_row,
+                max_row=max_row,
+                min_col=min_col,
+                max_col=max_col,
             ):
                 for cell in row:
                     cell.border = THIN_BORDER

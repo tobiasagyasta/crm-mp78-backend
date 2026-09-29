@@ -32,11 +32,11 @@ class RekeningInfoService:
     )
 
     @classmethod
-    def get_outlet_rekenings(cls, outlet: Outlet) -> list[OutletRekeningInfo]:
+    def get_outlet_rekenings(cls, outlet: Outlet, start_date=None, end_date=None) -> list[OutletRekeningInfo]:
         if not outlet:
             return []
 
-        mutation_rows = cls._get_mutation_rekening_rows(outlet)
+        mutation_rows = cls._get_mutation_rekening_rows(outlet, start_date, end_date)
         if mutation_rows:
             return mutation_rows
 
@@ -62,14 +62,19 @@ class RekeningInfoService:
         return outlet_code or getattr(outlet, "outlet_name_gojek", None) or "-"
 
     @classmethod
-    def _get_mutation_rekening_rows(cls, outlet: Outlet) -> list[OutletRekeningInfo]:
+    def _get_mutation_rekening_rows(cls, outlet: Outlet, start_date=None, end_date=None) -> list[OutletRekeningInfo]:
         conditions = cls._build_mutation_conditions(outlet)
         if not conditions:
             return []
 
+        query = BankMutation.query.filter(or_(*conditions))
+        if start_date is not None:
+            query = query.filter(BankMutation.tanggal >= start_date)
+        if end_date is not None:
+            query = query.filter(BankMutation.tanggal <= end_date)
+
         rows = (
-            BankMutation.query
-            .filter(or_(*conditions))
+            query
             .with_entities(
                 BankMutation.platform_name,
                 BankMutation.rekening_number,

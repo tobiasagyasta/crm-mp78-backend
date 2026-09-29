@@ -3,19 +3,22 @@ MPR_GRAB_MANAGEMENT_COMMISSION_RATE = 1 - MPR_STANDARD_NET_RATE
 MPR_QRIS_OVO_NET_RATE = 0.98
 MPR_SHOPEE_NET_RATE = 0.92
 MPR_TIKTOK_NET_RATE = 0.95
-MANAGEMENT_COMMISSION_RATE = 1 / 74
+MANAGEMENT_COMMISSION_RATE = 0.01
+MP78_GRAB_MANAGEMENT_COMMISSION_RATE = 1 / 74
 TIKTOK_MANAGEMENT_COMMISSION_RATE = 0.05
 QPON_COMMISSION_RATE = 0.01
+ENABLE_MPR_QRIS_OVO_COMMISSION = False
 ENABLE_MP78_MANAGEMENT_AC = True
+ENABLE_CLOSING_TIKTOK_SETTLEMENT_SHIFT = True
 MPR_BRANDS = ("MPR", "MPR Mandiri", "MPR Non MP78")
 
 
 def is_mpr_brand(brand):
-    return brand in MPR_BRANDS
+    return (brand or '').strip() in MPR_BRANDS
 
 
 def is_mp78_brand(brand):
-    return brand == 'MP78'
+    return (brand or '').strip().upper() == 'MP78'
 
 
 def tiktok_commission_rate_for_brand(brand):
@@ -42,6 +45,25 @@ def rated_value(value, is_mpr, rate):
     return value
 
 
+def mpr_qris_ovo_net_rate():
+    if ENABLE_MPR_QRIS_OVO_COMMISSION:
+        return MPR_QRIS_OVO_NET_RATE
+
+    return 1
+
+
+def mpr_qris_ovo_commission_rate():
+    return 1 - mpr_qris_ovo_net_rate()
+
+
+def mpr_gojek_grab_qris_ovo_net_rate():
+    return 1
+
+
+def mpr_gojek_grab_qris_ovo_commission_rate():
+    return 1 - mpr_gojek_grab_qris_ovo_net_rate()
+
+
 def mpr_after_commission_value(value):
     return value * MPR_STANDARD_NET_RATE
 
@@ -55,7 +77,7 @@ def gojek_qris_value(totals, is_mpr=False):
     return rated_value(
         totals.get('Gojek_QRIS', 0),
         is_mpr,
-        MPR_QRIS_OVO_NET_RATE
+        mpr_gojek_grab_qris_ovo_net_rate()
     )
 
 
@@ -67,13 +89,7 @@ def gojek_net_value(totals, is_mpr=False):
 
 
 def gojek_net_ac_value(totals):
-    gojek_qris = totals.get('Gojek_QRIS', 0)
-    gofood = totals.get('Gojek_Net', 0) - gojek_qris
-    return (
-        (gojek_qris * MPR_QRIS_OVO_NET_RATE)
-        + (gofood * MPR_STANDARD_NET_RATE)
-        + (totals.get('Gojek_Difference') or 0)
-    )
+    return value_with_mutation_fallback(totals, 'Gojek_Mutation', 'Gojek_Net') * MPR_STANDARD_NET_RATE
 
 
 def grabfood_value(totals, is_mpr=False):
@@ -85,7 +101,7 @@ def grab_ovo_value(totals, is_mpr=False):
     return rated_value(
         totals.get('GrabOVO_Net', 0),
         is_mpr,
-        MPR_QRIS_OVO_NET_RATE
+        mpr_gojek_grab_qris_ovo_net_rate()
     )
 
 
@@ -106,7 +122,7 @@ def tiktok_net_ac_value(totals, is_mpr=False, commission_rate=None):
 
 
 def grab_net_ac_value(totals):
-    return grab_net_value(totals, is_mpr=True)
+    return totals.get('Grab_Net', 0) * MPR_STANDARD_NET_RATE
 
 
 def shopee_net_value(totals, is_mpr=False):
@@ -118,35 +134,33 @@ def shopee_net_value(totals, is_mpr=False):
 
 
 def shopee_net_ac_value(totals):
-    return (
-        (totals.get('Shopee_Net', 0) * MPR_SHOPEE_NET_RATE)
-        + (totals.get('Shopee_Difference') or 0)
-    )
+    return value_with_mutation_fallback(totals, 'Shopee_Mutation', 'Shopee_Net') * MPR_SHOPEE_NET_RATE
 
 
 def shopeepay_net_value(totals, is_mpr=False):
     return rated_value(
         totals.get('ShopeePay_Net', 0),
         is_mpr,
-        MPR_QRIS_OVO_NET_RATE
+        mpr_qris_ovo_net_rate()
     )
 
 
 def shopeepay_net_ac_value(totals):
-    return (
-        (totals.get('ShopeePay_Net', 0) * MPR_QRIS_OVO_NET_RATE)
-        + (totals.get('ShopeePay_Difference') or 0)
-    )
+    return value_with_mutation_fallback(totals, 'ShopeePay_Mutation', 'ShopeePay_Net') * MPR_STANDARD_NET_RATE
 
 
 def standard_net_ac_value(totals, net_key):
     return totals.get(net_key, 0) * MPR_STANDARD_NET_RATE
 
 
-def management_net_ac_value(totals, net_key, difference_key=None):
+def management_net_ac_value(totals, net_key, mutation_key=None, commission_rate=MANAGEMENT_COMMISSION_RATE):
+    net = value_with_mutation_fallback(totals, mutation_key, net_key) if mutation_key else totals.get(net_key, 0)
+    return net - (net * commission_rate)
+
+
+def net_after_commission_value(totals, net_key, commission_rate):
     net = totals.get(net_key, 0)
-    difference = (totals.get(difference_key) or 0) if difference_key else 0
-    return net - (net * MANAGEMENT_COMMISSION_RATE) + difference
+    return net - (net * commission_rate)
 
 
 def qpon_net_ac_value(totals, net_key='Qpon_Net'):
@@ -156,9 +170,13 @@ def qpon_net_ac_value(totals, net_key='Qpon_Net'):
 
 def mp78_ac_value_for_header(totals, header):
     if header == 'Gojek_Mutation':
-        return management_net_ac_value(totals, 'Gojek_Net', 'Gojek_Difference')
+        return management_net_ac_value(totals, 'Gojek_Net', 'Gojek_Mutation')
     if header == 'Grab_Net':
-        return management_net_ac_value(totals, 'Grab_Net', 'Grab_Difference')
+        return net_after_commission_value(totals, 'Grab_Net', MP78_GRAB_MANAGEMENT_COMMISSION_RATE)
+    if header == 'Shopee_Net':
+        return management_net_ac_value(totals, 'Shopee_Net', 'Shopee_Mutation')
+    if header == 'ShopeePay_Net':
+        return management_net_ac_value(totals, 'ShopeePay_Net', 'ShopeePay_Mutation')
     if header == 'Tiktok_Net':
         return tiktok_net_ac_value(totals, commission_rate=TIKTOK_MANAGEMENT_COMMISSION_RATE)
 

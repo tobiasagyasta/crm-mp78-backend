@@ -175,6 +175,7 @@ from app.services.reporting_service import (
     generate_monthly_mpr_commission_data,
     generate_monthly_net_income_data,
 )
+from app.services.excel_export import mpr_calculations as mpr_calc
 from app.services.mpr_totals_service import (
     calculate_mpr_totals,
     get_mpr_mapping_for_outlet,
@@ -1249,8 +1250,8 @@ def upload_report_grab():
         store_id_map = {}
         affected_outlets = set()
         seen_transaction_ids = set()
-        seen_long_order_ids = set()
-        seen_short_order_ids = set()
+        seen_order_id_pairs = set()
+        debug_skipped = []
 
         outlets = Outlet.query.all()
         outlets_by_store_id = {outlet.store_id_grab: outlet for outlet in outlets if outlet.store_id_grab}
@@ -1262,6 +1263,31 @@ def upload_report_grab():
             value = str(value).strip()
             return value or None
 
+        def row_value(row, *field_names):
+            for field_name in field_names:
+                value = row.get(field_name)
+                if value not in (None, ''):
+                    return value
+            return None
+
+        def is_blank_row(row):
+            return not any(str(value).strip() for value in row.values() if value is not None)
+
+        def add_skipped_debug(row_number, reason, row):
+            if len(debug_skipped) >= 50:
+                return
+            debug_skipped.append({
+                'row_number': row_number,
+                'reason': reason,
+                'store_name': row.get('Nama toko'),
+                'store_id': row.get('ID toko'),
+                'transaction_id': row.get('ID transaksi'),
+                'long_order_id': row_value(row, 'ID pesanan (panjang)', 'ID pesanan panjang'),
+                'short_order_id': row_value(row, 'ID pesanan (pendek)', 'ID pesanan pendek'),
+                'amount': row_value(row, 'Amount', 'Jumlah'),
+                'total': row.get('Total'),
+            })
+
         def safe_float(value):
             if not value:
                 return 0
@@ -1270,15 +1296,23 @@ def upload_report_grab():
             except (ValueError, TypeError):
                 return 0
 
+        def parse_grab_datetime(value):
+            value = str(value or '').strip()
+            for date_format in ('%d %b %Y %I:%M %p', '%Y-%m-%d %H:%M:%S', '%m/%d/%Y %H:%M'):
+                try:
+                    return datetime.strptime(value, date_format)
+                except ValueError:
+                    continue
+            raise ValueError(f"time data {value!r} does not match supported Grab date formats")
+
         def chunks(values, size=1000):
             values = list(values)
             for index in range(0, len(values), size):
                 yield values[index:index + size]
 
-        def load_existing_grab_identifiers(transaction_ids, long_order_ids, short_order_ids):
+        def load_existing_grab_identifiers(transaction_ids, short_order_ids):
             existing_transaction_ids = set()
-            existing_long_order_ids = set()
-            existing_short_order_ids = set()
+            existing_order_id_pairs = set()
 
             for batch in chunks(transaction_ids):
                 existing_transaction_ids.update(
@@ -1289,53 +1323,43 @@ def upload_report_grab():
                     if identifier
                 )
 
-            for batch in chunks(long_order_ids):
-                existing_long_order_ids.update(
-                    identifier
-                    for (identifier,) in db.session.query(GrabFoodReport.id_pesanan_panjang)
-                    .filter(GrabFoodReport.id_pesanan_panjang.in_(batch))
-                    .all()
-                    if identifier
-                )
-
             for batch in chunks(short_order_ids):
-                existing_short_order_ids.update(
-                    identifier
-                    for (identifier,) in db.session.query(GrabFoodReport.id_pesanan_pendek)
+                existing_order_id_pairs.update(
+                    (short_order_id, long_order_id)
+                    for short_order_id, long_order_id in db.session.query(
+                        GrabFoodReport.id_pesanan_pendek,
+                        GrabFoodReport.id_pesanan_panjang,
+                    )
                     .filter(GrabFoodReport.id_pesanan_pendek.in_(batch))
                     .all()
-                    if identifier
+                    if short_order_id and long_order_id
                 )
 
-            return existing_transaction_ids, existing_long_order_ids, existing_short_order_ids
+            return existing_transaction_ids, existing_order_id_pairs
 
         def has_duplicate_grab_identifier(
             transaction_id,
-            long_order_id,
             short_order_id,
+            long_order_id,
             existing_transaction_ids,
-            existing_long_order_ids,
-            existing_short_order_ids,
+            existing_order_id_pairs,
         ):
+            order_id_pair = (short_order_id, long_order_id) if short_order_id and long_order_id else None
             if transaction_id and transaction_id in seen_transaction_ids:
-                return True
-            if long_order_id and long_order_id in seen_long_order_ids:
-                return True
-            if short_order_id and short_order_id in seen_short_order_ids:
-                return True
-            return (
-                (transaction_id and transaction_id in existing_transaction_ids)
-                or (long_order_id and long_order_id in existing_long_order_ids)
-                or (short_order_id and short_order_id in existing_short_order_ids)
-            )
+                return 'Duplicate transaction ID within upload'
+            if order_id_pair and order_id_pair in seen_order_id_pairs:
+                return f'Duplicate order ID pair within upload: {short_order_id} / {long_order_id}'
+            if transaction_id and transaction_id in existing_transaction_ids:
+                return 'Duplicate transaction ID already exists'
+            if order_id_pair and order_id_pair in existing_order_id_pairs:
+                return f'Duplicate order ID pair already exists: {short_order_id} / {long_order_id}'
+            return None
 
-        def remember_grab_identifiers(transaction_id, long_order_id, short_order_id):
+        def remember_grab_identifiers(transaction_id, short_order_id, long_order_id):
             if transaction_id:
                 seen_transaction_ids.add(transaction_id)
-            if long_order_id:
-                seen_long_order_ids.add(long_order_id)
-            if short_order_id:
-                seen_short_order_ids.add(short_order_id)
+            if short_order_id and long_order_id:
+                seen_order_id_pairs.add((short_order_id, long_order_id))
 
         for file in files:
             file_contents = file.read().decode('utf-8')
@@ -1344,27 +1368,25 @@ def upload_report_grab():
             rows = list(reader)
 
             transaction_ids = set()
-            long_order_ids = set()
             short_order_ids = set()
             for row in rows:
                 transaction_id = clean_identifier(row.get('ID transaksi'))
-                long_order_id = clean_identifier(row.get('ID pesanan (panjang)'))
-                short_order_id = clean_identifier(row.get('ID pesanan (pendek)'))
+                short_order_id = clean_identifier(row_value(row, 'ID pesanan (pendek)', 'ID pesanan pendek'))
                 if transaction_id:
                     transaction_ids.add(transaction_id)
-                if long_order_id:
-                    long_order_ids.add(long_order_id)
                 if short_order_id:
                     short_order_ids.add(short_order_id)
 
-            existing_transaction_ids, existing_long_order_ids, existing_short_order_ids = load_existing_grab_identifiers(
+            existing_transaction_ids, existing_order_id_pairs = load_existing_grab_identifiers(
                 transaction_ids,
-                long_order_ids,
                 short_order_ids,
             )
             
             reports = []
-            for row in rows:
+            for row_number, row in enumerate(rows, start=2):
+                if is_blank_row(row):
+                    continue
+
                 store_name = row.get('Nama toko', '').strip()
                 store_id = row.get('ID toko')
                 if store_name and store_id:
@@ -1376,36 +1398,35 @@ def upload_report_grab():
                 if not outlet and store_name:
                     outlet = outlets_by_name.get(store_name)
                 if not outlet:
+                    skipped_reports += 1
+                    add_skipped_debug(row_number, 'Outlet not found for Grab store ID or name', row)
                     continue
 
                 transaction_id = clean_identifier(row.get('ID transaksi'))
-                long_order_id = clean_identifier(row.get('ID pesanan (panjang)'))
-                short_order_id = clean_identifier(row.get('ID pesanan (pendek)'))
-                if has_duplicate_grab_identifier(
+                long_order_id = clean_identifier(row_value(row, 'ID pesanan (panjang)', 'ID pesanan panjang'))
+                short_order_id = clean_identifier(row_value(row, 'ID pesanan (pendek)', 'ID pesanan pendek'))
+                duplicate_reason = has_duplicate_grab_identifier(
                     transaction_id,
-                    long_order_id,
                     short_order_id,
+                    long_order_id,
                     existing_transaction_ids,
-                    existing_long_order_ids,
-                    existing_short_order_ids,
-                ):
+                    existing_order_id_pairs,
+                )
+                if duplicate_reason:
                     skipped_reports += 1
+                    add_skipped_debug(row_number, duplicate_reason, row)
                     continue
 
                 try:
                     date_str = row.get('Tanggal dibuat', '')
                     date_made_str = row.get('Diperbarui Pada', '')
-                    try:
-                        tanggal_dibuat = datetime.strptime(date_str, '%d %b %Y %I:%M %p')
-                        tanggal_diperbarui = datetime.strptime(date_made_str, '%d %b %Y %I:%M %p')
-
-                    except ValueError:
-                        tanggal_dibuat = datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S')
-                        tanggal_diperbarui = datetime.strptime(date_made_str, '%Y-%m-%d %H:%M:%S')
-                    amount = safe_float(row.get('Amount'))
+                    tanggal_dibuat = parse_grab_datetime(date_str)
+                    tanggal_diperbarui = parse_grab_datetime(date_made_str)
+                    amount = safe_float(row_value(row, 'Amount', 'Jumlah'))
                     total = safe_float(row.get('Total'))
                     if amount == 0 or total == 0:
                         skipped_reports += 1
+                        add_skipped_debug(row_number, 'Amount or total is zero', row)
                         continue
 
                     report = {
@@ -1428,11 +1449,13 @@ def upload_report_grab():
                         'penjualan_bersih': safe_float(row.get('Penjualan bersih')),
                     }
                     reports.append(report)
-                    remember_grab_identifiers(transaction_id, long_order_id, short_order_id)
+                    remember_grab_identifiers(transaction_id, short_order_id, long_order_id)
                     affected_outlets.add((outlet.outlet_code, tanggal_diperbarui.date()))
                     total_reports += 1
                 except (ValueError, TypeError) as e:
                     print(f"Error processing row: {e}")
+                    skipped_reports += 1
+                    add_skipped_debug(row_number, f'Parse error: {str(e)}', row)
                     continue
 
             if reports:
@@ -1449,12 +1472,13 @@ def upload_report_grab():
             'msg': 'Reports uploaded and consolidated successfully',
             'total_records': total_reports,
             'skipped_records': skipped_reports,
-            'store_ids_updated': updated_count
+            'store_ids_updated': updated_count,
+            'skipped_rows_debug': debug_skipped
         }), 201
 
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': str(e), 'skipped_rows_debug': debug_skipped}), 500
 
 
 @reports_bp.route('/upload/shopee', methods=['POST'])
@@ -1954,8 +1978,13 @@ def get_reports_totals():
 
         if outlet_code.upper() != "ALL":
             outlet, mapping = get_mpr_mapping_for_outlet(outlet_code)
-            if outlet and outlet.brand in ("MP78", "MPR") and mapping:
+            mpr_outlet_code = None
+            if outlet and outlet.brand == "MP78" and mapping:
                 mpr_outlet_code = mapping.mpr_outlet_code
+            elif outlet and mpr_calc.is_mpr_brand(outlet.brand):
+                mpr_outlet_code = outlet.outlet_code
+
+            if mpr_outlet_code:
                 mpr_totals = calculate_mpr_totals(
                     mpr_outlet_code,
                     start_date,
@@ -2496,6 +2525,7 @@ def monthly_mpr_commission_report():
 
     json_data = request.get_json(silent=True) or {}
     year = json_data.get("year", datetime.now().year)
+    brand_name = (json_data.get("brand_name") or json_data.get("brand") or "All").strip()
     start_date, end_date, date_range_error = parse_date_range(request.args)
     if date_range_error:
         return jsonify({"error": date_range_error}), 400
@@ -2505,6 +2535,7 @@ def monthly_mpr_commission_report():
             year,
             start_date=start_date,
             end_date=end_date,
+            brand_name=brand_name,
         )
         if not data:
             return jsonify({"error": "No data found for the given criteria"}), 404
@@ -2522,10 +2553,11 @@ def monthly_mpr_commission_report():
 
         if start_date and end_date:
             download_name = (
-                f"Monthly_mpr_commission_MPR_{start_date.isoformat()}_to_{end_date.isoformat()}.xlsx"
+                f"Monthly_mpr_commission_{data.get('brand_name', brand_name)}_"
+                f"{start_date.isoformat()}_to_{end_date.isoformat()}.xlsx"
             )
         else:
-            download_name = f"Monthly_mpr_commission_MPR_{year}.xlsx"
+            download_name = f"Monthly_mpr_commission_{data.get('brand_name', brand_name)}_{year}.xlsx"
 
         response = send_file(
             output,
@@ -2536,6 +2568,8 @@ def monthly_mpr_commission_report():
         response.headers['Access-Control-Expose-Headers'] = 'Content-Disposition'
         response.headers['Referrer-Policy'] = 'no-referrer-when-downgrade'
         return response
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
