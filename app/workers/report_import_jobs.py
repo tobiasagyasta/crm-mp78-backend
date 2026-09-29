@@ -1,6 +1,5 @@
 from datetime import datetime
 
-from app import create_app
 from app.extensions import db, s3
 from app.models.import_job import ImportJob
 
@@ -13,6 +12,8 @@ def test_import_worker_job(message='ok'):
 
 
 def process_report_import_job(import_job_id):
+    from app import create_app
+
     app = create_app()
 
     with app.app_context():
