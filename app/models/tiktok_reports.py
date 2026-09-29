@@ -56,11 +56,7 @@ class TiktokReport(db.Model):
                     return ''
                 return row[index].strip()
 
-            tiktok_code_index = None
-            if header and 'Order source' in header:
-                tiktok_code_index = header.index('Order source') + 1
-
-            tiktok_code = value('', tiktok_code_index if tiktok_code_index is not None else 28)
+            tiktok_code = row[-1].strip() if row else ''
             outlet = None
             if tiktok_code:
                 outlet = Outlet.query.filter_by(outlet_code_tiktok_webshop=tiktok_code).first()
