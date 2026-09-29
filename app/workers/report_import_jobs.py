@@ -2,6 +2,7 @@ from datetime import datetime
 
 from app.extensions import db, s3
 from app.models.import_job import ImportJob
+from app.services.grab_report_importer import import_grab_report_bytes
 
 
 def test_import_worker_job(message='ok'):
@@ -32,7 +33,17 @@ def process_report_import_job(import_job_id):
             )
             file_bytes = response['Body'].read()
 
+            if import_job.report_type == 'grab':
+                result = import_grab_report_bytes(file_bytes, import_job_id=import_job.id)
+            else:
+                raise ValueError(f'Unsupported report type: {import_job.report_type}')
+
             import_job.status = 'completed'
+            import_job.total_rows = result.get('total_rows', 0)
+            import_job.processed_rows = result.get('processed_rows', 0)
+            import_job.inserted_rows = result.get('inserted_rows', 0)
+            import_job.skipped_rows = result.get('skipped_rows', 0)
+            import_job.failed_rows = result.get('failed_rows', 0)
             import_job.finished_at = datetime.utcnow()
             db.session.commit()
 
@@ -42,6 +53,7 @@ def process_report_import_job(import_job_id):
                 'report_type': import_job.report_type,
                 'storage_key': import_job.storage_key,
                 'file_size_bytes': len(file_bytes),
+                'result': result,
             }
         except Exception as exc:
             db.session.rollback()
