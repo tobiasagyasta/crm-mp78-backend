@@ -31,7 +31,7 @@ class TiktokReport(db.Model):
         return f"<TiktokReport {self.order_id}, {self.order_create_time}>"
     
     @staticmethod
-    def parse_tiktok_row(row):
+    def parse_tiktok_row(row, header=None):
         """
         Parse a TikTok CSV row (list) into a dict suitable for TiktokReport.
         - brand_name and outlet_code: looked up from Outlet via "Kode WEBSHOP dan Tiktok" (last column)
@@ -47,31 +47,50 @@ class TiktokReport(db.Model):
         - net_amount: "Settlement amount" (index 23)
         """
         try:
-            tiktok_code = row[-1].strip()
+            def value(column_name, fallback_index=None):
+                if header and column_name in header:
+                    index = header.index(column_name)
+                else:
+                    index = fallback_index
+                if index is None or index >= len(row):
+                    return ''
+                return row[index].strip()
+
+            tiktok_code_index = None
+            if header and 'Order source' in header:
+                tiktok_code_index = header.index('Order source') + 1
+
+            tiktok_code = value('', tiktok_code_index if tiktok_code_index is not None else 28)
             outlet = None
             if tiktok_code:
                 outlet = Outlet.query.filter_by(outlet_code_tiktok_webshop=tiktok_code).first()
 
-            brand_name = outlet.brand if outlet else None
-            outlet_code = outlet.outlet_code if outlet else None
+            if not outlet:
+                return None
 
-            store_name = row[8].strip()
-            order_time_str = row[5].strip()
+            brand_name = outlet.brand
+            outlet_code = outlet.outlet_code
+
+            store_name = value('Redemption location', 8)
+            order_time_str = value('Redemption time', 5)
             order_time = datetime.strptime(order_time_str, '%Y-%m-%d')
-            settlement_time_str = row[25].strip()
-            settlement_time = datetime.strptime(settlement_time_str, '%Y-%m-%d')
-            gross_amount = TiktokReport._parse_amount(row[15])
-            price_before_tax = TiktokReport._parse_amount(row[16])
-            total_price = TiktokReport._parse_amount(row[17])
-            estimated_tax = TiktokReport._parse_amount(row[18])
-            final_tax = TiktokReport._parse_amount(row[19])
-            net_amount = TiktokReport._parse_amount(row[24])
+            settlement_time_str = value('Settlement time', 25)
+            settlement_time = datetime.strptime(settlement_time_str, '%Y-%m-%d') if settlement_time_str else order_time
+            notes = value('Notes', 27)
+            gross_amount_column = 'Original price' if notes == 'Sponsored voucher' else 'Payment amount'
+            gross_amount_fallback_index = 14 if notes == 'Sponsored voucher' else 15
+            gross_amount = TiktokReport._parse_amount(value(gross_amount_column, gross_amount_fallback_index))
+            price_before_tax = TiktokReport._parse_amount(value('Price before tax', 16))
+            total_price = TiktokReport._parse_amount(value('Total price', 17))
+            estimated_tax = TiktokReport._parse_amount(value('Estimated tax', 18))
+            final_tax = TiktokReport._parse_amount(value('Final tax', 19))
+            net_amount = TiktokReport._parse_amount(value('Settlement amount', 24))
 
 
             return {
                 'brand_name': brand_name,
                 'outlet_code': outlet_code,
-                'outlet_order_id': row[2].strip(),
+                'outlet_order_id': value('Item order ID', 2),
                 'store_name': store_name,
                 'order_time': order_time,
                 'settlement_time': settlement_time,

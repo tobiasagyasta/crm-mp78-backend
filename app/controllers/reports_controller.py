@@ -1041,12 +1041,18 @@ def upload_report_tiktok():
             file_contents = file.read().decode('utf-8')
             csv_file = StringIO(file_contents)
             reader = csv.reader(csv_file)
-            for _ in range(4):
-                next(reader, None)  # Skip first 4 rows
+            header = None
+            for row in reader:
+                if row and row[0].strip() == 'Breakdown':
+                    header = row
+                    break
 
             reports = []
             for idx, row in enumerate(reader):
-                parsed = TiktokReport.parse_tiktok_row(row)
+                if not row or not any(cell.strip() for cell in row):
+                    continue
+
+                parsed = TiktokReport.parse_tiktok_row(row, header)
 
                 if parsed:
                      # Duplicate check: adjust fields as needed for your business logic
