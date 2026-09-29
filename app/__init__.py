@@ -1,5 +1,5 @@
 from datetime import datetime
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from app.config.env import init_env
 from app.extensions import db, jwt, s3
 from app.controllers.auth_controller import auth_bp
@@ -137,16 +137,31 @@ def create_app():
     def test_redis_connection():
         try:
             from app.extensions.queue import get_import_queue
+            from app.workers.report_import_jobs import test_import_worker_job
 
             queue = get_import_queue()
             ping_result = queue.connection.ping()
 
-            return jsonify({
+            response = {
                 'status': 'success',
                 'message': 'Successfully connected to Redis',
                 'queue': queue.name,
                 'ping': ping_result,
-            }), 200
+            }
+
+            if request.args.get('enqueue') == '1':
+                job = queue.enqueue(
+                    test_import_worker_job,
+                    'redis-worker-test',
+                    job_timeout=60,
+                    result_ttl=300,
+                )
+                response['job'] = {
+                    'id': job.id,
+                    'status': job.get_status(),
+                }
+
+            return jsonify(response), 200
 
         except ImportError as e:
             return jsonify({
