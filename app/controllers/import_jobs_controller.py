@@ -12,8 +12,7 @@ from app.workers.report_import_jobs import process_report_import_job
 import_jobs_bp = Blueprint('import_jobs', __name__, url_prefix='/import-jobs')
 
 
-@import_jobs_bp.route('/upload/grab', methods=['POST'])
-def upload_grab_import_job():
+def _upload_report_import_job(report_type):
     files = request.files.getlist('file')
     if not files:
         files = [request.files.get('file')]
@@ -26,8 +25,8 @@ def upload_grab_import_job():
 
     try:
         for file in files:
-            original_filename = secure_filename(file.filename or 'grab-report.csv')
-            storage_key = f'docs/grab/{uuid4().hex}-{original_filename}'
+            original_filename = secure_filename(file.filename or f'{report_type}-report.csv')
+            storage_key = f'docs/{report_type}/{uuid4().hex}-{original_filename}'
 
             s3.client.upload_fileobj(
                 file,
@@ -36,7 +35,7 @@ def upload_grab_import_job():
             )
 
             import_job = ImportJob(
-                report_type='grab',
+                report_type=report_type,
                 status='queued',
                 original_filename=original_filename,
                 storage_provider='railway_bucket',
@@ -68,13 +67,23 @@ def upload_grab_import_job():
             })
 
         return jsonify({
-            'msg': 'Grab report upload accepted for background processing',
+            'msg': f'{report_type.title()} report upload accepted for background processing',
             'jobs': response_jobs,
         }), 202
 
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
+
+
+@import_jobs_bp.route('/upload/grab', methods=['POST'])
+def upload_grab_import_job():
+    return _upload_report_import_job('grab')
+
+
+@import_jobs_bp.route('/upload/tiktok', methods=['POST'])
+def upload_tiktok_import_job():
+    return _upload_report_import_job('tiktok')
 
 
 @import_jobs_bp.route('/<int:job_id>', methods=['GET'])

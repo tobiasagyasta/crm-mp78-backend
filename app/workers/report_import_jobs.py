@@ -3,6 +3,7 @@ from datetime import datetime
 from app.extensions import db, s3
 from app.models.import_job import ImportJob
 from app.services.grab_report_importer import import_grab_report_bytes
+from app.services.tiktok_report_importer import import_tiktok_report_bytes
 
 
 def test_import_worker_job(message='ok'):
@@ -35,6 +36,8 @@ def process_report_import_job(import_job_id):
 
             if import_job.report_type == 'grab':
                 result = import_grab_report_bytes(file_bytes, import_job_id=import_job.id)
+            elif import_job.report_type == 'tiktok':
+                result = import_tiktok_report_bytes(file_bytes, import_job_id=import_job.id)
             else:
                 raise ValueError(f'Unsupported report type: {import_job.report_type}')
 
