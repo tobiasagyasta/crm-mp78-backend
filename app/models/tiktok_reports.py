@@ -75,7 +75,7 @@ class TiktokReport(db.Model):
             order_time_str = value('Redemption time', 5)
             order_time = datetime.strptime(order_time_str, '%Y-%m-%d')
             settlement_time_str = value('Settlement time', 25)
-            settlement_time = datetime.strptime(settlement_time_str, '%Y-%m-%d') if settlement_time_str else None
+            settlement_time = datetime.strptime(settlement_time_str, '%Y-%m-%d') if settlement_time_str else order_time
             notes = value('Notes', 27)
             gross_amount_column = 'Original price' if notes == 'Sponsored voucher' else 'Payment amount'
             gross_amount_fallback_index = 14 if notes == 'Sponsored voucher' else 15
