@@ -141,15 +141,24 @@ def create_app():
 
             queue = get_import_queue()
             ping_result = queue.connection.ping()
+            enqueue_value = request.args.get('enqueue')
 
             response = {
                 'status': 'success',
                 'message': 'Successfully connected to Redis',
                 'queue': queue.name,
                 'ping': ping_result,
+                'request': {
+                    'args': request.args.to_dict(),
+                    'enqueue_value': enqueue_value,
+                    'enqueue_requested': enqueue_value == '1',
+                    'path': request.path,
+                    'full_path': request.full_path,
+                    'query_string': request.query_string.decode('utf-8'),
+                },
             }
 
-            if request.args.get('enqueue') == '1':
+            if enqueue_value == '1':
                 job = queue.enqueue(
                     test_import_worker_job,
                     'redis-worker-test',
