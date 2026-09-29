@@ -133,4 +133,30 @@ def create_app():
                 'message': f'Failed to write/read/delete test object: {str(e)}'
             }), 500
 
+    @app.route('/test-redis')
+    def test_redis_connection():
+        try:
+            from app.extensions.queue import get_import_queue
+
+            queue = get_import_queue()
+            ping_result = queue.connection.ping()
+
+            return jsonify({
+                'status': 'success',
+                'message': 'Successfully connected to Redis',
+                'queue': queue.name,
+                'ping': ping_result,
+            }), 200
+
+        except ImportError as e:
+            return jsonify({
+                'status': 'error',
+                'message': f'Redis/RQ dependency import failed: {str(e)}'
+            }), 500
+        except Exception as e:
+            return jsonify({
+                'status': 'error',
+                'message': f'Failed to connect to Redis: {str(e)}'
+            }), 500
+
     return app
