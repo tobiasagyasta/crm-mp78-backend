@@ -17,3 +17,4 @@ class Config:
     AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY')
     AWS_REGION = os.getenv('AWS_REGION')
     S3_BUCKET = os.getenv('S3_BUCKET')
+    S3_ENDPOINT_URL = os.getenv('S3_ENDPOINT_URL')

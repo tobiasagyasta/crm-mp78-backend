@@ -10,7 +10,8 @@ class S3Client:
             's3',
             aws_access_key_id=app.config['AWS_ACCESS_KEY_ID'],
             aws_secret_access_key=app.config['AWS_SECRET_ACCESS_KEY'],
-            region_name=app.config['AWS_REGION']
+            region_name=app.config['AWS_REGION'],
+            endpoint_url=app.config.get('S3_ENDPOINT_URL')
         )
         self.bucket = app.config['S3_BUCKET']
 

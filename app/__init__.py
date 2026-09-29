@@ -1,3 +1,4 @@
+from datetime import datetime
 from flask import Flask, jsonify
 from app.config.env import init_env
 from app.extensions import db, jwt, s3
@@ -97,31 +98,39 @@ def create_app():
                 'message': f'Failed to connect to S3: {str(e)}'
             }), 500
     
-    @app.route('/test-s3-upload')
-    def test_s3_upload():
+    @app.route('/test-s3-grab-write')
+    def test_s3_grab_write():
         try:
-            # Create a simple CSV content
-            csv_content = "id,name,value\n1,test,100\n2,sample,200"
-            
-            # Upload the CSV content
+            key = 'docs/grab/railway-bucket-connection-test.txt'
+            content = (
+                'Railway bucket connection test\n'
+                f'created_at={datetime.utcnow().isoformat()}Z\n'
+            )
+
             s3.client.put_object(
                 Bucket=s3.bucket,
-                Key='foo.csv',
-                Body=csv_content,
-                ContentType='text/csv'
+                Key=key,
+                Body=content.encode('utf-8'),
+                ContentType='text/plain'
             )
-            
+
+            response = s3.client.get_object(Bucket=s3.bucket, Key=key)
+            downloaded_content = response['Body'].read().decode('utf-8')
+
+            s3.client.delete_object(Bucket=s3.bucket, Key=key)
+
             return jsonify({
                 'status': 'success',
-                'message': 'Successfully uploaded foo.csv to S3',
-                'file_name': 'foo.csv',
-                'bucket': s3.bucket
+                'message': 'Successfully wrote, read, and deleted a test object in docs/grab',
+                'bucket': s3.bucket,
+                'key': key,
+                'downloaded_content': downloaded_content
             }), 200
-            
+
         except Exception as e:
             return jsonify({
                 'status': 'error',
-                'message': f'Failed to upload file: {str(e)}'
+                'message': f'Failed to write/read/delete test object: {str(e)}'
             }), 500
 
     return app
