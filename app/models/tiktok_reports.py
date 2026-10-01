@@ -61,11 +61,8 @@ class TiktokReport(db.Model):
             if tiktok_code:
                 outlet = Outlet.query.filter_by(outlet_code_tiktok_webshop=tiktok_code).first()
 
-            if not outlet:
-                return None
-
-            brand_name = outlet.brand
-            outlet_code = outlet.outlet_code
+            brand_name = outlet.brand if outlet else None
+            outlet_code = outlet.outlet_code if outlet else None
 
             store_name = value('Redemption location', 8)
             order_time_str = value('Redemption time', 5)
