@@ -124,15 +124,22 @@ def import_tiktok_report_bytes(file_bytes, import_job_id=None, batch_size=1000):
             header = row
             break
 
+    rows = [
+        (row_number, row)
+        for row_number, row in enumerate(reader, start=1)
+        if row and any(cell.strip() for cell in row)
+    ]
+
     _update_import_job_progress(
         import_job_id,
+        total_rows=len(rows),
         processed_rows=0,
         inserted_rows=0,
         skipped_rows=0,
         failed_rows=0,
     )
 
-    total_rows = 0
+    total_rows = len(rows)
     processed_rows = 0
     inserted_reports = 0
     skipped_reports = 0
@@ -141,11 +148,7 @@ def import_tiktok_report_bytes(file_bytes, import_job_id=None, batch_size=1000):
     seen_keys = set()
     parsed_batch = []
 
-    for row_number, row in enumerate(reader, start=1):
-        if not row or not any(cell.strip() for cell in row):
-            continue
-
-        total_rows += 1
+    for row_number, row in rows:
         processed_rows += 1
         parsed = TiktokReport.parse_tiktok_row(row, header)
 
@@ -173,7 +176,6 @@ def import_tiktok_report_bytes(file_bytes, import_job_id=None, batch_size=1000):
             parsed_batch.clear()
             _update_import_job_progress(
                 import_job_id,
-                total_rows=total_rows,
                 processed_rows=processed_rows,
                 inserted_rows=inserted_reports,
                 skipped_rows=skipped_reports,

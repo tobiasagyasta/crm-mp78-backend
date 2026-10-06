@@ -1,0 +1,2 @@
+ALTER TABLE import_jobs
+ADD COLUMN IF NOT EXISTS extra_data JSONB;

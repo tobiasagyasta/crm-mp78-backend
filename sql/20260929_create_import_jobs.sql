@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS import_jobs (
     skipped_rows INTEGER NOT NULL DEFAULT 0,
     failed_rows INTEGER NOT NULL DEFAULT 0,
     error_message TEXT,
+    extra_data JSONB,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     started_at TIMESTAMP,
     finished_at TIMESTAMP,

@@ -22,6 +22,7 @@ class ImportJob(db.Model):
     failed_rows = db.Column(db.Integer, nullable=False, default=0)
 
     error_message = db.Column(db.Text, nullable=True)
+    extra_data = db.Column(db.JSON, nullable=True)
 
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     started_at = db.Column(db.DateTime, nullable=True)

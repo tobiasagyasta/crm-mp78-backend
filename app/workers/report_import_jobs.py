@@ -2,7 +2,10 @@ from datetime import datetime
 
 from app.extensions import db, s3
 from app.models.import_job import ImportJob
+from app.services.gojek_report_importer import import_gojek_report_bytes
 from app.services.grab_report_importer import import_grab_report_bytes
+from app.services.mutation_report_importer import import_mutation_report_bytes
+from app.services.shopee_report_importer import import_shopee_report_bytes
 from app.services.tiktok_report_importer import import_tiktok_report_bytes
 
 
@@ -38,6 +41,21 @@ def process_report_import_job(import_job_id):
                 result = import_grab_report_bytes(file_bytes, import_job_id=import_job.id)
             elif import_job.report_type == 'tiktok':
                 result = import_tiktok_report_bytes(file_bytes, import_job_id=import_job.id)
+            elif import_job.report_type == 'mutation':
+                extra_data = import_job.extra_data or {}
+                rekening_number = extra_data.get('rekening_number')
+                if not rekening_number:
+                    raise ValueError('rekening_number is required for mutation imports')
+                result = import_mutation_report_bytes(
+                    file_bytes,
+                    rekening_number,
+                    filename=import_job.original_filename,
+                    import_job_id=import_job.id,
+                )
+            elif import_job.report_type == 'gojek':
+                result = import_gojek_report_bytes(file_bytes, import_job_id=import_job.id)
+            elif import_job.report_type == 'shopee':
+                result = import_shopee_report_bytes(file_bytes, import_job_id=import_job.id)
             else:
                 raise ValueError(f'Unsupported report type: {import_job.report_type}')
 
