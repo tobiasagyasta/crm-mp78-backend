@@ -612,23 +612,7 @@ class ClosingSheet(BaseSheet):
     def _write_rate_table(self):
         row = 3
         start_column = (self.rekening_col_end + 2) if self.rekening_col_end else 24
-        brand = self.data['outlet'].brand
-        rate_rows = [
-            (f'Gojek {brand}', self._get_gojek_commission_rate()),
-            (f'Grab {brand}', self._get_grab_management_commission_rate()),
-            (f'Tiktok {brand}', self._get_tiktok_commission_rate()),
-        ]
-
-        mpr_outlet = self._get_mapped_mpr_outlet()
-        mpr_report_data = self.data.get('mpr_report_data')
-        if mpr_report_data or mpr_outlet:
-            mpr_brand = getattr(mpr_report_data.get('outlet') if mpr_report_data else mpr_outlet, 'brand', 'MPR')
-            rate_rows.extend([
-                (f'Gojek {mpr_brand}', 1 - mpr_calc.MPR_STANDARD_NET_RATE),
-                (f'Grab {mpr_brand}', 1 - mpr_calc.MPR_STANDARD_NET_RATE),
-                (f'Shopee {mpr_brand}', 1 - mpr_calc.MPR_SHOPEE_NET_RATE),
-                (f'Tiktok {mpr_brand}', 1 - mpr_calc.MPR_TIKTOK_NET_RATE),
-            ])
+        rate_rows = self._get_rate_table_rows()
 
         self.rate_table_col_start = start_column
         self.rate_table_col_end = start_column + 1
@@ -659,6 +643,55 @@ class ClosingSheet(BaseSheet):
             rate_cell.font = HEADER_FONT
             rate_cell.alignment = CENTER_ALIGN
             rate_cell.fill = GREY_FILL
+
+    def _get_rate_table_rows(self):
+        rows = []
+        seen = set()
+
+        for label, header, report_type in self._get_main_table_platforms():
+            outlet = self._get_outlet_for_report_type(report_type)
+            if not outlet:
+                continue
+
+            rate = self._get_commission_rate_for_closing_header(header, report_type)
+            if rate is None:
+                continue
+
+            row_label = f'{label} {outlet.brand}'
+            row_key = (row_label, rate)
+            if row_key in seen:
+                continue
+
+            rows.append((row_label, rate))
+            seen.add(row_key)
+
+        return rows
+
+    def _get_commission_rate_for_closing_header(self, header, report_type):
+        if self._is_non_commission_brand() and report_type == 'main':
+            return None
+
+        if header in [self.MPR_GOJEK_AC_HEADER, self.MPR_GRAB_AC_HEADER]:
+            return 1 - mpr_calc.MPR_STANDARD_NET_RATE
+        if header in ['Gojek_Mutation', 'Shopee_Mutation', 'ShopeePay_Mutation']:
+            if report_type == 'mpr' or self._is_mpr_brand():
+                return 1 - mpr_calc.MPR_STANDARD_NET_RATE
+            return mpr_calc.MANAGEMENT_COMMISSION_RATE
+        if header == 'Grab_Net':
+            if report_type == 'mpr':
+                return 1 - mpr_calc.MPR_STANDARD_NET_RATE
+            return self._get_grab_management_commission_rate()
+        if header == 'Shopee_Net':
+            return 1 - mpr_calc.MPR_SHOPEE_NET_RATE
+        if header == 'ShopeePay_Net':
+            return 1 - mpr_calc.mpr_qris_ovo_net_rate()
+        if header == self.TIKTOK_NET_HEADER:
+            outlet = self._get_outlet_for_report_type(report_type)
+            return mpr_calc.tiktok_commission_rate_for_brand(outlet.brand)
+        if header == self.QPON_AC_HEADER:
+            return mpr_calc.QPON_COMMISSION_RATE
+
+        return None
 
     def _write_rekening_table(self):
         outlet = self.data['outlet']
