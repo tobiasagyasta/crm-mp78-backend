@@ -911,6 +911,8 @@ class ClosingSheet(BaseSheet):
         if date is not None:
             totals = self.data.get('daily_totals', {}).get(date, {})
 
+        if self._is_mpr_brand() and header == 'Gojek_Mutation':
+            return self._get_mpr_gojek_ac_display_value('main', date)
         if header == 'Gojek_Mutation':
             return mpr_calc.management_net_ac_value(totals, 'Gojek_Net', 'Gojek_Mutation')
         if header == 'Grab_Net':
@@ -1011,6 +1013,9 @@ class ClosingSheet(BaseSheet):
         totals = report_data.get('grand_totals', {})
         if date is not None:
             totals = report_data.get('daily_totals', {}).get(date, {})
+
+        if header == 'Gojek_Mutation':
+            return (mpr_calc.gofood_value(totals) * mpr_calc.MPR_STANDARD_NET_RATE) + mpr_calc.gojek_qris_value(totals)
 
         ac_value = mpr_calc.mpr_ac_value_for_header(totals, header)
         if ac_value is not None:
