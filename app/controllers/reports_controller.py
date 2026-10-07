@@ -1347,17 +1347,18 @@ def upload_report_grab():
             transaction_id,
             short_order_id,
             long_order_id,
+            allow_duplicate_order_pair,
             existing_transaction_ids,
             existing_order_id_pairs,
         ):
             order_id_pair = (short_order_id, long_order_id) if short_order_id and long_order_id else None
             if transaction_id and transaction_id in seen_transaction_ids:
                 return 'Duplicate transaction ID within upload'
-            if order_id_pair and order_id_pair in seen_order_id_pairs:
+            if not allow_duplicate_order_pair and order_id_pair and order_id_pair in seen_order_id_pairs:
                 return f'Duplicate order ID pair within upload: {short_order_id} / {long_order_id}'
             if transaction_id and transaction_id in existing_transaction_ids:
                 return 'Duplicate transaction ID already exists'
-            if order_id_pair and order_id_pair in existing_order_id_pairs:
+            if not allow_duplicate_order_pair and order_id_pair and order_id_pair in existing_order_id_pairs:
                 return f'Duplicate order ID pair already exists: {short_order_id} / {long_order_id}'
             return None
 
@@ -1366,6 +1367,11 @@ def upload_report_grab():
                 seen_transaction_ids.add(transaction_id)
             if short_order_id and long_order_id:
                 seen_order_id_pairs.add((short_order_id, long_order_id))
+
+        def is_grab_compensation_adjustment(row):
+            kategori = str(row.get('Kategori') or '').strip().lower()
+            subkategori = str(row.get('Subkategori') or '').strip().lower()
+            return kategori in ('penyesuaian', 'adjustment') and 'kompensasi' in subkategori
 
         for file in files:
             file_contents = file.read().decode('utf-8')
@@ -1415,6 +1421,7 @@ def upload_report_grab():
                     transaction_id,
                     short_order_id,
                     long_order_id,
+                    is_grab_compensation_adjustment(row),
                     existing_transaction_ids,
                     existing_order_id_pairs,
                 )
