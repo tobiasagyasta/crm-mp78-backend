@@ -657,7 +657,8 @@ class ClosingSheet(BaseSheet):
             if rate is None:
                 continue
 
-            row_label = f'{label} {outlet.brand}'
+            rate_label = label.replace(' (ac)', '')
+            row_label = f'{rate_label} {outlet.brand}'
             row_key = (row_label, rate)
             if row_key in seen:
                 continue
