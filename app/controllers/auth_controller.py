@@ -58,6 +58,35 @@ def _outlets_for_products(products):
     return Outlet.query.filter(Outlet.brand.in_(product_names)).all()
 
 
+def _sync_user_access(user):
+    changed = False
+
+    if user.role in {'management', 'superadmin'}:
+        existing_product_ids = {product.id for product in user.allowed_brands}
+        for product in Product.query.order_by(Product.id.asc()).all():
+            if product.id not in existing_product_ids:
+                user.allowed_brands.append(product)
+                existing_product_ids.add(product.id)
+                changed = True
+
+    existing_outlet_ids = {outlet.id for outlet in user.allowed_outlets}
+    brand_outlets = _outlets_for_products(user.allowed_brands)
+    for outlet in brand_outlets:
+        if outlet.id not in existing_outlet_ids:
+            user.allowed_outlets.append(outlet)
+            existing_outlet_ids.add(outlet.id)
+            changed = True
+
+    if user.role in {'management', 'superadmin'}:
+        for outlet in Outlet.query.all():
+            if outlet.id not in existing_outlet_ids:
+                user.allowed_outlets.append(outlet)
+                existing_outlet_ids.add(outlet.id)
+                changed = True
+
+    return changed
+
+
 def _serialize_user(user):
     return {
         'id': user.id,
@@ -224,6 +253,9 @@ def login():
     
     if not user.is_active:
         return jsonify({'error': 'Account is inactive'}), 403
+
+    if _sync_user_access(user):
+        db.session.commit()
     
     # Create access token with additional claims
     additional_claims = user.get_jwt_claims()
@@ -264,5 +296,8 @@ def get_current_user():
     
     if not user:
         return jsonify({'error': 'User not found'}), 404
+
+    if _sync_user_access(user):
+        db.session.commit()
     
     return jsonify(user.to_dict())
