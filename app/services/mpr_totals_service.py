@@ -9,17 +9,16 @@ from app.models.tiktok_reports import TiktokReport
 from app.services.excel_export import mpr_calculations as mpr_calc
 
 
+def get_mpr_mapping(outlet_code: str) -> MprMapping | None:
+    return MprMapping.query.filter_by(mp78_outlet_code=outlet_code).first()
+
+
 def get_mpr_mapping_for_outlet(outlet_code: str) -> tuple[Outlet | None, MprMapping | None]:
     outlet = Outlet.query.filter_by(outlet_code=outlet_code).first()
-    if not outlet or (outlet.brand != "MP78" and not mpr_calc.is_mpr_brand(outlet.brand)):
+    if not outlet:
         return outlet, None
 
-    if outlet.brand == "MP78":
-        mapping = MprMapping.query.filter_by(mp78_outlet_code=outlet.outlet_code).first()
-    else:
-        mapping = None
-
-    return outlet, mapping
+    return outlet, get_mpr_mapping(outlet.outlet_code)
 
 
 def calculate_mpr_totals(

@@ -1992,7 +1992,7 @@ def get_reports_totals():
         if outlet_code.upper() != "ALL":
             outlet, mapping = get_mpr_mapping_for_outlet(outlet_code)
             mpr_outlet_code = None
-            if outlet and outlet.brand == "MP78" and mapping:
+            if mapping:
                 mpr_outlet_code = mapping.mpr_outlet_code
             elif outlet and mpr_calc.is_mpr_brand(outlet.brand):
                 mpr_outlet_code = outlet.outlet_code

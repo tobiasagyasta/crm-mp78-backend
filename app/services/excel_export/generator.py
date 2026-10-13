@@ -1,12 +1,12 @@
 from io import BytesIO
 from openpyxl import Workbook
-from app.models.mpr_mapping import MprMapping
 from app.services.excel_export.data_service import get_report_data
 from app.services.excel_export.sheets.daily_sheet import DailySheet
 from app.services.excel_export.sheets.summary_sheet import SummarySheet
 from app.services.excel_export.sheets.closing_sheet import ClosingSheet
 from app.services.excel_export.sheets.pukis_sheet import PukisSheet
 from app.services.excel_export.sheets.pukis_closing_sheet import PukisClosingSheet
+from app.services.mpr_totals_service import get_mpr_mapping
 
 class ExcelReportGenerator:
     def __init__(self, outlet_code: str, start_date, end_date, user_role: str):
@@ -85,7 +85,7 @@ class ExcelReportGenerator:
 
     def _get_mpr_report_data(self, report_data: dict) -> dict | None:
         outlet = report_data['outlet']
-        mapping = MprMapping.query.filter_by(mp78_outlet_code=outlet.outlet_code).first()
+        mapping = get_mpr_mapping(outlet.outlet_code)
         if not mapping or not mapping.mpr_outlet_code:
             return None
 

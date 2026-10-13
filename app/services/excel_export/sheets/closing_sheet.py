@@ -5,8 +5,8 @@ from app.services.excel_export.utils.excel_utils import (
     TIKTOK_FILL, BLUE_FILL, DIFFERENCE_FILL, THIN_BORDER, auto_fit_columns, LEFT_ALIGN, RIGHT_ALIGN,
     CLOSED_OFF_FILL
 )
-from app.models.mpr_mapping import MprMapping
 from app.models.outlet import Outlet
+from app.services.mpr_totals_service import get_mpr_mapping
 from app.services.closing_platforms import is_platform_disabled, platform_for_header
 from app.services.rekening_info_service import OutletRekeningInfo, RekeningInfoService
 from datetime import datetime
@@ -843,9 +843,6 @@ class ClosingSheet(BaseSheet):
         self.documentation_row_end = max(total_row, current_row - 2)
 
     def _get_mapped_mpr_outlet(self):
-        if not self._is_mp78_brand():
-            return None
-
         mpr_report_data = self.data.get('mpr_report_data')
         if mpr_report_data and mpr_report_data.get('outlet'):
             return mpr_report_data['outlet']
@@ -857,12 +854,9 @@ class ClosingSheet(BaseSheet):
         return Outlet.query.filter_by(outlet_code=mapping.mpr_outlet_code).first()
 
     def _get_mpr_mapping(self):
-        if not self._is_mp78_brand():
-            return None
-
         if not self._mpr_mapping_loaded:
             outlet = self.data['outlet']
-            self._mpr_mapping = MprMapping.query.filter_by(mp78_outlet_code=outlet.outlet_code).first()
+            self._mpr_mapping = get_mpr_mapping(outlet.outlet_code)
             self._mpr_mapping_loaded = True
 
         return self._mpr_mapping
