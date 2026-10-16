@@ -31,7 +31,7 @@ class TiktokReport(db.Model):
         return f"<TiktokReport {self.order_id}, {self.order_create_time}>"
     
     @staticmethod
-    def parse_tiktok_row(row, header=None):
+    def parse_tiktok_row(row, header=None, raise_on_error=False):
         """
         Parse a TikTok CSV row (list) into a dict suitable for TiktokReport.
         - brand_name and outlet_code: looked up from Outlet via "Kode WEBSHOP dan Tiktok" (last column)
@@ -95,5 +95,6 @@ class TiktokReport(db.Model):
                 'net_amount': net_amount
             }
         except Exception as e:
-            print(f"[Tiktok Parse Error] Row: {row} | Error: {str(e)}")
+            if raise_on_error:
+                raise
             return None

@@ -7,6 +7,7 @@ from app.models.gojek_reports import GojekReport
 from app.models.import_job import ImportJob
 from app.models.outlet import Outlet
 from app.services.consolidation_service import update_daily_total_for_outlet
+from app.services.import_job_issues import IssueCollector
 
 
 def _clean_identifier(value):
@@ -69,15 +70,16 @@ def _load_existing_gojek_identifiers(transaction_references, transaction_ids):
     return existing_transaction_references, existing_transaction_ids
 
 
-def import_gojek_report_bytes(file_bytes, import_job_id=None):
+def import_gojek_report_bytes(file_bytes, import_job_id=None, issues=None):
+    issues = issues if issues is not None else IssueCollector()
     total_reports = 0
     skipped_reports = 0
+    duplicate_rows = 0
     processed_rows = 0
     store_id_map = {}
     affected_outlets = set()
     seen_transaction_references = set()
     seen_transaction_ids = set()
-    debug_skipped = []
 
     file_contents = file_bytes.decode('utf-8-sig')
     csv_file = StringIO(file_contents)
@@ -90,6 +92,8 @@ def import_gojek_report_bytes(file_bytes, import_job_id=None):
         processed_rows=0,
         inserted_rows=0,
         skipped_rows=0,
+        duplicate_rows=0,
+        non_duplicate_skipped_rows=0,
         failed_rows=0,
     )
 
@@ -127,8 +131,8 @@ def import_gojek_report_bytes(file_bytes, import_job_id=None):
             outlet = outlets_by_name.get(merchant_name)
         if not outlet:
             skipped_reports += 1
-            if len(debug_skipped) < 50:
-                debug_skipped.append({'row_number': row_number, 'reason': 'Outlet not found', 'row': row})
+            issues.record(row_number, 'OUTLET_NOT_FOUND', 'No outlet matches Merchant ID or name', row,
+                          context={'merchant_id': merchant_id, 'merchant_name': merchant_name})
             continue
 
         transaction_id = _clean_identifier(row.get('Transaction ID'))
@@ -142,8 +146,7 @@ def import_gojek_report_bytes(file_bytes, import_job_id=None):
         )
         if duplicate:
             skipped_reports += 1
-            if len(debug_skipped) < 50:
-                debug_skipped.append({'row_number': row_number, 'reason': 'Duplicate Gojek identifier', 'row': row})
+            duplicate_rows += 1
             continue
 
         try:
@@ -186,8 +189,7 @@ def import_gojek_report_bytes(file_bytes, import_job_id=None):
             total_reports += 1
         except (ValueError, TypeError) as exc:
             skipped_reports += 1
-            if len(debug_skipped) < 50:
-                debug_skipped.append({'row_number': row_number, 'reason': f'Parse error: {str(exc)}', 'row': row})
+            issues.record(row_number, 'PARSE_ERROR', f'Parse error: {exc}', row)
 
     if reports:
         db.session.bulk_insert_mappings(GojekReport, reports)
@@ -200,6 +202,8 @@ def import_gojek_report_bytes(file_bytes, import_job_id=None):
         processed_rows=processed_rows,
         inserted_rows=total_reports,
         skipped_rows=skipped_reports,
+        duplicate_rows=duplicate_rows,
+        non_duplicate_skipped_rows=skipped_reports - duplicate_rows,
         failed_rows=0,
     )
 
@@ -208,11 +212,13 @@ def import_gojek_report_bytes(file_bytes, import_job_id=None):
         'processed_rows': processed_rows,
         'inserted_rows': total_reports,
         'skipped_rows': skipped_reports,
+        'duplicate_rows': duplicate_rows,
+        'non_duplicate_skipped_rows': skipped_reports - duplicate_rows,
         'failed_rows': 0,
         'store_id_map': store_id_map,
         'affected_outlets': [
             {'outlet_code': outlet_code, 'date': date.isoformat()}
             for outlet_code, date in affected_outlets
         ],
-        'skipped_rows_debug': debug_skipped,
+        'skipped_rows_debug': issues.preview,
     }

@@ -1,12 +1,16 @@
 import os
+import csv
+from io import StringIO
 from uuid import uuid4
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, Response, current_app, jsonify, request, stream_with_context
+from sqlalchemy import func
 from werkzeug.utils import secure_filename
 
 from app.extensions import db, s3
 from app.extensions.queue import get_import_queue
 from app.models.import_job import ImportJob
+from app.models.import_job_issue import ImportJobIssue
 from app.workers.report_import_jobs import process_report_import_job
 
 
@@ -24,6 +28,9 @@ def _serialize_import_job(import_job, include_storage=True):
         'processed_rows': import_job.processed_rows,
         'inserted_rows': import_job.inserted_rows,
         'skipped_rows': import_job.skipped_rows,
+        'duplicate_rows': import_job.duplicate_rows,
+        'non_duplicate_skipped_rows': import_job.non_duplicate_skipped_rows,
+        'attempt_number': import_job.attempt_number,
         'failed_rows': import_job.failed_rows,
         'error_message': import_job.error_message,
         'created_at': import_job.created_at.isoformat() if import_job.created_at else None,
@@ -192,7 +199,88 @@ def list_import_jobs():
 def get_import_job(job_id):
     import_job = ImportJob.query.get_or_404(job_id)
 
-    return jsonify(_serialize_import_job(import_job))
+    data = _serialize_import_job(import_job)
+    data['issue_summary'] = [
+        {'reason_code': code, 'count': count}
+        for code, count in db.session.query(ImportJobIssue.reason_code, func.count(ImportJobIssue.id))
+        .filter_by(import_job_id=job_id, attempt_number=import_job.attempt_number)
+        .group_by(ImportJobIssue.reason_code)
+        .order_by(func.count(ImportJobIssue.id).desc(), ImportJobIssue.reason_code)
+    ]
+    return jsonify(data)
+
+
+def _issue_query(job_id):
+    job = ImportJob.query.get_or_404(job_id)
+    attempt = request.args.get('attempt_number', job.attempt_number, type=int)
+    if attempt is None or attempt < 1 or attempt > job.attempt_number:
+        return None
+    query = ImportJobIssue.query.filter_by(import_job_id=job_id, attempt_number=attempt)
+    reason_code = request.args.get('reason_code')
+    if reason_code:
+        query = query.filter(ImportJobIssue.reason_code == reason_code)
+    return query.order_by(ImportJobIssue.id), attempt
+
+
+def _serialize_issue(issue):
+    return {
+        'id': issue.id,
+        'row_number': issue.row_number,
+        'sheet_name': issue.sheet_name,
+        'reason_code': issue.reason_code,
+        'message': issue.message,
+        'field_name': issue.field_name,
+        'context': issue.context,
+        'row_data': issue.row_data,
+        'created_at': issue.created_at.isoformat() if issue.created_at else None,
+    }
+
+
+@import_jobs_bp.route('/<int:job_id>/issues', methods=['GET'])
+def list_import_job_issues(job_id):
+    selected = _issue_query(job_id)
+    if selected is None:
+        return jsonify({'error': 'Invalid attempt_number'}), 400
+    query, attempt = selected
+    page = max(request.args.get('page', 1, type=int), 1)
+    per_page = min(max(request.args.get('per_page', 50, type=int), 1), 100)
+    total = query.count()
+    return jsonify({
+        'data': [_serialize_issue(issue) for issue in query.offset((page - 1) * per_page).limit(per_page).all()],
+        'attempt_number': attempt,
+        'filters': {'reason_code': request.args.get('reason_code')},
+        'pagination': {
+            'current_page': page, 'per_page': per_page,
+            'total_pages': (total + per_page - 1) // per_page,
+            'total_records': total,
+        },
+    })
+
+
+@import_jobs_bp.route('/<int:job_id>/issues/export', methods=['GET'])
+def export_import_job_issues(job_id):
+    selected = _issue_query(job_id)
+    if selected is None:
+        return jsonify({'error': 'Invalid attempt_number'}), 400
+    query, attempt = selected
+
+    def generate():
+        import json
+        output = StringIO()
+        writer = csv.writer(output)
+        writer.writerow(['row_number', 'sheet_name', 'reason_code', 'message', 'field_name', 'context', 'row_data'])
+        yield output.getvalue()
+        for issue in query.yield_per(500):
+            output.seek(0)
+            output.truncate(0)
+            writer.writerow([issue.row_number, issue.sheet_name, issue.reason_code, issue.message,
+                             issue.field_name, json.dumps(issue.context, ensure_ascii=False),
+                             json.dumps(issue.row_data, ensure_ascii=False)])
+            yield output.getvalue()
+
+    return Response(stream_with_context(generate()), mimetype='text/csv', headers={
+        'Content-Disposition': f'attachment; filename="import-job-{job_id}-attempt-{attempt}-issues.csv"'
+    })
 
 
 @import_jobs_bp.route('/<int:job_id>/simulate-worker', methods=['POST'])

@@ -426,14 +426,6 @@ async function uploadImportJob(params: {
 }
 ```
 
-## Backend Limitation To Remember
+## Detailed skipped-row logs
 
-The current backend status endpoint returns counters and `error_message`, but not detailed per-row logs.
-
-If the frontend needs detailed skipped-row reasons or per-step logs, implement a later backend enhancement:
-
-```text
-Add result_data JSONB to import_jobs, store importer result debug data, and return it from GET /import-jobs/{id}.
-```
-
-Do not implement that frontend UI until the backend returns the data.
+The backend now persists non-duplicate skipped-row issues and exposes paginated and CSV-export APIs. For the `import-jobs/[jobId]/page.tsx` logging UI, use [NEXTJS_IMPORT_JOB_LOGGING_HANDOFF.md](NEXTJS_IMPORT_JOB_LOGGING_HANDOFF.md) as the current API contract and agent handoff. The earlier status response examples in this file predate the additional logging fields.

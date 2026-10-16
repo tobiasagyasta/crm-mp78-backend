@@ -7,6 +7,7 @@ from app.models.grabfood_reports import GrabFoodReport
 from app.models.import_job import ImportJob
 from app.models.outlet import Outlet
 from app.services.consolidation_service import update_daily_total_for_outlet
+from app.services.import_job_issues import IssueCollector
 
 
 def _clean_identifier(value):
@@ -51,22 +52,6 @@ def _chunks(values, size=1000):
     values = list(values)
     for index in range(0, len(values), size):
         yield values[index:index + size]
-
-
-def _add_skipped_debug(debug_skipped, row_number, reason, row):
-    if len(debug_skipped) >= 50:
-        return
-    debug_skipped.append({
-        'row_number': row_number,
-        'reason': reason,
-        'store_name': row.get('Nama toko'),
-        'store_id': row.get('ID toko'),
-        'transaction_id': row.get('ID transaksi'),
-        'long_order_id': _row_value(row, 'ID pesanan (panjang)', 'ID pesanan panjang'),
-        'short_order_id': _row_value(row, 'ID pesanan (pendek)', 'ID pesanan pendek'),
-        'amount': _row_value(row, 'Amount', 'Jumlah'),
-        'total': row.get('Total'),
-    })
 
 
 def _load_existing_grab_identifiers(transaction_ids, short_order_ids):
@@ -145,15 +130,16 @@ def _update_import_job_progress(import_job_id, **values):
     db.session.flush()
 
 
-def import_grab_report_bytes(file_bytes, import_job_id=None):
+def import_grab_report_bytes(file_bytes, import_job_id=None, issues=None):
+    issues = issues if issues is not None else IssueCollector()
     total_reports = 0
     skipped_reports = 0
+    duplicate_rows = 0
     processed_rows = 0
     store_id_map = {}
     affected_outlets = set()
     seen_transaction_ids = set()
     seen_order_id_pairs = set()
-    debug_skipped = []
 
     file_contents = file_bytes.decode('utf-8-sig')
     csv_file = StringIO(file_contents)
@@ -166,6 +152,8 @@ def import_grab_report_bytes(file_bytes, import_job_id=None):
         processed_rows=0,
         inserted_rows=0,
         skipped_rows=0,
+        duplicate_rows=0,
+        non_duplicate_skipped_rows=0,
         failed_rows=0,
     )
 
@@ -192,6 +180,8 @@ def import_grab_report_bytes(file_bytes, import_job_id=None):
     for row_number, row in enumerate(rows, start=2):
         processed_rows += 1
         if _is_blank_row(row):
+            skipped_reports += 1
+            issues.record(row_number, 'BLANK_ROW', 'Row is blank', row)
             continue
 
         store_name = row.get('Nama toko', '').strip()
@@ -206,7 +196,8 @@ def import_grab_report_bytes(file_bytes, import_job_id=None):
             outlet = outlets_by_name.get(store_name)
         if not outlet:
             skipped_reports += 1
-            _add_skipped_debug(debug_skipped, row_number, 'Outlet not found for Grab store ID or name', row)
+            issues.record(row_number, 'OUTLET_NOT_FOUND', 'No outlet matches Grab store ID or name', row,
+                          context={'store_id': store_id, 'store_name': store_name})
             continue
 
         transaction_id = _clean_identifier(row.get('ID transaksi'))
@@ -224,7 +215,7 @@ def import_grab_report_bytes(file_bytes, import_job_id=None):
         )
         if duplicate_reason:
             skipped_reports += 1
-            _add_skipped_debug(debug_skipped, row_number, duplicate_reason, row)
+            duplicate_rows += 1
             continue
 
         try:
@@ -234,7 +225,8 @@ def import_grab_report_bytes(file_bytes, import_job_id=None):
             total = _safe_float(row.get('Total'))
             if amount == 0 or total == 0:
                 skipped_reports += 1
-                _add_skipped_debug(debug_skipped, row_number, 'Amount or total is zero', row)
+                field = 'Amount' if amount == 0 else 'Total'
+                issues.record(row_number, 'ZERO_AMOUNT', f'{field} is zero or invalid', row, field_name=field)
                 continue
 
             reports.append({
@@ -267,7 +259,7 @@ def import_grab_report_bytes(file_bytes, import_job_id=None):
             total_reports += 1
         except (ValueError, TypeError) as e:
             skipped_reports += 1
-            _add_skipped_debug(debug_skipped, row_number, f'Parse error: {str(e)}', row)
+            issues.record(row_number, 'PARSE_ERROR', f'Parse error: {e}', row)
 
     if reports:
         db.session.bulk_insert_mappings(GrabFoodReport, reports)
@@ -280,6 +272,8 @@ def import_grab_report_bytes(file_bytes, import_job_id=None):
         processed_rows=processed_rows,
         inserted_rows=total_reports,
         skipped_rows=skipped_reports,
+        duplicate_rows=duplicate_rows,
+        non_duplicate_skipped_rows=skipped_reports - duplicate_rows,
         failed_rows=0,
     )
 
@@ -288,11 +282,13 @@ def import_grab_report_bytes(file_bytes, import_job_id=None):
         'processed_rows': processed_rows,
         'inserted_rows': total_reports,
         'skipped_rows': skipped_reports,
+        'duplicate_rows': duplicate_rows,
+        'non_duplicate_skipped_rows': skipped_reports - duplicate_rows,
         'failed_rows': 0,
         'store_id_map': store_id_map,
         'affected_outlets': [
             {'outlet_code': outlet_code, 'date': date.isoformat()}
             for outlet_code, date in affected_outlets
         ],
-        'skipped_rows_debug': debug_skipped,
+        'skipped_rows_debug': issues.preview,
     }

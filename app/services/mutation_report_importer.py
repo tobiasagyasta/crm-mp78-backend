@@ -8,6 +8,7 @@ from app.extensions import db
 from app.models.bank_mutations import BankMutation
 from app.models.import_job import ImportJob
 from app.models.mp78_mutations import MP78Mutation
+from app.services.import_job_issues import IssueCollector
 
 
 def _is_blank_row(row):
@@ -59,7 +60,8 @@ def _mutation_rows_from_excel(file_bytes):
     rows = []
 
     for worksheet in workbook.worksheets:
-        rows.extend(_mutation_rows_from_table(enumerate(worksheet.iter_rows(values_only=True), start=1)))
+        rows.extend((number, header, row, worksheet.title) for number, header, row in
+                    _mutation_rows_from_table(enumerate(worksheet.iter_rows(values_only=True), start=1)))
 
     return rows
 
@@ -72,14 +74,15 @@ def _mutation_rows_from_upload(file_bytes, filename=''):
     file_contents = file_bytes.decode('utf-8-sig')
     csv_file = StringIO(file_contents)
     reader = csv.reader(csv_file)
-    rows = _mutation_rows_from_table(enumerate(reader, start=1))
+    rows = [(number, header, row, None) for number, header, row in
+            _mutation_rows_from_table(enumerate(reader, start=1))]
     if rows:
         return rows
 
     csv_file.seek(0)
     reader = csv.reader(csv_file)
     next(reader, None)
-    return [(idx, None, row) for idx, row in enumerate(reader, start=2)]
+    return [(idx, None, row, None) for idx, row in enumerate(reader, start=2)]
 
 
 def _update_import_job_progress(import_job_id, **values):
@@ -95,33 +98,46 @@ def _update_import_job_progress(import_job_id, **values):
     db.session.flush()
 
 
-def _save_objects_with_integrity_fallback(objects):
+def _save_objects_with_integrity_fallback(objects, issues):
     if not objects:
-        return 0
+        return 0, 0
 
     try:
-        db.session.bulk_save_objects(objects)
-        db.session.flush()
-        return 0
+        with db.session.begin_nested():
+            db.session.bulk_save_objects([obj for obj, _, _, _ in objects])
+        return 0, 0
     except IntegrityError:
-        db.session.rollback()
+        pass
 
     skipped = 0
-    for obj in objects:
+    duplicates = 0
+    for obj, row_number, row, sheet_name in objects:
         try:
             with db.session.begin_nested():
                 db.session.add(obj)
-        except IntegrityError:
+                db.session.flush()
+        except IntegrityError as exc:
             skipped += 1
+            orig = getattr(exc, 'orig', None)
+            is_unique = (getattr(orig, 'pgcode', None) == '23505'
+                         or getattr(orig, 'sqlstate', None) == '23505'
+                         or 'UNIQUE constraint failed' in str(orig))
+            code = 'DUPLICATE_ENTRY' if is_unique else 'DATABASE_CONSTRAINT_ERROR'
+            if is_unique:
+                duplicates += 1
+            if code != 'DUPLICATE_ENTRY':
+                issues.record(row_number, code, 'Database constraint rejected mutation row', row,
+                              sheet_name=sheet_name)
     db.session.flush()
-    return skipped
+    return skipped, duplicates
 
 
-def import_mutation_report_bytes(file_bytes, rekening_number, filename='', import_job_id=None):
+def import_mutation_report_bytes(file_bytes, rekening_number, filename='', import_job_id=None, issues=None):
+    issues = issues if issues is not None else IssueCollector()
     total_mutations = 0
     skipped_mutations = 0
     processed_rows = 0
-    debug_skipped = []
+    duplicate_rows = 0
     rows = _mutation_rows_from_upload(file_bytes, filename)
 
     _update_import_job_progress(
@@ -130,29 +146,29 @@ def import_mutation_report_bytes(file_bytes, rekening_number, filename='', impor
         processed_rows=0,
         inserted_rows=0,
         skipped_rows=0,
+        duplicate_rows=0,
+        non_duplicate_skipped_rows=0,
         failed_rows=0,
     )
 
     mutations = []
     mp78_mutations = []
-    for row_number, header_row, row in rows:
+    for row_number, header_row, row, sheet_name in rows:
         processed_rows += 1
         try:
             first_cell = str(row[0]).strip().upper() if row and row[0] is not None else ''
             if first_cell == 'PEND':
                 skipped_mutations += 1
-                debug_skipped.append({'row_number': row_number, 'reason': "Date column is 'PEND'", 'row': _debug_row(row)})
+                issues.record(row_number, 'PENDING_TRANSACTION', "Date column is 'PEND'", row,
+                              field_name='Date', sheet_name=sheet_name)
                 continue
 
             parsed = BankMutation.parse_mutation_row(row, rekening_number)
             if not parsed:
                 skipped_mutations += 1
-                debug_skipped.append({
-                    'row_number': row_number,
-                    'reason': 'Unknown platform or parse failed',
-                    'header': _debug_row(header_row) if header_row else None,
-                    'row': _debug_row(row),
-                })
+                issues.record(row_number, 'PARSE_ERROR', 'Mutation row could not be parsed', row,
+                              context={'header': _debug_row(header_row) if header_row else None},
+                              sheet_name=sheet_name)
                 continue
 
             mutation_model = parsed.pop('_mutation_model', 'bank')
@@ -161,9 +177,9 @@ def import_mutation_report_bytes(file_bytes, rekening_number, filename='', impor
                 exists = MP78Mutation.query.filter_by(transaction_id=mutation.transaction_id).first()
                 if exists:
                     skipped_mutations += 1
-                    debug_skipped.append({'row_number': row_number, 'reason': 'Duplicate MP78 mutation entry', 'row': _debug_row(row)})
+                    duplicate_rows += 1
                     continue
-                mp78_mutations.append(mutation)
+                mp78_mutations.append((mutation, row_number, row, sheet_name))
                 total_mutations += 1
                 continue
 
@@ -178,17 +194,19 @@ def import_mutation_report_bytes(file_bytes, rekening_number, filename='', impor
                 ).first()
             if exists:
                 skipped_mutations += 1
-                debug_skipped.append({'row_number': row_number, 'reason': 'Duplicate mutation entry', 'row': _debug_row(row)})
+                duplicate_rows += 1
                 continue
 
-            mutations.append(mutation)
+            mutations.append((mutation, row_number, row, sheet_name))
             total_mutations += 1
         except Exception as exc:
             skipped_mutations += 1
-            debug_skipped.append({'row_number': row_number, 'reason': f'Exception: {str(exc)}', 'row': _debug_row(row)})
+            issues.record(row_number, 'PARSE_ERROR', f'Parse error: {exc}', row, sheet_name=sheet_name)
 
-    integrity_skips = _save_objects_with_integrity_fallback(mutations)
-    integrity_skips += _save_objects_with_integrity_fallback(mp78_mutations)
+    integrity_skips, integrity_duplicates = _save_objects_with_integrity_fallback(mutations, issues)
+    mp78_skips, mp78_duplicates = _save_objects_with_integrity_fallback(mp78_mutations, issues)
+    integrity_skips += mp78_skips
+    duplicate_rows += integrity_duplicates + mp78_duplicates
     if integrity_skips:
         skipped_mutations += integrity_skips
         total_mutations -= integrity_skips
@@ -198,22 +216,18 @@ def import_mutation_report_bytes(file_bytes, rekening_number, filename='', impor
         processed_rows=processed_rows,
         inserted_rows=total_mutations,
         skipped_rows=skipped_mutations,
+        duplicate_rows=duplicate_rows,
+        non_duplicate_skipped_rows=skipped_mutations - duplicate_rows,
         failed_rows=0,
     )
-
-    seen_reasons = set()
-    one_per_reason = []
-    for entry in debug_skipped:
-        reason = entry['reason']
-        if reason not in seen_reasons:
-            one_per_reason.append(entry)
-            seen_reasons.add(reason)
 
     return {
         'total_rows': len(rows),
         'processed_rows': processed_rows,
         'inserted_rows': total_mutations,
         'skipped_rows': skipped_mutations,
+        'duplicate_rows': duplicate_rows,
+        'non_duplicate_skipped_rows': skipped_mutations - duplicate_rows,
         'failed_rows': 0,
-        'skipped_rows_debug': one_per_reason,
+        'skipped_rows_debug': issues.preview,
     }

@@ -19,6 +19,9 @@ class ImportJob(db.Model):
     processed_rows = db.Column(db.Integer, nullable=False, default=0)
     inserted_rows = db.Column(db.Integer, nullable=False, default=0)
     skipped_rows = db.Column(db.Integer, nullable=False, default=0)
+    duplicate_rows = db.Column(db.Integer, nullable=True)
+    non_duplicate_skipped_rows = db.Column(db.Integer, nullable=True)
+    attempt_number = db.Column(db.Integer, nullable=False, default=0)
     failed_rows = db.Column(db.Integer, nullable=False, default=0)
 
     error_message = db.Column(db.Text, nullable=True)
