@@ -72,15 +72,27 @@ def _mutation_rows_from_upload(file_bytes, filename=''):
         return _mutation_rows_from_excel(file_bytes)
 
     file_contents = file_bytes.decode('utf-8-sig')
-    csv_file = StringIO(file_contents)
-    reader = csv.reader(csv_file)
+    # Statement exports often contain metadata before the table, so identify
+    # the delimiter from the table header rather than relying on the first line.
+    delimiter = None
+    for candidate in (',', ';'):
+        reader = csv.reader(StringIO(file_contents), delimiter=candidate)
+        if any(len(row) > 1 and _is_mutation_table_header(row) for row in reader):
+            delimiter = candidate
+            break
+    if delimiter is None:
+        try:
+            delimiter = csv.Sniffer().sniff(file_contents[:8192], delimiters=',;').delimiter
+        except csv.Error:
+            delimiter = ','
+
+    reader = csv.reader(StringIO(file_contents), delimiter=delimiter)
     rows = [(number, header, row, None) for number, header, row in
             _mutation_rows_from_table(enumerate(reader, start=1))]
     if rows:
         return rows
 
-    csv_file.seek(0)
-    reader = csv.reader(csv_file)
+    reader = csv.reader(StringIO(file_contents), delimiter=delimiter)
     next(reader, None)
     return [(idx, None, row, None) for idx, row in enumerate(reader, start=2)]
 
