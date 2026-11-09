@@ -190,10 +190,35 @@ class QponReport(db.Model):
             return None
 
 
+def qpon_csv_reader(csv_file):
+    """Select the separator from the header, preferring commas when ambiguous."""
+    start = csv_file.tell()
+    comma_header = next(csv.reader(csv_file), [])
+    csv_file.seek(start)
+    semicolon_header = next(csv.reader(csv_file, delimiter=";"), [])
+    csv_file.seek(start)
+
+    def recognized_fields(headers):
+        return sum(
+            QponReport._normalize_header(header) in QponReport.HEADER_TO_FIELD
+            for header in headers
+        )
+
+    comma_fields = recognized_fields(comma_header)
+    semicolon_fields = recognized_fields(semicolon_header)
+    delimiter = ","
+    if semicolon_fields > comma_fields or (
+        semicolon_fields == comma_fields == 0
+        and len(comma_header) <= 1 < len(semicolon_header)
+    ):
+        delimiter = ";"
+    return csv.reader(csv_file, delimiter=delimiter)
+
+
 def load_qpon_csv(file_path: str) -> list[dict]:
     parsed_rows = []
     with open(file_path, newline="", encoding="utf-8-sig") as csv_file:
-        reader = csv.reader(csv_file)
+        reader = qpon_csv_reader(csv_file)
         headers = next(reader, None)
         columns = QponReport._resolve_columns(headers)
 

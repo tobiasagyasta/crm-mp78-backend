@@ -1,11 +1,10 @@
-import csv
 from io import StringIO
 
 from flask import jsonify, request
 
 from app.controllers.reports_controller import reports_bp
 from app.extensions import db
-from app.models.qpon_reports import QponReport
+from app.models.qpon_reports import QponReport, qpon_csv_reader
 
 
 @reports_bp.route("/upload/qpon", methods=["POST"])
@@ -29,7 +28,7 @@ def upload_report_qpon():
                 continue
 
             file_contents = file.read().decode("utf-8-sig", errors="replace")
-            reader = csv.reader(StringIO(file_contents))
+            reader = qpon_csv_reader(StringIO(file_contents))
 
             headers = next(reader, None)
             if not headers:
