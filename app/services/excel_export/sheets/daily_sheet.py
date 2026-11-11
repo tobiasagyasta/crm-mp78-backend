@@ -114,6 +114,14 @@ class DailySheet(BaseSheet):
                 )
             ]
 
+        if mpr_calc.ENABLE_SHOPEE_COMMISSION:
+            for anchor, header in [
+                ('Shopee Difference', 'Shopee Net (ac)'),
+                ('ShopeePay Difference', 'ShopeePay Net (ac)'),
+            ]:
+                if header not in base_headers:
+                    base_headers.insert(base_headers.index(anchor) + 1, header)
+
         return base_headers
 
     def _add_mp78_management_ac_headers(self, headers):
@@ -195,19 +203,13 @@ class DailySheet(BaseSheet):
         return totals.get('Shopee_Net', 0)
 
     def _get_shopee_net_ac_value(self, totals):
-        if self._is_mpr_brand():
-            return mpr_calc.shopee_net_ac_value(totals)
-
-        return self._get_shopee_net_value(totals)
+        return mpr_calc.shopee_sheet_value(totals, 'Shopee', self.data['outlet'].brand)
 
     def _get_shopeepay_net_value(self, totals):
         return totals.get('ShopeePay_Net', 0)
 
     def _get_shopeepay_net_ac_value(self, totals):
-        if self._is_mpr_brand():
-            return mpr_calc.shopeepay_net_ac_value(totals)
-
-        return self._get_shopeepay_net_value(totals)
+        return mpr_calc.shopee_sheet_value(totals, 'ShopeePay', self.data['outlet'].brand)
 
     def _get_grab_net_ac_value(self, totals):
         if self._is_mpr_brand():

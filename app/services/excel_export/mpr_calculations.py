@@ -9,6 +9,7 @@ TIKTOK_MANAGEMENT_COMMISSION_RATE = 0.05
 QPON_COMMISSION_RATE = 0.01
 ENABLE_MPR_QRIS_OVO_COMMISSION = False
 ENABLE_MP78_MANAGEMENT_AC = True
+ENABLE_SHOPEE_COMMISSION = True
 ENABLE_CLOSING_TIKTOK_SETTLEMENT_SHIFT = True
 MPR_BRANDS = ("MPR", "MPR Mandiri", "MPR Non MP78")
 
@@ -36,6 +37,14 @@ def tiktok_net_ac_value_for_brand(totals, brand):
 
 def value_with_mutation_fallback(totals, mutation_key, net_key):
     return totals.get(mutation_key) or totals.get(net_key, 0)
+
+
+def shopee_sheet_value(totals, platform, brand):
+    value = value_with_mutation_fallback(totals, f'{platform}_Mutation', f'{platform}_Net')
+    if not ENABLE_SHOPEE_COMMISSION:
+        return value
+    rate = 1 - MPR_SHOPEE_NET_RATE if is_mpr_brand(brand) else MANAGEMENT_COMMISSION_RATE
+    return value * (1 - rate)
 
 
 def rated_value(value, is_mpr, rate):

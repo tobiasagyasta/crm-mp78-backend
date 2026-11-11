@@ -104,7 +104,7 @@ class ClosingSheet(BaseSheet):
         # Platform names in the second row of the header
         for col, (name, header, report_type) in enumerate(platform_definitions, 2):
             cell = self.ws.cell(row=closing_row + 1, column=col)
-            cell.value = name
+            cell.value = self._shopee_ac_label(name)
             cell.font = HEADER_FONT
             cell.alignment = CENTER_ALIGN
             if self._is_closing_platform_disabled(header, report_type):
@@ -261,6 +261,8 @@ class ClosingSheet(BaseSheet):
         ]
 
     def _get_platform_grand_total_with_fallback(self, report_type, header):
+        if header in ('Shopee_Mutation', 'ShopeePay_Mutation', 'Shopee_Net', 'ShopeePay_Net'):
+            return self._get_shopee_sheet_value(report_type, header)
         if header == self.TIKTOK_NET_HEADER:
             return self._get_tiktok_closing_display_value(report_type)
         if header == self.QPON_NET_HEADER:
@@ -290,6 +292,8 @@ class ClosingSheet(BaseSheet):
         return self._get_grand_total_with_fallback(header)
 
     def _get_platform_daily_value_with_fallback(self, report_type, date, header):
+        if header in ('Shopee_Mutation', 'ShopeePay_Mutation', 'Shopee_Net', 'ShopeePay_Net'):
+            return self._get_shopee_sheet_value(report_type, header, date)
         if header == self.TIKTOK_NET_HEADER:
             return self._get_tiktok_closing_display_value(report_type, date)
         if header == self.QPON_NET_HEADER:
@@ -448,6 +452,8 @@ class ClosingSheet(BaseSheet):
                 mpr_value = self._get_tiktok_closing_display_value('mpr')
             elif header == self.QPON_AC_HEADER:
                 mpr_value = self._get_qpon_closing_ac_display_value('mpr')
+            elif header in ('Shopee_Net', 'ShopeePay_Net'):
+                mpr_value = self._get_shopee_sheet_value('mpr', header)
             else:
                 mpr_value = self._get_mpr_display_value(header)
             if mpr_value is None:
@@ -455,7 +461,7 @@ class ClosingSheet(BaseSheet):
 
             label_row = row_start + 1 + final_i + 1
             platform_disabled = self._is_closing_platform_disabled(header, 'mpr')
-            label_cell = self.ws.cell(row=label_row, column=col_start, value=label)
+            label_cell = self.ws.cell(row=label_row, column=col_start, value=self._shopee_ac_label(label))
             label_cell.alignment = LEFT_ALIGN
             label_cell.font = HEADER_FONT
             if platform_disabled:
@@ -669,12 +675,17 @@ class ClosingSheet(BaseSheet):
         return rows
 
     def _get_commission_rate_for_closing_header(self, header, report_type):
+        if header in ('Shopee_Mutation', 'ShopeePay_Mutation', 'Shopee_Net', 'ShopeePay_Net'):
+            if not mpr_calc.ENABLE_SHOPEE_COMMISSION:
+                return None
+            outlet = self._get_outlet_for_report_type(report_type)
+            return 1 - mpr_calc.MPR_SHOPEE_NET_RATE if mpr_calc.is_mpr_brand(outlet.brand) else mpr_calc.MANAGEMENT_COMMISSION_RATE
         if self._is_non_commission_brand() and report_type == 'main':
             return None
 
         if header in [self.MPR_GOJEK_AC_HEADER, self.MPR_GRAB_AC_HEADER]:
             return 1 - mpr_calc.MPR_STANDARD_NET_RATE
-        if header in ['Gojek_Mutation', 'Shopee_Mutation', 'ShopeePay_Mutation']:
+        if header == 'Gojek_Mutation':
             if report_type == 'mpr' or self._is_mpr_brand():
                 return 1 - mpr_calc.MPR_STANDARD_NET_RATE
             return mpr_calc.MANAGEMENT_COMMISSION_RATE
@@ -682,10 +693,6 @@ class ClosingSheet(BaseSheet):
             if report_type == 'mpr':
                 return 1 - mpr_calc.MPR_STANDARD_NET_RATE
             return self._get_grab_management_commission_rate()
-        if header == 'Shopee_Net':
-            return 1 - mpr_calc.MPR_SHOPEE_NET_RATE
-        if header == 'ShopeePay_Net':
-            return 1 - mpr_calc.mpr_qris_ovo_net_rate()
         if header == self.TIKTOK_NET_HEADER:
             outlet = self._get_outlet_for_report_type(report_type)
             return mpr_calc.tiktok_commission_rate_for_brand(outlet.brand)
@@ -887,6 +894,14 @@ class ClosingSheet(BaseSheet):
             net_key = header.replace('_Mutation', '_Net')
             value = totals.get(net_key, 0)
         return value
+
+    def _get_shopee_sheet_value(self, report_type, header, date=None):
+        report_data = self.data.get('mpr_report_data') if report_type == 'mpr' else self.data
+        if not report_data:
+            return None
+        totals = report_data.get('grand_totals', {}) if date is None else report_data.get('daily_totals', {}).get(date, {})
+        platform = header.split('_', 1)[0]
+        return mpr_calc.shopee_sheet_value(totals, platform, report_data['outlet'].brand)
 
     def _get_main_table_special_value(self, header, date=None):
         totals = self.data.get('grand_totals', {})
@@ -1148,6 +1163,8 @@ class ClosingSheet(BaseSheet):
                 return self._get_tiktok_closing_display_value('mpr') or 0
             if header == self.QPON_AC_HEADER:
                 return self._get_qpon_closing_ac_display_value('mpr') or 0
+            if header in ('Shopee_Net', 'ShopeePay_Net'):
+                return self._get_shopee_sheet_value('mpr', header) or 0
             return self._get_mpr_display_value(header) or 0
 
         return self._get_closing_grand_total_income_value(header, grab_net_total) or 0
@@ -1185,6 +1202,11 @@ class ClosingSheet(BaseSheet):
         if header == 'Grab_Net':
             return 'Grab'
 
+        return self._shopee_ac_label(label)
+
+    def _shopee_ac_label(self, label):
+        if mpr_calc.ENABLE_SHOPEE_COMMISSION and label in ('ShopeeFood', 'ShopeePay'):
+            return f'{label} (ac)'
         return label
 
     def _get_main_platform_definitions_for_grand_total(self):
