@@ -41,10 +41,9 @@ def value_with_mutation_fallback(totals, mutation_key, net_key):
 
 def shopee_sheet_value(totals, platform, brand):
     value = value_with_mutation_fallback(totals, f'{platform}_Mutation', f'{platform}_Net')
-    if not ENABLE_SHOPEE_COMMISSION:
+    if not ENABLE_SHOPEE_COMMISSION or not is_mpr_brand(brand):
         return value
-    rate = 1 - MPR_SHOPEE_NET_RATE if is_mpr_brand(brand) else MANAGEMENT_COMMISSION_RATE
-    return value * (1 - rate)
+    return value * MPR_SHOPEE_NET_RATE
 
 
 def rated_value(value, is_mpr, rate):

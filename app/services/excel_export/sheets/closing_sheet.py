@@ -104,7 +104,7 @@ class ClosingSheet(BaseSheet):
         # Platform names in the second row of the header
         for col, (name, header, report_type) in enumerate(platform_definitions, 2):
             cell = self.ws.cell(row=closing_row + 1, column=col)
-            cell.value = self._shopee_ac_label(name)
+            cell.value = self._shopee_ac_label(name, report_type)
             cell.font = HEADER_FONT
             cell.alignment = CENTER_ALIGN
             if self._is_closing_platform_disabled(header, report_type):
@@ -461,7 +461,7 @@ class ClosingSheet(BaseSheet):
 
             label_row = row_start + 1 + final_i + 1
             platform_disabled = self._is_closing_platform_disabled(header, 'mpr')
-            label_cell = self.ws.cell(row=label_row, column=col_start, value=self._shopee_ac_label(label))
+            label_cell = self.ws.cell(row=label_row, column=col_start, value=self._shopee_ac_label(label, 'mpr'))
             label_cell.alignment = LEFT_ALIGN
             label_cell.font = HEADER_FONT
             if platform_disabled:
@@ -676,10 +676,10 @@ class ClosingSheet(BaseSheet):
 
     def _get_commission_rate_for_closing_header(self, header, report_type):
         if header in ('Shopee_Mutation', 'ShopeePay_Mutation', 'Shopee_Net', 'ShopeePay_Net'):
-            if not mpr_calc.ENABLE_SHOPEE_COMMISSION:
-                return None
             outlet = self._get_outlet_for_report_type(report_type)
-            return 1 - mpr_calc.MPR_SHOPEE_NET_RATE if mpr_calc.is_mpr_brand(outlet.brand) else mpr_calc.MANAGEMENT_COMMISSION_RATE
+            if not mpr_calc.ENABLE_SHOPEE_COMMISSION or not outlet or not mpr_calc.is_mpr_brand(outlet.brand):
+                return None
+            return 1 - mpr_calc.MPR_SHOPEE_NET_RATE
         if self._is_non_commission_brand() and report_type == 'main':
             return None
 
@@ -1204,8 +1204,10 @@ class ClosingSheet(BaseSheet):
 
         return self._shopee_ac_label(label)
 
-    def _shopee_ac_label(self, label):
-        if mpr_calc.ENABLE_SHOPEE_COMMISSION and label in ('ShopeeFood', 'ShopeePay'):
+    def _shopee_ac_label(self, label, report_type='main'):
+        outlet = self._get_outlet_for_report_type(report_type)
+        if (mpr_calc.ENABLE_SHOPEE_COMMISSION and outlet and mpr_calc.is_mpr_brand(outlet.brand)
+                and label in ('ShopeeFood', 'ShopeePay')):
             return f'{label} (ac)'
         return label
 

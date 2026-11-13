@@ -114,13 +114,16 @@ class DailySheet(BaseSheet):
                 )
             ]
 
-        if mpr_calc.ENABLE_SHOPEE_COMMISSION:
+        if mpr_calc.ENABLE_SHOPEE_COMMISSION and mpr_calc.is_mpr_brand(outlet_brand):
             for anchor, header in [
                 ('Shopee Difference', 'Shopee Net (ac)'),
                 ('ShopeePay Difference', 'ShopeePay Net (ac)'),
             ]:
                 if header not in base_headers:
                     base_headers.insert(base_headers.index(anchor) + 1, header)
+        else:
+            base_headers = [header for header in base_headers if header not in
+                            ('Shopee Net (ac)', 'ShopeePay Net (ac)')]
 
         return base_headers
 
