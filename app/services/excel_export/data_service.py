@@ -10,6 +10,7 @@ from app.models.mp78_mutations import MP78Mutation
 from app.models.shopeepay_reports import ShopeepayReport
 from app.models.tiktok_reports import TiktokReport
 from app.models.qpon_reports import QponReport
+from app.models.bank_mutations import BankMutation
 from app.models.webshop_report import WebshopReport
 from app.models.pukis import Pukis
 from app.models.ultra_voucher import VoucherReport
@@ -132,7 +133,9 @@ def get_report_data(outlet_code: str, start_date: datetime, end_date: datetime) 
     _aggregate_tiktok(daily_totals, tiktok_reports)
     _aggregate_tiktok_closing(daily_totals, tiktok_closing_reports)
     _aggregate_qpon(daily_totals, qpon_reports)
+    _aggregate_qpon_mutations(daily_totals, qpon_reports)
     _aggregate_qpon_closing(daily_totals, qpon_closing_reports)
+    _aggregate_qpon_mutations(daily_totals, qpon_closing_reports, closing=True)
     _aggregate_webshop(daily_totals, webshop_reports)
     _aggregate_cash(daily_totals, cash_income_reports, cash_expense_reports)
 
@@ -198,7 +201,8 @@ def _init_daily_total():
         'ShopeePay_Gross': 0, 'ShopeePay_Net': 0, 'Shopee_Gross': 0, 'Shopee_Net': 0,
         'Tiktok_Gross': 0, 'Tiktok_Net': 0, 'Tiktok_Settlement_Time': set(),
         'Tiktok_Closing_Gross': 0, 'Tiktok_Closing_Net': 0,
-        'Qpon_Gross': 0, 'Qpon_Net': 0, 'Qpon_Closing_Gross': 0, 'Qpon_Closing_Net': 0,
+        'Qpon_Gross': 0, 'Qpon_Net': 0, 'Qpon_Mutation': None, 'Qpon_Difference': None,
+        'Qpon_Closing_Gross': 0, 'Qpon_Closing_Net': 0, 'Qpon_Closing_Mutation': None,
         'Webshop_Gross': 0, 'Webshop_Net': 0,
         'Cash_Income': 0, 'Cash_Expense': 0,
         'Gojek_Mutation': None, 'Gojek_Difference': 0, 'Grab_Difference': 0,
@@ -314,6 +318,32 @@ def _aggregate_qpon(daily_totals, reports):
         qpon_amount = float(report.gross_amount or 0)
         daily_totals[date]['Qpon_Net'] += qpon_amount
         daily_totals[date]['Qpon_Gross'] += float(report.gross_amount or 0)
+
+def _aggregate_qpon_mutations(daily_totals, reports, closing=False):
+    offset = timedelta(days=7 if closing else 0)
+    reports_by_billing_id = {
+        report.billing_id: report
+        for report in reports
+        if report.billing_id and report.bill_created_at and report.bill_created_at.date() + offset in daily_totals
+    }
+    billing_ids = list(reports_by_billing_id)
+    for start in range(0, len(billing_ids), 500):
+        mutations = (BankMutation.query.filter(
+            BankMutation.platform_name == 'Qpon',
+            BankMutation.platform_code.in_(billing_ids[start:start + 500]),
+        ).order_by(BankMutation.id).all())
+        matched_ids = set()
+        for mutation in mutations:
+            billing_id = mutation.platform_code
+            if billing_id in matched_ids:
+                continue
+            matched_ids.add(billing_id)
+            report_date = reports_by_billing_id[billing_id].bill_created_at.date() + offset
+            totals = daily_totals[report_date]
+            mutation_key = 'Qpon_Closing_Mutation' if closing else 'Qpon_Mutation'
+            totals[mutation_key] = (totals.get(mutation_key) or 0) + float(mutation.transaction_amount or 0)
+            if not closing:
+                totals['Qpon_Difference'] = totals[mutation_key] - totals.get('Qpon_Net', 0)
 
 def _aggregate_qpon_closing(daily_totals, reports):
     for report in reports:

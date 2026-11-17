@@ -60,7 +60,7 @@ class DailySheet(BaseSheet):
             'Date', 'GoFood', 'GO-PAY QRIS', 'Gojek Net', 'Gojek Mutation', 'Gojek Difference', 'Gojek Net (ac)',
             'GrabFood', 'GrabOVO', 'Grab Net (ac)', 'Shopee Net', 'Shopee Mutation', 'Shopee Difference',
             'ShopeePay Net', 'ShopeePay Mutation', 'ShopeePay Difference', 'ShopeePay Net (ac)',
-            'Tiktok Net', 'Tiktok Settlement Time', 'Qpon Net', 'Qpon Net (ac)', 'Webshop Net', 'UV'
+            'Tiktok Net', 'Tiktok Settlement Time', 'Qpon Net', 'Qpon Mutation', 'Qpon Difference', 'Qpon Net (ac)', 'Webshop Net', 'UV'
         ]
         extra_headers = ['Cash Income (Admin)', 'Cash Expense (Admin)', 'Sisa Cash (Admin)', 'Minusan (Mutasi)']
 
@@ -73,7 +73,7 @@ class DailySheet(BaseSheet):
                 'Shopee Net', 'Shopee Mutation', 'Shopee Difference', 'Shopee Net (ac)',
                 'ShopeePay Net', 'ShopeePay Mutation', 'ShopeePay Difference', 'ShopeePay Net (ac)',
                 'Tiktok Net', 'Tiktok Settlement Time', 'Tiktok Net (ac)',
-                'Qpon Net', 'Qpon Net (ac)',
+                'Qpon Net', 'Qpon Mutation', 'Qpon Difference', 'Qpon Net (ac)',
                 'Webshop Net', 'Webshop Net (ac)',
                 'UV'
             ]
@@ -290,7 +290,8 @@ class DailySheet(BaseSheet):
             'Shopee Net': SHOPEE_FILL, 'Shopee Mutation': SHOPEE_FILL, 'Shopee Difference': DIFFERENCE_FILL,
             'ShopeePay Net': SHOPEEPAY_FILL, 'ShopeePay Mutation': SHOPEEPAY_FILL, 'ShopeePay Difference': DIFFERENCE_FILL,
             'Tiktok Net': TIKTOK_FILL, 'Tiktok Settlement Time': TIKTOK_FILL,
-            'Qpon Net': TIKTOK_FILL, 'Webshop Net': TIKTOK_FILL,
+            'Qpon Net': TIKTOK_FILL, 'Qpon Mutation': TIKTOK_FILL, 'Qpon Difference': DIFFERENCE_FILL,
+            'Webshop Net': TIKTOK_FILL,
             'UV': PatternFill(start_color='35F0F0', end_color='35F0F0', fill_type='solid'),
             'Cash Income (Admin)': CASH_FILL, 'Cash Expense (Admin)': CASH_FILL, 'Sisa Cash (Admin)': CASH_FILL
         }
@@ -324,7 +325,7 @@ class DailySheet(BaseSheet):
                     cell.number_format = '#,##0'
 
                 # Apply conditional formatting for difference columns
-                if headers[col-1] in ['Gojek Difference', 'Shopee Difference', 'ShopeePay Difference']:
+                if headers[col-1] in ['Gojek Difference', 'Shopee Difference', 'ShopeePay Difference', 'Qpon Difference']:
                     if value is not None:
                         if value > 0:
                             cell.fill = PatternFill(start_color='C6EFCE', end_color='C6EFCE', fill_type='solid')  # Light green
@@ -428,6 +429,8 @@ class DailySheet(BaseSheet):
             'Tiktok Settlement Time': lambda totals, date, minusan_total: self._get_tiktok_settlement_time_value(totals),
             'Tiktok Net (ac)': lambda totals, date, minusan_total: self._get_standard_net_ac_value(totals, 'Tiktok_Net'),
             'Qpon Net': lambda totals, date, minusan_total: totals.get('Qpon_Net', 0),
+            'Qpon Mutation': lambda totals, date, minusan_total: totals.get('Qpon_Mutation'),
+            'Qpon Difference': lambda totals, date, minusan_total: totals.get('Qpon_Difference'),
             'Qpon Net (ac)': lambda totals, date, minusan_total: self._get_standard_net_ac_value(totals, 'Qpon_Net'),
             'Webshop Net': lambda totals, date, minusan_total: totals.get('Webshop_Net', 0),
             'Webshop Net (ac)': lambda totals, date, minusan_total: self._get_standard_net_ac_value(totals, 'Webshop_Net'),
@@ -468,6 +471,8 @@ class DailySheet(BaseSheet):
             'Tiktok Settlement Time': lambda: None,
             'Tiktok Net (ac)': lambda: self._get_standard_net_ac_value(grand_totals, 'Tiktok_Net'),
             'Qpon Net': lambda: grand_totals.get('Qpon_Net', 0),
+            'Qpon Mutation': lambda: grand_totals.get('Qpon_Mutation', 0),
+            'Qpon Difference': lambda: grand_totals.get('Qpon_Difference', 0),
             'Qpon Net (ac)': lambda: self._get_standard_net_ac_value(grand_totals, 'Qpon_Net'),
             'Webshop Net': lambda: grand_totals.get('Webshop_Net', 0),
             'Webshop Net (ac)': lambda: self._get_standard_net_ac_value(grand_totals, 'Webshop_Net'),

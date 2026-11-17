@@ -108,7 +108,7 @@ class PukisClosingSheet(BaseSheet):
                 daily_totals[date]['Grab_Net'],
                 daily_totals[date]['Shopee_Net'],
                 daily_totals[date]['Tiktok_Net'],
-                daily_totals[date]['Qpon_Net'],  # QPON
+                totals['Qpon_Mutation'] if totals.get('Qpon_Mutation') is not None else totals.get('Qpon_Net', 0),  # QPON
                 daily_totals[date].get('Webshop_Net', 0),  # WEBSHOP
                 0,  # TRF
                 jumbo_terjual,
@@ -148,7 +148,10 @@ class PukisClosingSheet(BaseSheet):
             grand_totals.get('Grab_Net', 0),
             grand_totals.get('Shopee_Net', 0),
             grand_totals.get('Tiktok_Net', 0),
-            grand_totals.get('Qpon_Net', 0),
+            sum(
+                totals['Qpon_Mutation'] if totals.get('Qpon_Mutation') is not None else totals.get('Qpon_Net', 0)
+                for totals in daily_totals.values()
+            ),
             grand_totals.get('Webshop_Net', 0),
             0,
             total_jumbo_terjual,

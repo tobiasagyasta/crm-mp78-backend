@@ -265,7 +265,7 @@ class ClosingSheet(BaseSheet):
             return self._get_shopee_sheet_value(report_type, header)
         if header == self.TIKTOK_NET_HEADER:
             return self._get_tiktok_closing_display_value(report_type)
-        if header == self.QPON_NET_HEADER:
+        if header in (self.QPON_NET_HEADER, self.QPON_CLOSING_NET_HEADER):
             return self._get_qpon_closing_display_value(report_type)
         if header == self.QPON_AC_HEADER:
             return self._get_qpon_closing_ac_display_value(report_type)
@@ -296,7 +296,7 @@ class ClosingSheet(BaseSheet):
             return self._get_shopee_sheet_value(report_type, header, date)
         if header == self.TIKTOK_NET_HEADER:
             return self._get_tiktok_closing_display_value(report_type, date)
-        if header == self.QPON_NET_HEADER:
+        if header in (self.QPON_NET_HEADER, self.QPON_CLOSING_NET_HEADER):
             return self._get_qpon_closing_display_value(report_type, date)
         if header == self.QPON_AC_HEADER:
             return self._get_qpon_closing_ac_display_value(report_type, date)
@@ -1051,11 +1051,16 @@ class ClosingSheet(BaseSheet):
         if not report_data:
             return None
 
-        totals = report_data.get('grand_totals', {})
-        if date is not None:
-            totals = report_data.get('daily_totals', {}).get(date, {})
+        def daily_value(totals):
+            mutation = totals.get('Qpon_Closing_Mutation')
+            return mutation if mutation is not None else totals.get(self.QPON_CLOSING_NET_HEADER, 0)
 
-        return totals.get(self.QPON_CLOSING_NET_HEADER, 0)
+        daily_totals = report_data.get('daily_totals', {})
+        if date is not None:
+            return daily_value(daily_totals.get(date, {}))
+        if daily_totals:
+            return sum(daily_value(totals) for totals in daily_totals.values())
+        return report_data.get('grand_totals', {}).get(self.QPON_CLOSING_NET_HEADER, 0)
 
     def _get_qpon_closing_ac_display_value(self, report_type, date=None):
         closing_net = self._get_qpon_closing_display_value(report_type, date)
@@ -1138,6 +1143,9 @@ class ClosingSheet(BaseSheet):
     def _get_closing_grand_total_income_contribution(self, report_type, header, grab_net_total=None):
         if self._is_closing_platform_disabled(header, report_type):
             return 0
+
+        if report_type == 'main' and header == self.QPON_AC_HEADER and self._is_non_commission_brand():
+            return self._get_qpon_closing_display_value('main') or 0
 
         if report_type == 'main' and self._is_mpr_brand() and header == 'Gojek_Mutation':
             return self._get_mpr_gojek_ac_display_value('main') or 0
