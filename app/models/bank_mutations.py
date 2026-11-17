@@ -361,6 +361,20 @@ class BankMutation(db.Model):
         return platform_name, match.group(3)
 
     @staticmethod
+    def parse_qpon_row(row):
+        normalized_row = BankMutation._normalize_statement_mutation_row(row)
+        if not normalized_row:
+            return None
+
+        description = BankMutation._as_text(normalized_row[1])
+        if not re.search(r'\bQPON\b|\bQPON(?=\d)', description, re.IGNORECASE):
+            return None
+
+        match = re.search(r'\bQPON\s*(\d+)\s+(\d+)\b', description, re.IGNORECASE)
+        billing_id = ''.join(match.groups()) if match else None
+        return BankMutation._parse_statement_mutation_row(normalized_row, 'Qpon', billing_id)
+
+    @staticmethod
     def _extract_mp78_code(text):
         match = re.search(r'\(\s*([A-Za-z0-9]{2,10})\s*\)', text)
         return match.group(1).upper() if match else None
@@ -609,6 +623,8 @@ class BankMutation(db.Model):
         """
         normalized_row = BankMutation._normalize_statement_mutation_row(row) or row
         row_text = BankMutation._row_text(normalized_row).upper()
+        if re.search(r'\bQPON\b|\bQPON(?=\d)', BankMutation._as_text(BankMutation._row_value(normalized_row, 1)), re.IGNORECASE):
+            return BankMutation.parse_qpon_row
         # Gojek: Only parse if col 10 (index 9) is 'BANGSA'
         if BankMutation._as_text(BankMutation._row_value(normalized_row, 9)).upper() == "BANGSA":
             return BankMutation.parse_gojek_row

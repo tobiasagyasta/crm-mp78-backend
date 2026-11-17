@@ -196,7 +196,13 @@ def import_mutation_report_bytes(file_bytes, rekening_number, filename='', impor
                 continue
 
             mutation = BankMutation(rekening_number=rekening_number, **parsed)
-            if mutation.platform_name == 'Unknown' and mutation.transaction_id:
+            if mutation.platform_name == 'Qpon' and not mutation.platform_code:
+                normalized_row = BankMutation._normalize_statement_mutation_row(row)
+                mutation.transaction_id = BankMutation._build_mp78_transaction_id(
+                    rekening_number, mutation.tanggal, mutation.transaksi,
+                    normalized_row[3], normalized_row[4],
+                )
+            if mutation.platform_name in ('Unknown', 'Qpon') and mutation.transaction_id:
                 exists = BankMutation.query.filter_by(transaction_id=mutation.transaction_id).first()
             else:
                 exists = BankMutation.query.filter_by(

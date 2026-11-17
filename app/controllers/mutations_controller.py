@@ -5,6 +5,7 @@ from app.models.shopee_reports import ShopeeReport
 from app.models.grabfood_reports import GrabFoodReport
 from app.models.shopeepay_reports import ShopeepayReport
 from app.models.gojek_reports import GojekReport
+from app.models.qpon_reports import QponReport
 from app.models.daily_merchant_totals import DailyMerchantTotal
 from app.models.manual_entry import ManualEntry
 from app.models.outlet import Outlet
@@ -267,6 +268,51 @@ def match_summary():
     
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@mutations_bp.route('/match/qpon', methods=['GET'])
+def match_qpon_transactions():
+    """Match Qpon mutations to individual reports by their full billing ID."""
+    try:
+        options = get_mutation_query_options()
+        if options['start_date'] > options['end_date']:
+            return jsonify({'error': 'start_date cannot be after end_date'}), 400
+        page = max(options['page'], 1)
+        per_page = min(max(options['per_page'], 1), 100)
+        query = db.session.query(BankMutation, QponReport).outerjoin(
+            QponReport, BankMutation.platform_code == QponReport.billing_id
+        ).filter(
+            BankMutation.platform_name == 'Qpon',
+            BankMutation.tanggal >= options['start_date'],
+            BankMutation.tanggal <= options['end_date'],
+        )
+        total = query.count()
+        rows = query.order_by(BankMutation.tanggal.desc(), BankMutation.id.desc()).offset(
+            (page - 1) * per_page
+        ).limit(per_page).all()
+        return jsonify({
+            'data': [{
+                'mutation': serialize_bank_mutation(mutation),
+                'report': {
+                    'billing_id': report.billing_id,
+                    'bill_created_at': report.bill_created_at.isoformat() if report.bill_created_at else None,
+                    'outlet_code': report.outlet_code,
+                    'outlet_name': report.outlet_name,
+                    'gross_amount': float(report.gross_amount) if report.gross_amount is not None else None,
+                    'nett_amount': float(report.nett_amount) if report.nett_amount is not None else None,
+                } if report else None,
+            } for mutation, report in rows],
+            'pagination': {
+                'current_page': page,
+                'per_page': per_page,
+                'total_pages': (total + per_page - 1) // per_page,
+                'total_records': total,
+            },
+        }), 200
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 
 @mutations_bp.route('/match/gojek', methods=['GET'])
 def match_gojek_transactions():
