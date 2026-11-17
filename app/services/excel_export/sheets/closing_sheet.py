@@ -344,7 +344,6 @@ class ClosingSheet(BaseSheet):
         self.ws.cell(row=row_start + 1, column=col_start).fill = BLUE_FILL
 
         grab_net_total = self._get_grand_total_with_fallback('Grab_Net') or 0
-        gofood_management_expense = self._get_mpr_gofood_commission_expense()
         grab_management_expense = self._get_closing_grab_management_commission_expense(grab_net_total)
         mp78_income_total = self._get_mp78_mutation_total(mp78_mutations, 'income')
         mp78_expense_total = self._get_mp78_mutation_total(mp78_mutations, 'expense')
@@ -375,7 +374,6 @@ class ClosingSheet(BaseSheet):
         total_expense = (
             sum(float(entry.amount) for entry, _, _ in manual_entries if entry.entry_type == 'expense') +
             mp78_expense_total +
-            gofood_management_expense +
             grab_management_expense
         )
         self.ws.cell(row=row_start + 1, column=col_start + 2, value=total_expense).font = HEADER_FONT
@@ -424,14 +422,6 @@ class ClosingSheet(BaseSheet):
                     col_start,
                     self._get_grab_management_commission_label(),
                     grab_management_expense,
-                )
-                final_i += 1
-            if self._is_mpr_brand() and header == self.MPR_GOJEK_AC_HEADER:
-                self._write_management_commission_row(
-                    label_row + 1,
-                    col_start,
-                    'Gojek Manag MPR',
-                    gofood_management_expense,
                 )
                 final_i += 1
             if self._is_mpr_brand() and header == self.MPR_GRAB_AC_HEADER:
@@ -988,13 +978,6 @@ class ClosingSheet(BaseSheet):
         totals = self.data.get('grand_totals', {})
         return mpr_calc.grabfood_value(totals) * mpr_calc.MPR_GRAB_MANAGEMENT_COMMISSION_RATE
 
-    def _get_mpr_gofood_commission_expense(self):
-        if not self._is_mpr_brand():
-            return 0
-
-        totals = self.data.get('grand_totals', {})
-        return mpr_calc.gofood_value(totals) * mpr_calc.MPR_GRAB_MANAGEMENT_COMMISSION_RATE
-
     def _get_grab_management_commission_label(self):
         if self._is_mpr_brand():
             return 'Grab Manag MPR'
@@ -1147,8 +1130,6 @@ class ClosingSheet(BaseSheet):
 
     def _get_closing_grand_total_income_value_for_label(self, label, header, grab_net_total=None):
         if self._is_mpr_brand():
-            if label == 'Gojek':
-                return self._get_grand_total_with_fallback('Gojek_Net')
             if label == 'Grab':
                 return grab_net_total if grab_net_total is not None else self._get_grand_total_with_fallback('Grab_Net')
 
@@ -1157,6 +1138,9 @@ class ClosingSheet(BaseSheet):
     def _get_closing_grand_total_income_contribution(self, report_type, header, grab_net_total=None):
         if self._is_closing_platform_disabled(header, report_type):
             return 0
+
+        if report_type == 'main' and self._is_mpr_brand() and header == 'Gojek_Mutation':
+            return self._get_mpr_gojek_ac_display_value('main') or 0
 
         if report_type == 'mpr':
             if header == self.TIKTOK_NET_HEADER:
@@ -1225,7 +1209,7 @@ class ClosingSheet(BaseSheet):
 
         if self._is_mpr_brand():
             return [
-                ('Gojek', self.MPR_GOJEK_AC_HEADER, 'main'),
+                ('Gojek (ac)', self.MPR_GOJEK_AC_HEADER, 'main'),
                 ('Grab', self.MPR_GRAB_AC_HEADER, 'main'),
                 ('ShopeeFood', 'Shopee_Mutation', 'main'),
                 ('ShopeePay', 'ShopeePay_Mutation', 'main'),
