@@ -108,7 +108,7 @@ class PukisClosingSheet(BaseSheet):
                 daily_totals[date]['Grab_Net'],
                 daily_totals[date]['Shopee_Net'],
                 daily_totals[date]['Tiktok_Net'],
-                totals['Qpon_Mutation'] if totals.get('Qpon_Mutation') is not None else totals.get('Qpon_Net', 0),  # QPON
+                self._get_qpon_closing_value(totals),  # QPON
                 daily_totals[date].get('Webshop_Net', 0),  # WEBSHOP
                 0,  # TRF
                 jumbo_terjual,
@@ -149,7 +149,7 @@ class PukisClosingSheet(BaseSheet):
             grand_totals.get('Shopee_Net', 0),
             grand_totals.get('Tiktok_Net', 0),
             sum(
-                totals['Qpon_Mutation'] if totals.get('Qpon_Mutation') is not None else totals.get('Qpon_Net', 0)
+                self._get_qpon_closing_value(totals)
                 for totals in daily_totals.values()
             ),
             grand_totals.get('Webshop_Net', 0),
@@ -167,6 +167,11 @@ class PukisClosingSheet(BaseSheet):
         
         # self.ws.append(total_row)
         # self.ws.append(["GRAND TOTAL", None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None])
+
+    @staticmethod
+    def _get_qpon_closing_value(totals):
+        mutation = totals.get('Qpon_Closing_Mutation')
+        return mutation if mutation is not None else totals.get('Qpon_Closing_Net', 0)
 
     def _write_expenses_table(self):
         manual_entries = self.data.get('manual_entries', [])

@@ -103,8 +103,8 @@ class DailyQponMutationTest(TestCase):
     def test_pkb_closing_uses_daily_fallback_in_total(self):
         days = [date(2026, 11, 1), date(2026, 11, 2)]
         daily = {day: _init_daily_total() for day in days}
-        daily[days[0]].update(Qpon_Net=100, Qpon_Mutation=90)
-        daily[days[1]].update(Qpon_Net=200)
+        daily[days[0]].update(Qpon_Net=999, Qpon_Closing_Net=100, Qpon_Closing_Mutation=90)
+        daily[days[1]].update(Qpon_Net=999, Qpon_Closing_Net=200)
         data = {'all_dates': days, 'daily_totals': daily, 'pukis_reports': [],
                 'grand_totals': _calculate_grand_totals(daily)}
         sheet = PukisClosingSheet(Workbook(), data)
