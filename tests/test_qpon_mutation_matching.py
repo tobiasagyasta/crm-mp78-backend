@@ -37,7 +37,7 @@ class QponMutationMatchingTest(TestCase):
         )
         result = import_mutation_report_bytes(csv.encode(), 'account', 'statement.csv')
         self.assertEqual(result['inserted_rows'], 2)
-        db.session.add(QponReport(billing_id='11141319744316180247459',
+        db.session.add(QponReport(billing_id='1319744316180247459',
                                   bill_created_at=datetime(2026, 11, 2),
                                   outlet_code='OUT-1', outlet_name='Outlet', nett_amount=17100))
         db.session.commit()
@@ -47,11 +47,11 @@ class QponMutationMatchingTest(TestCase):
         result = response.get_json()
         self.assertEqual(result['pagination']['total_records'], 2)
         by_id = {item['mutation']['platform_code']: item for item in result['data']}
-        matched = by_id['11141319744316180247459']
+        matched = by_id['1319744316180247459']
         self.assertEqual(matched['mutation']['platform_name'], 'Qpon')
         self.assertEqual(matched['mutation']['transaction_amount'], 17100)
         self.assertEqual(matched['report']['outlet_code'], 'OUT-1')
-        self.assertIsNone(by_id['11141319744316180245983']['report'])
+        self.assertIsNone(by_id['1319744316180245983']['report'])
 
     def test_incomplete_billing_id_is_not_fabricated(self):
         row = ['11/16/2026', 'QPON DIGITAL INDON', '0', '100.00 CR', '1000.00']
@@ -65,6 +65,6 @@ class QponMutationMatchingTest(TestCase):
                '41325.00', 'Qpon11141319744316', '180244318', 'QPON', 'DIGITAL',
                'INDON', '0', '41325.00', 'CR', '1404452002.12']
         parsed = BankMutation.parse_mutation_row(row, 'account')
-        self.assertEqual(parsed['platform_code'], '11141319744316180244318')
+        self.assertEqual(parsed['platform_code'], '1319744316180244318')
         self.assertEqual(parsed['transaction_amount'], 41325)
         self.assertEqual(parsed['transaction_type'], 'CR')

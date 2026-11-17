@@ -371,7 +371,9 @@ class BankMutation(db.Model):
             return None
 
         match = re.search(r'\bQPON\s*(\d+)\s+(\d+)\b', description, re.IGNORECASE)
-        billing_id = ''.join(match.groups()) if match else None
+        billing_id = None
+        if match:
+            billing_id = ''.join(match.groups())[4:] or None
         return BankMutation._parse_statement_mutation_row(normalized_row, 'Qpon', billing_id)
 
     @staticmethod
