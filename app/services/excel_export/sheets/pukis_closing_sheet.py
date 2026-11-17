@@ -20,6 +20,7 @@ class PukisClosingSheet(BaseSheet):
         self._write_data()
         self._write_expenses_table()
         self._apply_styles()
+        self._write_store_id_table()
         self._write_rekening_table()
         auto_fit_columns(self.ws)
 
@@ -254,11 +255,40 @@ class PukisClosingSheet(BaseSheet):
             for cell in row:
                 cell.border = THIN_BORDER
 
+    def _write_store_id_table(self):
+        outlet = self.data['outlet']
+        start_column = self.ws.max_column + 3
+        self.store_id_col_end = start_column + 1
+        rows = [
+            ('Gojek', outlet.store_id_gojek, GOJEK_FILL),
+            ('Grab', outlet.store_id_grab, GRAB_FILL),
+            ('ShopeeFood', outlet.store_id_shopee, SHOPEE_FILL),
+            ('ShopeePay', outlet.store_id_shopee, SHOPEE_FILL),
+        ]
+
+        for column, value in enumerate(('Platform Name', 'Store ID'), start_column):
+            cell = self.ws.cell(row=3, column=column, value=value)
+            cell.font = HEADER_FONT
+            cell.alignment = CENTER_ALIGN
+            cell.fill = BLUE_FILL
+            cell.border = THIN_BORDER
+
+        for row, (label, value, fill) in enumerate(rows, 4):
+            self.ws.row_dimensions[row].height = 18
+            for column, content in enumerate((label, value or '-'), start_column):
+                cell = self.ws.cell(row=row, column=column, value=content)
+                cell.font = HEADER_FONT
+                cell.alignment = CENTER_ALIGN
+                cell.fill = fill
+                cell.border = THIN_BORDER
+
     def _write_rekening_table(self):
         outlet = self.data['outlet']
         row = 3
-        start_column = self.ws.max_column + 3
-        rekening_rows = RekeningInfoService.get_outlet_rekenings(outlet)
+        start_column = self.store_id_col_end + 2
+        rekening_rows = RekeningInfoService.get_outlet_rekenings(
+            outlet, self.data['start_date'], self.data['end_date']
+        )
 
         if not rekening_rows:
             rekening_rows = [
