@@ -8,7 +8,8 @@ from openpyxl import Workbook
 from app.extensions import db
 from app.models.bank_mutations import BankMutation
 from app.services.excel_export.data_service import (
-    _aggregate_qpon_closing, _aggregate_qpon_mutations, _calculate_grand_totals, _init_daily_total,
+    _aggregate_qpon_closing, _aggregate_qpon_mutations, _aggregate_tiktok_closing,
+    _calculate_grand_totals, _init_daily_total,
 )
 from app.services.excel_export.sheets.closing_sheet import ClosingSheet
 from app.services.excel_export.sheets.pukis_closing_sheet import PukisClosingSheet
@@ -110,3 +111,33 @@ class DailyQponMutationTest(TestCase):
         sheet = PukisClosingSheet(Workbook(), data)
         sheet._write_data()
         self.assertEqual([sheet.ws.cell(row, 7).value for row in (1, 2, 3)], [90, 200, 290])
+
+    def test_unshifted_closing_uses_report_date_for_amount_and_mutation(self):
+        days = [date(2026, 11, day) for day in (1, 2, 8)]
+        daily = {day: _init_daily_total() for day in days}
+        reports = [
+            SimpleNamespace(billing_id='matched', bill_created_at=datetime(2026, 11, 1), gross_amount=100),
+            SimpleNamespace(billing_id='missing', bill_created_at=datetime(2026, 11, 2), gross_amount=200),
+        ]
+        db.session.add(BankMutation(rekening_number='1', tanggal=date(2026, 11, 20),
+                                    platform_name='Qpon', platform_code='matched', transaction_amount=90))
+        db.session.commit()
+        _aggregate_qpon_closing(daily, reports, shift_days=0)
+        _aggregate_qpon_mutations(daily, reports, closing=True, shift_days=0)
+        data = {'all_dates': days, 'daily_totals': daily, 'pukis_reports': [],
+                'grand_totals': _calculate_grand_totals(daily)}
+        sheet = PukisClosingSheet(Workbook(), data)
+        sheet._write_data()
+        self.assertEqual([sheet.ws.cell(row, 7).value for row in (1, 2, 3, 4)], [90, 200, 0, 290])
+
+    def test_tiktok_closing_can_use_original_or_shifted_date(self):
+        original, shifted = date(2026, 11, 1), date(2026, 11, 8)
+        report = SimpleNamespace(order_time=datetime(2026, 11, 1), net_amount=90, gross_amount=100)
+        for shift_days, expected in ((0, original), (7, shifted)):
+            with self.subTest(shift_days=shift_days):
+                daily = {day: _init_daily_total() for day in (original, shifted)}
+                _aggregate_tiktok_closing(daily, [report], shift_days=shift_days)
+                self.assertEqual(daily[expected]['Tiktok_Closing_Net'], 90)
+                self.assertEqual(daily[expected]['Tiktok_Closing_Gross'], 100)
+                other = shifted if expected == original else original
+                self.assertEqual(daily[other]['Tiktok_Closing_Net'], 0)

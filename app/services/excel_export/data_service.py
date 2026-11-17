@@ -111,10 +111,17 @@ def get_report_data(outlet_code: str, start_date: datetime, end_date: datetime) 
     shopeepay_reports = ShopeepayReport.query.filter(ShopeepayReport.outlet_code == outlet_code, ShopeepayReport.create_time >= start_date, ShopeepayReport.create_time <= end_date_inclusive).all()
     tiktok_reports = TiktokReport.query.filter(TiktokReport.outlet_code == outlet_code, TiktokReport.order_time >= start_date, TiktokReport.order_time <= end_date_inclusive).all()
     tiktok_closing_reports = []
+    closing_shift_days = 7 if (outlet.brand or '').strip().upper() in ('MP78', 'MPR') else 0
     if mpr_calc.ENABLE_CLOSING_TIKTOK_SETTLEMENT_SHIFT:
-        tiktok_closing_reports = TiktokReport.query.filter(TiktokReport.outlet_code == outlet_code, TiktokReport.order_time >= start_date - timedelta(days=7), TiktokReport.order_time <= end_date_inclusive - timedelta(days=7)).all()
+        if closing_shift_days:
+            tiktok_closing_reports = TiktokReport.query.filter(TiktokReport.outlet_code == outlet_code, TiktokReport.order_time >= start_date - timedelta(days=closing_shift_days), TiktokReport.order_time <= end_date_inclusive - timedelta(days=closing_shift_days)).all()
+        else:
+            tiktok_closing_reports = tiktok_reports
     qpon_reports = QponReport.query.filter(QponReport.outlet_code == outlet_code, QponReport.bill_created_at >= start_date, QponReport.bill_created_at <= end_date_inclusive).all()
-    qpon_closing_reports = QponReport.query.filter(QponReport.outlet_code == outlet_code, QponReport.bill_created_at >= start_date - timedelta(days=7), QponReport.bill_created_at <= end_date_inclusive - timedelta(days=7)).all()
+    qpon_closing_shift = closing_shift_days
+    qpon_closing_reports = qpon_reports
+    if qpon_closing_shift:
+        qpon_closing_reports = QponReport.query.filter(QponReport.outlet_code == outlet_code, QponReport.bill_created_at >= start_date - timedelta(days=qpon_closing_shift), QponReport.bill_created_at <= end_date_inclusive - timedelta(days=qpon_closing_shift)).all()
     webshop_reports = WebshopReport.query.filter(WebshopReport.outlet_code == outlet_code, WebshopReport.created_at >= start_date, WebshopReport.created_at <= end_date_inclusive).all()
     uv_reports = VoucherReport.query.filter(VoucherReport.outlet_code == outlet_code, VoucherReport.order_date >= start_date, VoucherReport.order_date <= end_date_inclusive).all()
     cash_income_reports = CashReport.query.filter(CashReport.outlet_code == outlet_code, CashReport.type == 'income', CashReport.tanggal >= start_date, CashReport.tanggal <= end_date_inclusive).all()
@@ -131,11 +138,11 @@ def get_report_data(outlet_code: str, start_date: datetime, end_date: datetime) 
     _aggregate_shopee(daily_totals, shopee_reports)
     _aggregate_shopeepay(daily_totals, shopeepay_reports)
     _aggregate_tiktok(daily_totals, tiktok_reports)
-    _aggregate_tiktok_closing(daily_totals, tiktok_closing_reports)
+    _aggregate_tiktok_closing(daily_totals, tiktok_closing_reports, shift_days=closing_shift_days)
     _aggregate_qpon(daily_totals, qpon_reports)
     _aggregate_qpon_mutations(daily_totals, qpon_reports)
-    _aggregate_qpon_closing(daily_totals, qpon_closing_reports)
-    _aggregate_qpon_mutations(daily_totals, qpon_closing_reports, closing=True)
+    _aggregate_qpon_closing(daily_totals, qpon_closing_reports, shift_days=qpon_closing_shift)
+    _aggregate_qpon_mutations(daily_totals, qpon_closing_reports, closing=True, shift_days=qpon_closing_shift)
     _aggregate_webshop(daily_totals, webshop_reports)
     _aggregate_cash(daily_totals, cash_income_reports, cash_expense_reports)
 
@@ -297,9 +304,9 @@ def _aggregate_tiktok(daily_totals, reports):
         if report.settlement_time:
             daily_totals[date]['Tiktok_Settlement_Time'].add(report.settlement_time.date())
 
-def _aggregate_tiktok_closing(daily_totals, reports):
+def _aggregate_tiktok_closing(daily_totals, reports, shift_days=7):
     for report in reports:
-        date = report.order_time.date() + timedelta(days=7)
+        date = report.order_time.date() + timedelta(days=shift_days)
         if date not in daily_totals:
             continue
 
@@ -319,8 +326,8 @@ def _aggregate_qpon(daily_totals, reports):
         daily_totals[date]['Qpon_Net'] += qpon_amount
         daily_totals[date]['Qpon_Gross'] += float(report.gross_amount or 0)
 
-def _aggregate_qpon_mutations(daily_totals, reports, closing=False):
-    offset = timedelta(days=7 if closing else 0)
+def _aggregate_qpon_mutations(daily_totals, reports, closing=False, shift_days=7):
+    offset = timedelta(days=shift_days if closing else 0)
     reports_by_billing_id = {
         report.billing_id: report
         for report in reports
@@ -345,12 +352,12 @@ def _aggregate_qpon_mutations(daily_totals, reports, closing=False):
             if not closing:
                 totals['Qpon_Difference'] = totals[mutation_key] - totals.get('Qpon_Net', 0)
 
-def _aggregate_qpon_closing(daily_totals, reports):
+def _aggregate_qpon_closing(daily_totals, reports, shift_days=7):
     for report in reports:
         if not report.bill_created_at:
             continue
 
-        date = report.bill_created_at.date() + timedelta(days=7)
+        date = report.bill_created_at.date() + timedelta(days=shift_days)
         if date not in daily_totals:
             continue
 
