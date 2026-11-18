@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 from collections import defaultdict
-from decimal import Decimal
+from app.extensions import db
 from app.models.outlet import Outlet
 from app.models.gojek_reports import GojekReport
 from app.models.shopee_reports import ShopeeReport
@@ -31,7 +31,7 @@ EXCLUDE_COMPLETED_GRAB_REPORTS = False
 COMPLETED_GRAB_STATUSES = ('Selesai', 'Completed')
 SHOW_MUTATIONS_WITHOUT_PLATFORM_DATA = True
 # True: match Grab bank mutations only against completed disbursements.
-# False: use the legacy Grab Net-based mutation matcher.
+# False: fall back to the legacy matcher on dates without a disbursement.
 GRAB_DISBURSEMENT_FIRST_MATCHING = False
 
 def _grab_report_datetime_col():
@@ -96,7 +96,7 @@ def _get_grab_disbursements(store_id, start_date, end_date):
 
 
 def _match_grab_disbursement_mutations(daily_totals, reports):
-    """Match unique closest payouts and credits across all stores sharing an account."""
+    """Persist unambiguous exact one-to-one matches across shared accounts."""
     if not reports:
         return
     accounts = {report.rekening_id: report.rekening.rekening_number for report in reports}
@@ -107,7 +107,7 @@ def _match_grab_disbursement_mutations(daily_totals, reports):
         GrabDisbursement.transfer_date >= datetime.combine(first, datetime.min.time()),
         GrabDisbursement.transfer_date < datetime.combine(last + timedelta(days=1), datetime.min.time()),
         func.lower(func.trim(GrabDisbursement.status)) == 'completed',
-    ).all())
+    ).order_by(GrabDisbursement.id).with_for_update().all())
     mutations = BankMutation.query.filter(
         BankMutation.platform_name == 'Grab',
         BankMutation.rekening_number.in_(list(accounts.values())),
@@ -115,7 +115,7 @@ def _match_grab_disbursement_mutations(daily_totals, reports):
         BankMutation.tanggal <= last,
         or_(BankMutation.transaction_type.is_(None), func.upper(func.trim(BankMutation.transaction_type)) == 'CR'),
         BankMutation.transaction_amount.isnot(None),
-    ).all()
+    ).order_by(BankMutation.id).with_for_update().all()
 
     groups = defaultdict(lambda: [[], []])
     for report in competitors:
@@ -123,30 +123,33 @@ def _match_grab_disbursement_mutations(daily_totals, reports):
     for mutation in mutations:
         groups[(mutation.rekening_number, mutation.tanggal)][1].append(mutation)
 
-    matched = {}
-    tolerance = Decimal('10000')
+    mutation_by_id = {mutation.id: mutation for mutation in mutations}
+    matched = {p.id: mutation_by_id[p.mutation_id] for p in competitors
+               if p.mutation_id in mutation_by_id}
+    linked_ids = {p.mutation_id for p in competitors if p.mutation_id is not None}
+    changed = False
     for payouts, credits in groups.values():
-        # Re-evaluate after each unambiguous mutual closest match; ties are unsafe.
-        while payouts and credits:
-            distances = {(p.id, m.id): abs(p.net_amount - m.transaction_amount)
-                         for p in payouts for m in credits}
-            pairs = []
-            for payout in payouts:
-                minimum = min(distances[payout.id, m.id] for m in credits)
-                candidates = [m for m in credits if distances[payout.id, m.id] == minimum]
-                if minimum > tolerance or len(candidates) != 1:
-                    continue
-                credit = candidates[0]
-                reverse_minimum = min(distances[p.id, credit.id] for p in payouts)
-                reverse = [p for p in payouts if distances[p.id, credit.id] == reverse_minimum]
-                if reverse_minimum == minimum and len(reverse) == 1:
-                    pairs.append((minimum, payout.id, credit.id, payout, credit))
-            if not pairs:
-                break
-            _, _, _, payout, credit = min(pairs, key=lambda item: item[:3])
+        payouts_by_amount = defaultdict(list)
+        credits_by_amount = defaultdict(list)
+        for payout in payouts:
+            if payout.mutation_id is None:
+                payouts_by_amount[payout.net_amount].append(payout)
+        for credit in credits:
+            if credit.id not in linked_ids and not (credit.platform_code or '').strip():
+                credits_by_amount[credit.transaction_amount].append(credit)
+        for amount, candidates in payouts_by_amount.items():
+            eligible = credits_by_amount.get(amount, [])
+            if len(candidates) != 1 or len(eligible) != 1:
+                continue
+            payout, credit = candidates[0], eligible[0]
+            payout.mutation_id = credit.id
+            credit.platform_code = payout.store_id
+            linked_ids.add(credit.id)
             matched[payout.id] = credit
-            payouts.remove(payout)
-            credits.remove(credit)
+            changed = True
+
+    if changed:
+        db.session.commit()
 
     for report in reports:
         mutation = matched.get(report.id)
@@ -217,8 +220,7 @@ def get_report_data(outlet_code: str, start_date: datetime, end_date: datetime) 
     _aggregate_uv(daily_totals, uv_reports)
     grab_totals = _aggregate_grab(daily_totals, grab_reports, outlet.brand)
     _aggregate_grab_disbursements(daily_totals, grab_disbursements)
-    if GRAB_DISBURSEMENT_FIRST_MATCHING:
-        _match_grab_disbursement_mutations(daily_totals, grab_disbursements)
+    _match_grab_disbursement_mutations(daily_totals, grab_disbursements)
     _aggregate_shopee(daily_totals, shopee_reports)
     _aggregate_shopeepay(daily_totals, shopeepay_reports)
     _aggregate_tiktok(daily_totals, tiktok_reports)
@@ -493,8 +495,13 @@ def _match_mutations(daily_totals, outlet_code, start_date, end_date):
         try:
             matcher = TransactionMatcher(platform)
             mutations = matcher.get_mutations_query(start_date.date(), end_date.date()).all()
+            if platform == 'grab':
+                mutations = [mutation for mutation in mutations
+                             if not (mutation.platform_code or '').strip()]
             match_context = matcher.build_match_context(mutations=mutations, outlet_codes=[outlet_code])
             for date, totals in daily_totals.items():
+                if platform == 'grab' and totals.get('Grab_Disbursement') is not None:
+                    continue
                 net_key = f'{platform.capitalize()}_Net' if platform != 'shopeepay' else 'ShopeePay_Net'
                 mutation_key = f'{platform.capitalize()}_Mutation' if platform != 'shopeepay' else 'ShopeePay_Mutation'
                 diff_key = f'{platform.capitalize()}_Difference' if platform != 'shopeepay' else 'ShopeePay_Difference'

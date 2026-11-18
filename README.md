@@ -18,15 +18,19 @@ The daily sheet and its preview show completed disbursements next to Grab Net.
 They are matched by Grab store ID and summed on the transaction-date row for
 the following calendar day's transfer date (H+1). A blank means no matching
 completed disbursement was found; these are not bank-statement mutations.
-The adjacent Grab Mutation column shows matched bank credits on the transfer
-date and account, using the closest amount within Rp10,000. Ambiguous matches
-are left blank and a bank mutation cannot be assigned to multiple payouts.
+Apply `sql/20261120_grab_disbursement_mutation_link.sql` before using
+disbursement-based matching. The adjacent Grab Mutation column shows bank
+credits with the exact same amount, account and transfer date. Unambiguous
+one-to-one matches are saved when the sheet or preview is generated: the
+mutation's platform code becomes the Grab store ID, and the payout stores the
+mutation ID. Already coded mutations and ambiguous matches are left unchanged.
 If only some payouts match, the column contains only their matched credits.
 `GRAB_DISBURSEMENT_FIRST_MATCHING` in
-`app/services/excel_export/data_service.py` defaults to `True`: Grab mutation
-matching only runs when completed disbursements are available. Set it to
-`False` to use the legacy Grab Net-based matcher instead. The two matchers do
-not run together; the Grab Pencairan column remains available in both modes.
+`app/services/excel_export/data_service.py` is currently `False`: the legacy
+Grab Net-based matcher is allowed as a fallback on dates
+without a completed disbursement. Previously coded Grab mutations are excluded
+from that fallback. Set it to `True` to disable the fallback. The Grab
+Pencairan column remains available in both modes.
 
 🚀 A Flask-based REST API for authentication and user management in a CRM system.
 

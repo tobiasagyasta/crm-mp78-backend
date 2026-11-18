@@ -20,6 +20,7 @@ from app.models.webshop_report import WebshopReport
 from app.extensions import db
 import sys
 from app.services.consolidation_service import update_daily_total_for_outlet
+from app.services.rekening_info_service import RekeningInfoService
 
 import calendar
 from datetime import datetime
@@ -1900,6 +1901,7 @@ def get_reports_totals():
         cash_query = CashReport.query
         manual_entries_query = ManualEntry.query
         mpr_totals = None
+        rekenings = {'outlet': [], 'mpr': []}
         # Return error if outlet_code is not provided
         if not outlet_code:
             return jsonify({'error': 'outlet_code is required'}), 400
@@ -1989,9 +1991,27 @@ def get_reports_totals():
 
         if outlet_code.upper() != "ALL":
             outlet, mapping = get_mpr_mapping_for_outlet(outlet_code)
+            rekening_start = start_date.date() if start_date else None
+            rekening_end = end_date_inclusive.date() if end_date_inclusive else None
+
+            def serialize_rekenings(rekening_outlet):
+                return [
+                    {
+                        'platform_name': row.platform_name,
+                        'rekening_name': row.rekening_name,
+                        'rekening_number': row.rekening_number,
+                    }
+                    for row in RekeningInfoService.get_outlet_rekenings(
+                        rekening_outlet, rekening_start, rekening_end
+                    )
+                ]
+
+            rekenings['outlet'] = serialize_rekenings(outlet)
             mpr_outlet_code = None
             if mapping:
                 mpr_outlet_code = mapping.mpr_outlet_code
+                mpr_outlet = Outlet.query.filter_by(outlet_code=mpr_outlet_code).first()
+                rekenings['mpr'] = serialize_rekenings(mpr_outlet)
             elif outlet and mpr_calc.is_mpr_brand(outlet.brand):
                 mpr_outlet_code = outlet.outlet_code
 
@@ -2032,6 +2052,7 @@ def get_reports_totals():
         response = {
             'outlet_code': outlet_code,
             'brand_name': brand_name,
+            'rekenings': rekenings,
             'period': {
                 'start_date': start_date_param,
                 'end_date': end_date_param

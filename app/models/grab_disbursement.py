@@ -14,6 +14,7 @@ class GrabDisbursement(db.Model):
     net_amount = db.Column(db.Numeric(18, 2), nullable=False)
     status = db.Column(db.String, nullable=False)
     rekening_id = db.Column(db.Integer, db.ForeignKey('rekenings.id'), nullable=False, index=True)
+    mutation_id = db.Column(db.Integer, db.ForeignKey('bank_mutations.id', ondelete='SET NULL'), unique=True, nullable=True)
     account_suffix = db.Column(db.String(4), nullable=False)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 

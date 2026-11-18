@@ -102,7 +102,7 @@ class DailyGrabDisbursementTest(TestCase):
                              transfer_date=transfer, net_amount=200000, status='Completed',
                              rekening_id=1, account_suffix='0385'),
             BankMutation(rekening_number='1230385', tanggal=transfer.date(), platform_name='Grab',
-                         transaction_type='CR', transaction_amount=100100),
+                         transaction_type='CR', transaction_amount=100000),
             BankMutation(rekening_number='1230385', tanggal=transfer.date(), platform_name='Grab',
                          transaction_type='CR', transaction_amount=200000),
             BankMutation(rekening_number='wrong', tanggal=transfer.date(), platform_name='Grab',
@@ -118,7 +118,13 @@ class DailyGrabDisbursementTest(TestCase):
         daily[day]['Grab_Net'] = 90000
         reports = _get_grab_disbursements('store', datetime(2026, 11, 30), datetime(2026, 11, 30))
         _match_grab_disbursement_mutations(daily, reports)
-        self.assertEqual(daily[day]['Grab_Mutation'], 100100)
+        self.assertEqual(daily[day]['Grab_Mutation'], 100000)
+        saved = GrabDisbursement.query.filter_by(disbursement_id='a').one()
+        self.assertIsNotNone(saved.mutation_id)
+        self.assertEqual(db.session.get(BankMutation, saved.mutation_id).platform_code, 'store')
+        daily_repeat = {day: _init_daily_total()}
+        _match_grab_disbursement_mutations(daily_repeat, reports)
+        self.assertEqual(daily_repeat[day]['Grab_Mutation'], 100000)
         data = {'outlet': SimpleNamespace(brand='MP78', outlet_name_gojek='Outlet'),
                 'start_date': day, 'end_date': day, 'all_dates': [day],
                 'daily_totals': daily, 'grand_totals': _calculate_grand_totals(daily),
@@ -128,11 +134,11 @@ class DailyGrabDisbursementTest(TestCase):
         headers = sheet._get_headers()
         col = headers.index('Grab Mutation') + 1
         self.assertEqual(col, headers.index('Grab Pencairan') + 2)
-        self.assertEqual(sheet.ws.cell(6, col).value, 100100)
-        self.assertEqual(sheet.build_preview()['totals']['Grab Mutation'], 100100)
+        self.assertEqual(sheet.ws.cell(6, col).value, 100000)
+        self.assertEqual(sheet.build_preview()['totals']['Grab Mutation'], 100000)
         self.assertEqual(headers[col], 'Grab Difference')
-        self.assertEqual(sheet.ws.cell(6, col + 1).value, 10100)
-        self.assertEqual(sheet.build_preview()['totals']['Grab Difference'], 10100)
+        self.assertEqual(sheet.ws.cell(6, col + 1).value, 10000)
+        self.assertEqual(sheet.build_preview()['totals']['Grab Difference'], 10000)
 
     def test_ambiguous_and_distant_matches_stay_blank(self):
         transfer = datetime(2026, 12, 1)
@@ -152,3 +158,22 @@ class DailyGrabDisbursementTest(TestCase):
         reports = _get_grab_disbursements('store', datetime(2026, 11, 30), datetime(2026, 11, 30))
         _match_grab_disbursement_mutations(daily, reports)
         self.assertIsNone(daily[day]['Grab_Mutation'])
+
+    def test_near_amount_and_preassigned_code_are_not_matched(self):
+        transfer = datetime(2026, 12, 1)
+        db.session.add(GrabDisbursement(disbursement_id='a', store_id='store', store_name='Store',
+                                       transfer_date=transfer, net_amount=100000, status='Completed',
+                                       rekening_id=1, account_suffix='0385'))
+        db.session.add_all([
+            BankMutation(rekening_number='1230385', tanggal=transfer.date(), platform_name='Grab',
+                         transaction_type='CR', transaction_amount=100001),
+            BankMutation(rekening_number='1230385', tanggal=transfer.date(), platform_name='Grab',
+                         transaction_type='CR', transaction_amount=100000, platform_code='other'),
+        ])
+        db.session.commit()
+        day = date(2026, 11, 30)
+        daily = {day: _init_daily_total()}
+        reports = _get_grab_disbursements('store', datetime(2026, 11, 30), datetime(2026, 11, 30))
+        _match_grab_disbursement_mutations(daily, reports)
+        self.assertIsNone(daily[day]['Grab_Mutation'])
+        self.assertIsNone(reports[0].mutation_id)
