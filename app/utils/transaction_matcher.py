@@ -1,4 +1,5 @@
 from datetime import timedelta
+from decimal import Decimal
 from typing import List, Dict, Tuple, Optional
 from collections import defaultdict
 import logging
@@ -212,11 +213,19 @@ class TransactionMatcher:
         match_date = daily_total.date + timedelta(days=self.config['days_offset'])
         
         if self.platform == 'grab':
-            # Match only by date and amount with tolerance
-            mutation = next(
-                (m for m in context['mutations_by_date'].get(match_date, [])
-                if self._match_grab(m.transaction_amount or 0.0, daily_total.total_net)),
-                None
+            # Prefer an exact amount, then the closest within the existing
+            # tolerance. ID breaks ties deterministically.
+            amount = Decimal(str(daily_total.total_net))
+            candidates = [
+                m for m in context['mutations_by_date'].get(match_date, [])
+                if m.transaction_amount is not None
+                and abs(Decimal(str(m.transaction_amount)) - amount) <= Decimal('10000')
+            ]
+            mutation = min(
+                candidates,
+                key=lambda m: (abs(Decimal(str(m.transaction_amount)) - amount),
+                               m.id if m.id is not None else float('inf')),
+                default=None,
             )
            
             if mutation:
