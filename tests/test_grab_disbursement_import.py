@@ -90,16 +90,18 @@ class GrabDisbursementImportTest(TestCase):
         self.assertEqual(GrabDisbursement.query.count(), 0)
         self.assertIsNone(db.session.get(BankMutation, mutation_id).platform_code)
 
-    def test_upload_does_not_guess_when_two_payouts_share_amount(self):
+    def test_upload_matches_one_when_two_payouts_share_amount(self):
         mutation = BankMutation(rekening_number='123450385', tanggal=date(2026, 11, 11),
                                 platform_name='Grab', transaction_type='CR', transaction_amount=463674)
         db.session.add(mutation)
         db.session.commit()
         content = HEADER + ROW.format(id='SID1', suffix='0385') + ROW.format(id='SID2', suffix='0385')
         result = import_grab_disbursement_bytes(content.encode())
-        self.assertEqual(result['matched_disbursements'], 0)
-        self.assertIsNone(mutation.platform_code)
-        self.assertTrue(all(report.mutation_id is None for report in GrabDisbursement.query.all()))
+        self.assertEqual(result['matched_disbursements'], 1)
+        self.assertEqual(mutation.platform_code, 'store-id')
+        reports = GrabDisbursement.query.order_by(GrabDisbursement.id).all()
+        self.assertEqual(reports[0].mutation_id, mutation.id)
+        self.assertIsNone(reports[1].mutation_id)
 
     def test_ambiguous_suffix_uses_outlet_account(self):
         db.session.add_all([

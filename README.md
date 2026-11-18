@@ -23,11 +23,13 @@ the following calendar day's transfer date (H+1). A blank means no matching
 completed disbursement was found; these are not bank-statement mutations.
 Apply `sql/20261120_grab_disbursement_mutation_link.sql` before using
 disbursement-based matching. The adjacent Grab Mutation column shows bank
-credits with the exact same amount, account and transfer date. Unambiguous
-one-to-one matches are saved during the disbursement import when bank mutations
+credits with the exact same amount, account and transfer date. One-to-one
+matches are saved during the disbursement import when bank mutations
 are already available, or when the sheet or preview is generated otherwise: the
 mutation's platform code becomes the Grab store ID, and the payout stores the
-mutation ID. Already coded mutations and ambiguous matches are left unchanged.
+mutation ID. Already coded mutations are left unchanged. Identical candidates
+are paired in ID order; if different stores have identical payouts, this
+assignment is arbitrary because the bank data cannot distinguish them.
 If only some payouts match, the column contains only their matched credits.
 `GRAB_DISBURSEMENT_FIRST_MATCHING` in
 `app/services/excel_export/data_service.py` is currently `False`: the legacy

@@ -127,7 +127,7 @@ def import_grab_disbursement_bytes(file_bytes, import_job_id=None, issues=None):
     db.session.flush()
     # Use the same matcher as sheets, but let the worker commit the import and
     # matching together. Match only after all rows have been inserted so
-    # duplicate-amount payouts in this file can be detected as ambiguous.
+    # duplicate-amount payouts in this file can be matched one-to-one.
     from app.services.excel_export.data_service import _match_grab_disbursement_mutations
     matched_disbursements = _match_grab_disbursement_mutations({}, inserted_reports, commit=False)
     return {

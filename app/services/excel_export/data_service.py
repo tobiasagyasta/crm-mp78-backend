@@ -96,7 +96,7 @@ def _get_grab_disbursements(store_id, start_date, end_date):
 
 
 def _match_grab_disbursement_mutations(daily_totals, reports, commit=True):
-    """Persist unambiguous exact one-to-one matches across shared accounts."""
+    """Persist exact one-to-one matches across shared accounts."""
     if not reports:
         return 0
     accounts = {report.rekening_id: report.rekening.rekening_number for report in reports}
@@ -153,14 +153,14 @@ def _match_grab_disbursement_mutations(daily_totals, reports, commit=True):
                 credits_by_amount[credit.transaction_amount].append(credit)
         for amount, candidates in payouts_by_amount.items():
             eligible = credits_by_amount.get(amount, [])
-            if len(candidates) != 1 or len(eligible) != 1:
-                continue
-            payout, credit = candidates[0], eligible[0]
-            payout.mutation_id = credit.id
-            credit.platform_code = payout.store_id
-            linked_ids.add(credit.id)
-            matched[payout.id] = credit
-            changed = True
+            # Both queries are ordered by ID, so equal candidates are paired
+            # consistently and no mutation or payout is reused.
+            for payout, credit in zip(candidates, eligible):
+                payout.mutation_id = credit.id
+                credit.platform_code = payout.store_id
+                linked_ids.add(credit.id)
+                matched[payout.id] = credit
+                changed = True
 
     if changed and commit:
         db.session.commit()

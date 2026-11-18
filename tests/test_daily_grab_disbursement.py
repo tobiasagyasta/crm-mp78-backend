@@ -140,7 +140,7 @@ class DailyGrabDisbursementTest(TestCase):
         self.assertEqual(sheet.ws.cell(6, col + 1).value, 10000)
         self.assertEqual(sheet.build_preview()['totals']['Grab Difference'], 10000)
 
-    def test_ambiguous_and_distant_matches_stay_blank(self):
+    def test_duplicate_payouts_share_no_mutation(self):
         transfer = datetime(2026, 12, 1)
         for identifier, store in [('a', 'store'), ('b', 'other')]:
             db.session.add(GrabDisbursement(disbursement_id=identifier, store_id=store, store_name='Store',
@@ -157,7 +157,31 @@ class DailyGrabDisbursementTest(TestCase):
         daily = {day: _init_daily_total()}
         reports = _get_grab_disbursements('store', datetime(2026, 11, 30), datetime(2026, 11, 30))
         _match_grab_disbursement_mutations(daily, reports)
-        self.assertIsNone(daily[day]['Grab_Mutation'])
+        self.assertEqual(daily[day]['Grab_Mutation'], 100000)
+        payouts = GrabDisbursement.query.order_by(GrabDisbursement.id).all()
+        self.assertIsNotNone(payouts[0].mutation_id)
+        self.assertIsNone(payouts[1].mutation_id)
+        self.assertEqual(db.session.get(BankMutation, payouts[0].mutation_id).platform_code, 'store')
+
+    def test_duplicate_credits_use_one_per_payout(self):
+        transfer = datetime(2026, 12, 1)
+        for identifier, store in [('a', 'store'), ('b', 'other')]:
+            db.session.add(GrabDisbursement(disbursement_id=identifier, store_id=store, store_name='Store',
+                                           transfer_date=transfer, net_amount=100000, status='Completed',
+                                           rekening_id=1, account_suffix='0385'))
+        for _ in range(2):
+            db.session.add(BankMutation(rekening_number='1230385', tanggal=transfer.date(),
+                                        platform_name='Grab', transaction_type='CR', transaction_amount=100000))
+        db.session.commit()
+        day = date(2026, 11, 30)
+        daily = {day: _init_daily_total()}
+        reports = _get_grab_disbursements('store', datetime(2026, 11, 30), datetime(2026, 11, 30))
+        _match_grab_disbursement_mutations(daily, reports)
+        payouts = GrabDisbursement.query.order_by(GrabDisbursement.id).all()
+        self.assertEqual(len({p.mutation_id for p in payouts}), 2)
+        self.assertTrue(all(p.mutation_id is not None for p in payouts))
+        self.assertEqual([db.session.get(BankMutation, p.mutation_id).platform_code for p in payouts],
+                         ['store', 'other'])
 
     def test_near_amount_and_preassigned_code_are_not_matched(self):
         transfer = datetime(2026, 12, 1)
