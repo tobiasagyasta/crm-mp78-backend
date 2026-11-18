@@ -10,6 +10,9 @@ class TiktokReport(db.Model):
     outlet_code = db.Column(db.String, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.now)
     outlet_order_id = db.Column(db.String, nullable=False)
+    __table_args__ = (
+        db.Index('uq_tiktok_reports_outlet_order_id_trimmed', db.func.trim(outlet_order_id), unique=True),
+    )
     store_name = db.Column(db.String, nullable=True)
     order_time = db.Column(db.DateTime, nullable=False)
     settlement_time = db.Column(db.DateTime, nullable=True)

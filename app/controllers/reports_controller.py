@@ -1036,6 +1036,7 @@ def upload_report_tiktok():
         total_reports = 0
         skipped_reports = 0
         debug_skipped = []
+        seen_order_ids = set()
 
         for file in files:
             file_contents = file.read().decode('utf-8')
@@ -1054,17 +1055,13 @@ def upload_report_tiktok():
 
                 parsed = TiktokReport.parse_tiktok_row(row, header)
 
-                if parsed:
-                     # Duplicate check: adjust fields as needed for your business logic
-                    exists = TiktokReport.query.filter_by(
-                        store_name=parsed['store_name'],
-                        outlet_order_id=parsed['outlet_order_id'],
-                        order_time=parsed['order_time'],
-                        settlement_time = parsed['settlement_time'],
-                        gross_amount=parsed['gross_amount'],
-                        net_amount=parsed['net_amount']
+                if parsed and parsed.get('outlet_order_id', '').strip():
+                    parsed['outlet_order_id'] = parsed['outlet_order_id'].strip()
+                    order_id = parsed['outlet_order_id']
+                    exists = db.session.query(TiktokReport.id).filter(
+                        db.func.trim(TiktokReport.outlet_order_id) == order_id
                     ).first()
-                    if exists:
+                    if order_id in seen_order_ids or exists:
                         skipped_reports += 1
                         debug_skipped.append({
                             'row_number': idx + 2,
@@ -1074,12 +1071,13 @@ def upload_report_tiktok():
                         continue
                     report = TiktokReport(**parsed)
                     reports.append(report)
+                    seen_order_ids.add(order_id)
                     total_reports += 1
                 else:
                     skipped_reports += 1
                     debug_skipped.append({
                         'row_number': idx + 2,
-                        'reason': 'Parse failed or outlet not found',
+                        'reason': 'Parse failed or item order ID missing',
                         'row': row
                     })
 

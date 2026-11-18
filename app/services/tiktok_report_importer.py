@@ -5,6 +5,7 @@ from app.extensions import db
 from app.models.import_job import ImportJob
 from app.models.tiktok_reports import TiktokReport
 from app.services.import_job_issues import IssueCollector
+from sqlalchemy import func
 
 
 def _chunks(values, size=1000):
@@ -14,14 +15,7 @@ def _chunks(values, size=1000):
 
 
 def _duplicate_key(parsed):
-    return (
-        parsed['store_name'],
-        parsed['outlet_order_id'],
-        parsed['order_time'],
-        parsed['settlement_time'],
-        float(parsed['gross_amount'] or 0),
-        float(parsed['net_amount'] or 0),
-    )
+    return parsed['outlet_order_id'].strip()
 
 
 def _update_import_job_progress(import_job_id, **values):
@@ -41,28 +35,10 @@ def _load_existing_keys(outlet_order_ids):
     existing_keys = set()
 
     for batch in _chunks(outlet_order_ids):
-        rows = db.session.query(
-            TiktokReport.store_name,
-            TiktokReport.outlet_order_id,
-            TiktokReport.order_time,
-            TiktokReport.settlement_time,
-            TiktokReport.gross_amount,
-            TiktokReport.net_amount,
-        ).filter(
-            TiktokReport.outlet_order_id.in_(batch)
+        rows = db.session.query(TiktokReport.outlet_order_id).filter(
+            func.trim(TiktokReport.outlet_order_id).in_(batch)
         ).all()
-
-        existing_keys.update(
-            (
-                store_name,
-                outlet_order_id,
-                order_time,
-                settlement_time,
-                float(gross_amount or 0),
-                float(net_amount or 0),
-            )
-            for store_name, outlet_order_id, order_time, settlement_time, gross_amount, net_amount in rows
-        )
+        existing_keys.update(order_id.strip() for (order_id,) in rows)
 
     return existing_keys
 
@@ -158,7 +134,8 @@ def import_tiktok_report_bytes(file_bytes, import_job_id=None, batch_size=1000, 
             issues.record(row_number, 'OUTLET_NOT_FOUND', 'No outlet matches TikTok code', row,
                           context={'tiktok_code': row[-1] if row else None})
             continue
-        if not parsed.get('outlet_order_id'):
+        parsed['outlet_order_id'] = str(parsed.get('outlet_order_id') or '').strip()
+        if not parsed['outlet_order_id']:
             skipped_reports += 1
             issues.record(row_number, 'MISSING_REQUIRED_FIELD', 'Item order ID is missing', row,
                           field_name='Item order ID')
