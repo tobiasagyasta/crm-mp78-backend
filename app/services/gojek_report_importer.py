@@ -8,6 +8,7 @@ from app.models.import_job import ImportJob
 from app.models.outlet import Outlet
 from app.services.consolidation_service import update_daily_total_for_outlet
 from app.services.import_job_issues import IssueCollector
+from app.services.report_outlet_matcher import ReportOutletMatcher
 
 
 def _clean_identifier(value):
@@ -98,8 +99,7 @@ def import_gojek_report_bytes(file_bytes, import_job_id=None, issues=None):
     )
 
     outlets = Outlet.query.all()
-    outlets_by_store_id = {outlet.store_id_gojek: outlet for outlet in outlets if outlet.store_id_gojek}
-    outlets_by_name = {outlet.outlet_name_gojek: outlet for outlet in outlets if outlet.outlet_name_gojek}
+    outlet_matcher = ReportOutletMatcher(outlets, 'gojek')
 
     transaction_references = set()
     transaction_ids = set()
@@ -124,11 +124,7 @@ def import_gojek_report_bytes(file_bytes, import_job_id=None, issues=None):
         if merchant_name and merchant_id:
             store_id_map[merchant_name] = merchant_id
 
-        outlet = None
-        if merchant_id:
-            outlet = outlets_by_store_id.get(merchant_id)
-        if not outlet and merchant_name:
-            outlet = outlets_by_name.get(merchant_name)
+        outlet = outlet_matcher.resolve(merchant_id, merchant_name)
         if not outlet:
             skipped_reports += 1
             issues.record(row_number, 'OUTLET_NOT_FOUND', 'No outlet matches Merchant ID or name', row,

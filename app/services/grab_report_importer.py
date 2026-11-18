@@ -8,6 +8,7 @@ from app.models.import_job import ImportJob
 from app.models.outlet import Outlet
 from app.services.consolidation_service import update_daily_total_for_outlet
 from app.services.import_job_issues import IssueCollector
+from app.services.report_outlet_matcher import ReportOutletMatcher
 
 
 def _clean_identifier(value):
@@ -158,8 +159,7 @@ def import_grab_report_bytes(file_bytes, import_job_id=None, issues=None):
     )
 
     outlets = Outlet.query.all()
-    outlets_by_store_id = {outlet.store_id_grab: outlet for outlet in outlets if outlet.store_id_grab}
-    outlets_by_name = {outlet.outlet_name_grab: outlet for outlet in outlets if outlet.outlet_name_grab}
+    outlet_matcher = ReportOutletMatcher(outlets, 'grab')
 
     transaction_ids = set()
     short_order_ids = set()
@@ -185,15 +185,11 @@ def import_grab_report_bytes(file_bytes, import_job_id=None, issues=None):
             continue
 
         store_name = row.get('Nama toko', '').strip()
-        store_id = row.get('ID toko')
+        store_id = _row_value(row, 'ID merchant', 'ID toko')
         if store_name and store_id:
             store_id_map[store_name] = store_id
 
-        outlet = None
-        if store_id:
-            outlet = outlets_by_store_id.get(store_id)
-        if not outlet and store_name:
-            outlet = outlets_by_name.get(store_name)
+        outlet = outlet_matcher.resolve(store_id, store_name)
         if not outlet:
             skipped_reports += 1
             issues.record(row_number, 'OUTLET_NOT_FOUND', 'No outlet matches Grab store ID or name', row,

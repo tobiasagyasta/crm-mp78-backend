@@ -191,6 +191,7 @@ from app.utils.report_generator import generate_daily_report
 
 # config = pdfkit.configuration(wkhtmltopdf='C:/Program Files/wkhtmltopdf/bin/wkhtmltopdf.exe')
 reports_bp = Blueprint('reports', __name__, url_prefix='/reports')
+from app.services.report_outlet_matcher import ReportOutletMatcher
 
 import os
 
@@ -730,8 +731,7 @@ def upload_report_gojek():
         seen_transaction_ids = set()
 
         outlets = Outlet.query.all()
-        outlets_by_store_id = {outlet.store_id_gojek: outlet for outlet in outlets if outlet.store_id_gojek}
-        outlets_by_name = {outlet.outlet_name_gojek: outlet for outlet in outlets if outlet.outlet_name_gojek}
+        outlet_matcher = ReportOutletMatcher(outlets, 'gojek')
 
         def clean_identifier(value):
             if value is None:
@@ -821,11 +821,7 @@ def upload_report_gojek():
                 if merchant_name and merchant_id:
                     store_id_map[merchant_name] = merchant_id
 
-                outlet = None
-                if merchant_id:
-                    outlet = outlets_by_store_id.get(merchant_id)
-                if not outlet and merchant_name:
-                    outlet = outlets_by_name.get(merchant_name)
+                outlet = outlet_matcher.resolve(merchant_id, merchant_name)
                 if not outlet:
                     continue
 
@@ -896,7 +892,7 @@ def upload_report_gojek():
 
         db.session.commit()
 
-        updated_count = update_store_ids_batch(store_id_map, 'gojek')
+        updated_count = outlet_matcher.updated_count
         
         return jsonify({
             'msg': 'Reports uploaded and consolidated successfully',
@@ -1259,8 +1255,7 @@ def upload_report_grab():
         debug_skipped = []
 
         outlets = Outlet.query.all()
-        outlets_by_store_id = {outlet.store_id_grab: outlet for outlet in outlets if outlet.store_id_grab}
-        outlets_by_name = {outlet.outlet_name_grab: outlet for outlet in outlets if outlet.outlet_name_grab}
+        outlet_matcher = ReportOutletMatcher(outlets, 'grab')
 
         def clean_identifier(value):
             if value is None:
@@ -1285,7 +1280,7 @@ def upload_report_grab():
                 'row_number': row_number,
                 'reason': reason,
                 'store_name': row.get('Nama toko'),
-                'store_id': row.get('ID toko'),
+                'store_id': row_value(row, 'ID merchant', 'ID toko'),
                 'transaction_id': row.get('ID transaksi'),
                 'long_order_id': row_value(row, 'ID pesanan (panjang)', 'ID pesanan panjang'),
                 'short_order_id': row_value(row, 'ID pesanan (pendek)', 'ID pesanan pendek'),
@@ -1399,15 +1394,11 @@ def upload_report_grab():
                     continue
 
                 store_name = row.get('Nama toko', '').strip()
-                store_id = row.get('ID toko')
+                store_id = row_value(row, 'ID merchant', 'ID toko')
                 if store_name and store_id:
                     store_id_map[store_name] = store_id
 
-                outlet = None
-                if store_id:
-                    outlet = outlets_by_store_id.get(store_id)
-                if not outlet and store_name:
-                    outlet = outlets_by_name.get(store_name)
+                outlet = outlet_matcher.resolve(store_id, store_name)
                 if not outlet:
                     skipped_reports += 1
                     add_skipped_debug(row_number, 'Outlet not found for Grab store ID or name', row)
@@ -1478,7 +1469,7 @@ def upload_report_grab():
 
         db.session.commit()
 
-        updated_count = update_store_ids_batch(store_id_map, 'grab')
+        updated_count = outlet_matcher.updated_count
         
         return jsonify({
             'msg': 'Reports uploaded and consolidated successfully',
@@ -1507,6 +1498,7 @@ def upload_report_shopee():
         skipped_reports = 0
         store_id_map = {}
         affected_outlets = set()
+        outlet_matcher = ReportOutletMatcher(Outlet.query.all(), 'shopee')
 
         for file in files:
             file_contents = file.read().decode('utf-8')
@@ -1522,11 +1514,7 @@ def upload_report_shopee():
                 if store_name and store_id:
                     store_id_map[store_name] = store_id
 
-                outlet = None
-                if store_id:
-                    outlet = Outlet.query.filter_by(store_id_shopee=store_id).first()
-                if not outlet and store_name:
-                    outlet = Outlet.query.filter_by(outlet_name_grab=store_name).first()
+                outlet = outlet_matcher.resolve(store_id, store_name)
                 if not outlet:
                     continue
 
@@ -1582,7 +1570,7 @@ def upload_report_shopee():
 
         db.session.commit()
 
-        updated_count = update_store_ids_batch(store_id_map, 'shopee')
+        updated_count = outlet_matcher.updated_count
         
         return jsonify({
             'msg': 'Reports uploaded and consolidated successfully',
