@@ -8,8 +8,10 @@ Upload CSV files as multipart form field `file` to
 import-job endpoints for status and row issues. The disbursement ID is unique
 across uploads. `Tanggal transfer` is stored as the transfer date; `Tanggal`,
 bank name and bank statement code are not stored. The three- or four-digit
-`Akun bank` value must match exactly one `rekenings.rekening_number` suffix;
-unmatched and ambiguous rows are skipped with an import-job issue. Amounts are
+`Akun bank` value is matched against `rekenings.rekening_number` suffixes.
+When several accounts match, the outlet's linked rekening breaks the tie:
+the outlet is identified by Grab store ID, or by Grab store name if the ID
+is not found. Unmatched and unresolved rows are skipped with an import-job issue. Amounts are
 expected as plain numeric values, as in Grab's CSV example.
 
 The daily sheet and its preview show completed disbursements next to Grab Net.

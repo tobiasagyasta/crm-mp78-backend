@@ -2,6 +2,7 @@ from datetime import datetime
 from unittest import TestCase
 
 from flask import Flask
+from sqlalchemy import text
 
 from app.extensions import db
 from app.models.grab_disbursement import GrabDisbursement
@@ -25,11 +26,14 @@ class GrabDisbursementImportTest(TestCase):
         self.context.push()
         Rekening.__table__.create(db.engine)
         GrabDisbursement.__table__.create(db.engine)
+        db.session.execute(text('CREATE TABLE outlets (store_id_grab VARCHAR, outlet_name_grab VARCHAR, rekening_id INTEGER)'))
         db.session.add(Rekening(name='BCA', rekening_number='123450385'))
         db.session.commit()
 
     def tearDown(self):
         db.session.remove()
+        with db.engine.begin() as connection:
+            connection.execute(text('DROP TABLE outlets'))
         GrabDisbursement.__table__.drop(db.engine)
         Rekening.__table__.drop(db.engine)
         self.context.pop()
@@ -68,3 +72,37 @@ class GrabDisbursementImportTest(TestCase):
     def test_missing_headers_rejected(self):
         with self.assertRaisesRegex(ValueError, 'Missing required CSV headers'):
             import_grab_disbursement_bytes(b'Tanggal,Nama toko\n')
+
+    def test_ambiguous_suffix_uses_outlet_account(self):
+        db.session.add_all([
+            Rekening(id=2, name='One', rekening_number='7770001'),
+            Rekening(id=3, name='Two', rekening_number='8880001'),
+        ])
+        db.session.execute(text(
+            "INSERT INTO outlets (store_id_grab, outlet_name_grab, rekening_id) "
+            "VALUES ('store-id', 'Store', 3)"
+        ))
+        db.session.commit()
+        result = import_grab_disbursement_bytes((HEADER + ROW.format(id='SID1', suffix='0001')).encode())
+        self.assertEqual(result['inserted_rows'], 1)
+        self.assertEqual(GrabDisbursement.query.one().rekening_id, 3)
+        self.assertEqual(GrabDisbursement.query.one().account_suffix, '0001')
+
+    def test_ambiguous_suffix_name_fallback_and_unresolved(self):
+        db.session.add_all([
+            Rekening(id=2, name='One', rekening_number='7770001'),
+            Rekening(id=3, name='Two', rekening_number='8880001'),
+        ])
+        db.session.execute(text(
+            "INSERT INTO outlets (store_id_grab, outlet_name_grab, rekening_id) "
+            "VALUES ('different-id', '  store  ', 2)"
+        ))
+        db.session.commit()
+        result = import_grab_disbursement_bytes((HEADER + ROW.format(id='SID1', suffix='0001')).encode())
+        self.assertEqual(result['inserted_rows'], 1)
+        self.assertEqual(GrabDisbursement.query.one().rekening_id, 2)
+        db.session.execute(text("UPDATE outlets SET rekening_id = 1"))
+        issues = IssueCollector()
+        result = import_grab_disbursement_bytes((HEADER + ROW.format(id='SID2', suffix='0001')).encode(), issues=issues)
+        self.assertEqual(result['inserted_rows'], 0)
+        self.assertEqual(issues.pending[0]['reason_code'], 'AMBIGUOUS_REKENING')

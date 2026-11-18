@@ -5,15 +5,29 @@ from io import StringIO
 
 from app.extensions import db
 from app.models.grab_disbursement import GrabDisbursement
+from app.models.outlet import Outlet
 from app.models.rekening import Rekening
 from app.services.grab_report_importer import _parse_grab_datetime
 from app.services.import_job_issues import IssueCollector
+from sqlalchemy import func
 
 
 REQUIRED_HEADERS = {
     'Nama toko', 'ID toko', 'ID pencairan dana', 'Jumlah bersih',
     'Status', 'Tanggal transfer', 'Akun bank',
 }
+
+
+def _outlet_rekening_id(store_id, store_name):
+    query = db.session.query(Outlet.rekening_id)
+    outlets = query.filter(Outlet.store_id_grab == store_id).all()
+    if not outlets:
+        outlets = query.filter(
+            func.lower(func.trim(Outlet.outlet_name_grab)) == store_name.lower()
+        ).all()
+    if len(outlets) == 1:
+        return outlets[0][0]
+    return None
 
 
 def import_grab_disbursement_bytes(file_bytes, import_job_id=None, issues=None):
@@ -52,10 +66,15 @@ def import_grab_disbursement_bytes(file_bytes, import_job_id=None, issues=None):
                 raise ValueError('Akun bank must contain exactly 3 or 4 digits')
             matches = [account for account in accounts
                        if (account.rekening_number or '').strip().endswith(suffix)]
+            if len(matches) > 1:
+                outlet_rekening_id = _outlet_rekening_id(store_id, store_name)
+                outlet_matches = [account for account in matches if account.id == outlet_rekening_id]
+                if len(outlet_matches) == 1:
+                    matches = outlet_matches
             if len(matches) != 1:
                 code = 'REKENING_NOT_FOUND' if not matches else 'AMBIGUOUS_REKENING'
-                issues.record(row_number, code, 'Account suffix must match exactly one rekening',
-                              row, field_name='Akun bank', context={'account_suffix': suffix})
+                issues.record(row_number, code, 'Account suffix must match exactly one rekening or the outlet’s linked rekening',
+                              row, field_name='Akun bank', context={'account_suffix': suffix, 'store_id': store_id})
                 skipped += 1
                 continue
             transfer_date = _parse_grab_datetime(row.get('Tanggal transfer'))
