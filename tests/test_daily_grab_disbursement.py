@@ -7,10 +7,11 @@ from openpyxl import Workbook
 
 from app.extensions import db
 from app.models.grab_disbursement import GrabDisbursement
+from app.models.bank_mutations import BankMutation
 from app.models.rekening import Rekening
 from app.services.excel_export.data_service import (
     _aggregate_grab_disbursements, _calculate_grand_totals,
-    _get_grab_disbursements, _init_daily_total,
+    _get_grab_disbursements, _init_daily_total, _match_grab_disbursement_mutations,
 )
 from app.services.excel_export.sheets.daily_sheet import DailySheet
 
@@ -24,11 +25,13 @@ class DailyGrabDisbursementTest(TestCase):
         self.context.push()
         Rekening.__table__.create(db.engine)
         GrabDisbursement.__table__.create(db.engine)
+        BankMutation.__table__.create(db.engine)
         db.session.add(Rekening(id=1, name='Bank', rekening_number='1230385'))
         db.session.commit()
 
     def tearDown(self):
         db.session.remove()
+        BankMutation.__table__.drop(db.engine)
         GrabDisbursement.__table__.drop(db.engine)
         Rekening.__table__.drop(db.engine)
         self.context.pop()
@@ -71,3 +74,60 @@ class DailyGrabDisbursementTest(TestCase):
         daily = {date(2026, 11, 1): _init_daily_total()}
         _aggregate_grab_disbursements(daily, [])
         self.assertIsNone(daily[date(2026, 11, 1)]['Grab_Disbursement'])
+
+    def test_mutations_match_closest_account_date_and_not_other_stores(self):
+        transfer = datetime(2026, 12, 1)
+        db.session.add_all([
+            GrabDisbursement(disbursement_id='a', store_id='store', store_name='Store',
+                             transfer_date=transfer, net_amount=100000, status='Completed',
+                             rekening_id=1, account_suffix='0385'),
+            GrabDisbursement(disbursement_id='b', store_id='other', store_name='Other',
+                             transfer_date=transfer, net_amount=200000, status='Completed',
+                             rekening_id=1, account_suffix='0385'),
+            BankMutation(rekening_number='1230385', tanggal=transfer.date(), platform_name='Grab',
+                         transaction_type='CR', transaction_amount=100100),
+            BankMutation(rekening_number='1230385', tanggal=transfer.date(), platform_name='Grab',
+                         transaction_type='CR', transaction_amount=200000),
+            BankMutation(rekening_number='wrong', tanggal=transfer.date(), platform_name='Grab',
+                         transaction_type='CR', transaction_amount=100000),
+            BankMutation(rekening_number='1230385', tanggal=transfer.date(), platform_name='Grab',
+                         transaction_type='DB', transaction_amount=100000),
+            BankMutation(rekening_number='1230385', tanggal=date(2026, 12, 2), platform_name='Grab',
+                         transaction_type='CR', transaction_amount=100000),
+        ])
+        db.session.commit()
+        day = date(2026, 11, 30)
+        daily = {day: _init_daily_total()}
+        reports = _get_grab_disbursements('store', datetime(2026, 11, 30), datetime(2026, 11, 30))
+        _match_grab_disbursement_mutations(daily, reports)
+        self.assertEqual(daily[day]['Grab_Mutation'], 100100)
+        data = {'outlet': SimpleNamespace(brand='MP78', outlet_name_gojek='Outlet'),
+                'start_date': day, 'end_date': day, 'all_dates': [day],
+                'daily_totals': daily, 'grand_totals': _calculate_grand_totals(daily),
+                'minusan_by_date': {}}
+        sheet = DailySheet(Workbook(), data)
+        sheet.generate()
+        headers = sheet._get_headers()
+        col = headers.index('Grab Mutation') + 1
+        self.assertEqual(col, headers.index('Grab Pencairan') + 2)
+        self.assertEqual(sheet.ws.cell(6, col).value, 100100)
+        self.assertEqual(sheet.build_preview()['totals']['Grab Mutation'], 100100)
+
+    def test_ambiguous_and_distant_matches_stay_blank(self):
+        transfer = datetime(2026, 12, 1)
+        for identifier, store in [('a', 'store'), ('b', 'other')]:
+            db.session.add(GrabDisbursement(disbursement_id=identifier, store_id=store, store_name='Store',
+                                           transfer_date=transfer, net_amount=100000, status='Completed',
+                                           rekening_id=1, account_suffix='0385'))
+        db.session.add_all([
+            BankMutation(rekening_number='1230385', tanggal=transfer.date(), platform_name='Grab',
+                         transaction_type='CR', transaction_amount=100000),
+            BankMutation(rekening_number='1230385', tanggal=transfer.date(), platform_name='Grab',
+                         transaction_type='CR', transaction_amount=300000),
+        ])
+        db.session.commit()
+        day = date(2026, 11, 30)
+        daily = {day: _init_daily_total()}
+        reports = _get_grab_disbursements('store', datetime(2026, 11, 30), datetime(2026, 11, 30))
+        _match_grab_disbursement_mutations(daily, reports)
+        self.assertIsNone(daily[day]['Grab_Mutation'])

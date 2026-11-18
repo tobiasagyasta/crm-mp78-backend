@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 from collections import defaultdict
+from decimal import Decimal
 from app.models.outlet import Outlet
 from app.models.gojek_reports import GojekReport
 from app.models.shopee_reports import ShopeeReport
@@ -12,6 +13,7 @@ from app.models.shopeepay_reports import ShopeepayReport
 from app.models.tiktok_reports import TiktokReport
 from app.models.qpon_reports import QponReport
 from app.models.bank_mutations import BankMutation
+from app.models.rekening import Rekening
 from app.models.webshop_report import WebshopReport
 from app.models.pukis import Pukis
 from app.models.ultra_voucher import VoucherReport
@@ -89,6 +91,67 @@ def _get_grab_disbursements(store_id, start_date, end_date):
         func.lower(func.trim(GrabDisbursement.status)) == 'completed',
     ).all()
 
+
+def _match_grab_disbursement_mutations(daily_totals, reports):
+    """Match unique closest payouts and credits across all stores sharing an account."""
+    if not reports:
+        return
+    accounts = {report.rekening_id: report.rekening.rekening_number for report in reports}
+    first = min(report.transfer_date.date() for report in reports)
+    last = max(report.transfer_date.date() for report in reports)
+    competitors = (GrabDisbursement.query.filter(
+        GrabDisbursement.rekening_id.in_(accounts),
+        GrabDisbursement.transfer_date >= datetime.combine(first, datetime.min.time()),
+        GrabDisbursement.transfer_date < datetime.combine(last + timedelta(days=1), datetime.min.time()),
+        func.lower(func.trim(GrabDisbursement.status)) == 'completed',
+    ).all())
+    mutations = BankMutation.query.filter(
+        BankMutation.platform_name == 'Grab',
+        BankMutation.rekening_number.in_(list(accounts.values())),
+        BankMutation.tanggal >= first,
+        BankMutation.tanggal <= last,
+        or_(BankMutation.transaction_type.is_(None), func.upper(func.trim(BankMutation.transaction_type)) == 'CR'),
+        BankMutation.transaction_amount.isnot(None),
+    ).all()
+
+    groups = defaultdict(lambda: [[], []])
+    for report in competitors:
+        groups[(accounts[report.rekening_id], report.transfer_date.date())][0].append(report)
+    for mutation in mutations:
+        groups[(mutation.rekening_number, mutation.tanggal)][1].append(mutation)
+
+    matched = {}
+    tolerance = Decimal('10000')
+    for payouts, credits in groups.values():
+        # Re-evaluate after each unambiguous mutual closest match; ties are unsafe.
+        while payouts and credits:
+            distances = {(p.id, m.id): abs(p.net_amount - m.transaction_amount)
+                         for p in payouts for m in credits}
+            pairs = []
+            for payout in payouts:
+                minimum = min(distances[payout.id, m.id] for m in credits)
+                candidates = [m for m in credits if distances[payout.id, m.id] == minimum]
+                if minimum > tolerance or len(candidates) != 1:
+                    continue
+                credit = candidates[0]
+                reverse_minimum = min(distances[p.id, credit.id] for p in payouts)
+                reverse = [p for p in payouts if distances[p.id, credit.id] == reverse_minimum]
+                if reverse_minimum == minimum and len(reverse) == 1:
+                    pairs.append((minimum, payout.id, credit.id, payout, credit))
+            if not pairs:
+                break
+            _, _, _, payout, credit = min(pairs, key=lambda item: item[:3])
+            matched[payout.id] = credit
+            payouts.remove(payout)
+            credits.remove(credit)
+
+    for report in reports:
+        mutation = matched.get(report.id)
+        day = report.transfer_date.date() - timedelta(days=1)
+        if mutation and day in daily_totals:
+            totals = daily_totals[day]
+            totals['Grab_Mutation'] = (totals['Grab_Mutation'] or 0) + float(mutation.transaction_amount)
+
 def get_report_data(outlet_code: str, start_date: datetime, end_date: datetime) -> dict:
     """
     Fetches and prepares all data required for the Excel report.
@@ -151,6 +214,7 @@ def get_report_data(outlet_code: str, start_date: datetime, end_date: datetime) 
     _aggregate_uv(daily_totals, uv_reports)
     grab_totals = _aggregate_grab(daily_totals, grab_reports, outlet.brand)
     _aggregate_grab_disbursements(daily_totals, grab_disbursements)
+    _match_grab_disbursement_mutations(daily_totals, grab_disbursements)
     _aggregate_shopee(daily_totals, shopee_reports)
     _aggregate_shopeepay(daily_totals, shopeepay_reports)
     _aggregate_tiktok(daily_totals, tiktok_reports)
@@ -228,7 +292,7 @@ def _init_daily_total():
         'Qpon_Closing_Gross': 0, 'Qpon_Closing_Net': 0, 'Qpon_Closing_Mutation': None,
         'Webshop_Gross': 0, 'Webshop_Net': 0,
         'Cash_Income': 0, 'Cash_Expense': 0,
-        'Gojek_Mutation': None, 'Gojek_Difference': 0, 'Grab_Difference': 0, 'Grab_Disbursement': None,
+        'Gojek_Mutation': None, 'Gojek_Difference': 0, 'Grab_Difference': 0, 'Grab_Disbursement': None, 'Grab_Mutation': None,
         'Grab_Commission': 0, 'Shopee_Mutation': None, 'Shopee_Difference': 0,
         'ShopeePay_Mutation': None, 'ShopeePay_Difference': 0, 'UV': 0
     }

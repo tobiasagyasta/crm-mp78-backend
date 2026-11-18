@@ -16,6 +16,10 @@ The daily sheet and its preview show completed disbursements next to Grab Net.
 They are matched by Grab store ID and summed on the transaction-date row for
 the following calendar day's transfer date (H+1). A blank means no matching
 completed disbursement was found; these are not bank-statement mutations.
+The adjacent Grab Mutation column shows matched bank credits on the transfer
+date and account, using the closest amount within Rp10,000. Ambiguous matches
+are left blank and a bank mutation cannot be assigned to multiple payouts.
+If only some payouts match, the column contains only their matched credits.
 
 🚀 A Flask-based REST API for authentication and user management in a CRM system.
 
