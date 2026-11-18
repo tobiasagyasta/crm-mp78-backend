@@ -5,6 +5,7 @@ from app.models.import_job import ImportJob
 from app.services.import_job_issues import IssueCollector
 from app.services.gojek_report_importer import import_gojek_report_bytes
 from app.services.grab_report_importer import import_grab_report_bytes
+from app.services.grab_disbursement_importer import import_grab_disbursement_bytes
 from app.services.mutation_report_importer import import_mutation_report_bytes
 from app.services.shopee_report_importer import import_shopee_report_bytes
 from app.services.tiktok_report_importer import import_tiktok_report_bytes
@@ -52,6 +53,8 @@ def process_report_import_job(import_job_id):
 
             if import_job.report_type == 'grab':
                 result = import_grab_report_bytes(file_bytes, import_job_id=import_job.id, issues=issues)
+            elif import_job.report_type == 'grab_disbursement':
+                result = import_grab_disbursement_bytes(file_bytes, import_job_id=import_job.id, issues=issues)
             elif import_job.report_type == 'tiktok':
                 result = import_tiktok_report_bytes(file_bytes, import_job_id=import_job.id, issues=issues)
             elif import_job.report_type == 'mutation':

@@ -1,5 +1,20 @@
 # CRM MP78 Backend
 
+## Grab disbursement imports
+
+Apply `sql/20261118_create_grab_disbursements.sql` before deploying the importer.
+Upload CSV files as multipart form field `file` to
+`POST /import-jobs/upload/grab-disbursement`; this uses the existing background
+import-job endpoints for status and row issues. The disbursement ID is unique
+across uploads. `Tanggal transfer` is stored as the transfer date; `Tanggal`,
+bank name and bank statement code are not stored. The three- or four-digit
+`Akun bank` value must match exactly one `rekenings.rekening_number` suffix;
+unmatched and ambiguous rows are skipped with an import-job issue. Amounts are
+expected as plain numeric values, as in Grab's CSV example.
+
+These records are stored separately from bank mutations and are not yet included
+in sheet comparison exports.
+
 🚀 A Flask-based REST API for authentication and user management in a CRM system.
 
 ## Features

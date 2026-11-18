@@ -130,6 +130,11 @@ def upload_grab_import_job():
     return _upload_report_import_job('grab')
 
 
+@import_jobs_bp.route('/upload/grab-disbursement', methods=['POST'])
+def upload_grab_disbursement_import_job():
+    return _upload_report_import_job('grab_disbursement')
+
+
 @import_jobs_bp.route('/upload/tiktok', methods=['POST'])
 def upload_tiktok_import_job():
     return _upload_report_import_job('tiktok')
