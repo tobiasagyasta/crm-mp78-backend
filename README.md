@@ -12,8 +12,10 @@ bank name and bank statement code are not stored. The three- or four-digit
 unmatched and ambiguous rows are skipped with an import-job issue. Amounts are
 expected as plain numeric values, as in Grab's CSV example.
 
-These records are stored separately from bank mutations and are not yet included
-in sheet comparison exports.
+The daily sheet and its preview show completed disbursements next to Grab Net.
+They are matched by Grab store ID and summed on the transaction-date row for
+the following calendar day's transfer date (H+1). A blank means no matching
+completed disbursement was found; these are not bank-statement mutations.
 
 🚀 A Flask-based REST API for authentication and user management in a CRM system.
 

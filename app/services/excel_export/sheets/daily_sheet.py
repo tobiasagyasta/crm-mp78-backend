@@ -125,6 +125,9 @@ class DailySheet(BaseSheet):
             base_headers = [header for header in base_headers if header not in
                             ('Shopee Net (ac)', 'ShopeePay Net (ac)')]
 
+        if 'Grab Net' not in base_headers:
+            base_headers.insert(base_headers.index('GrabOVO') + 1, 'Grab Net')
+        base_headers.insert(base_headers.index('Grab Net') + 1, 'Grab Pencairan')
         return base_headers
 
     def _add_mp78_management_ac_headers(self, headers):
@@ -279,7 +282,7 @@ class DailySheet(BaseSheet):
             'Date': DATE_FILL, 'GoFood': GOJEK_FILL, 'GO-PAY QRIS': GOJEK_FILL,
             'Gojek Net': GOJEK_FILL, 'Gojek Mutation': GOJEK_FILL,
             'Gojek Difference': DIFFERENCE_FILL, 'GrabFood': GRAB_FILL, 'GrabOVO': GRAB_FILL,
-            'Grab Net': GRAB_FILL, 'Grab Net (ac)': GRAB_FILL,
+            'Grab Net': GRAB_FILL, 'Grab Net (ac)': GRAB_FILL, 'Grab Pencairan': GRAB_FILL,
             'Gojek Net (ac)': GOJEK_FILL, 'Grab Net (ac)': GRAB_FILL,
             'Gofood Commission': GOJEK_FILL, 'Gojek Net Mutation (ac)': GOJEK_FILL,
             'GoFood x QRIS (ac)': GOJEK_FILL, 'Grab Commission': GRAB_FILL,
@@ -414,6 +417,7 @@ class DailySheet(BaseSheet):
             'GrabFood': lambda totals, date, minusan_total: self._get_grabfood_value(totals),
             'GrabOVO': lambda totals, date, minusan_total: self._get_grab_ovo_value(totals),
             'Grab Net': lambda totals, date, minusan_total: self._get_grab_net_value(totals),
+            'Grab Pencairan': lambda totals, date, minusan_total: totals.get('Grab_Disbursement'),
             'Grab Net (ac)': lambda totals, date, minusan_total: self._get_grab_net_ac_value(totals),
             'Grab Commission': lambda totals, date, minusan_total: self._get_grabfood_commission_value(totals),
             'GrabFood x OVO (ac)': lambda totals, date, minusan_total: self._get_grabfood_ovo_ac_value(totals),
@@ -456,6 +460,7 @@ class DailySheet(BaseSheet):
             'GrabFood': lambda: self._get_grabfood_value(grand_totals),
             'GrabOVO': lambda: self._get_grab_ovo_value(grand_totals),
             'Grab Net': lambda: self._get_grab_net_value(grand_totals),
+            'Grab Pencairan': lambda: grand_totals.get('Grab_Disbursement'),
             'Grab Net (ac)': lambda: self._get_grab_net_ac_value(grand_totals),
             'Grab Commission': lambda: self._get_grabfood_commission_value(grand_totals),
             'GrabFood x OVO (ac)': lambda: self._get_grabfood_ovo_ac_value(grand_totals),

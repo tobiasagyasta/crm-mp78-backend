@@ -4,6 +4,7 @@ from app.models.outlet import Outlet
 from app.models.gojek_reports import GojekReport
 from app.models.shopee_reports import ShopeeReport
 from app.models.grabfood_reports import GrabFoodReport
+from app.models.grab_disbursement import GrabDisbursement
 from app.models.cash_reports import CashReport
 from app.models.manual_entry import ManualEntry
 from app.models.mp78_mutations import MP78Mutation
@@ -75,6 +76,19 @@ def _matching_completed_grab_report_ids(reports, daily_totals):
 
     return completed_report_ids
 
+
+def _get_grab_disbursements(store_id, start_date, end_date):
+    if not store_id:
+        return []
+    transfer_start = datetime.combine(start_date.date() + timedelta(days=1), datetime.min.time())
+    transfer_end = datetime.combine(end_date.date() + timedelta(days=2), datetime.min.time())
+    return GrabDisbursement.query.filter(
+        GrabDisbursement.store_id == store_id,
+        GrabDisbursement.transfer_date >= transfer_start,
+        GrabDisbursement.transfer_date < transfer_end,
+        func.lower(func.trim(GrabDisbursement.status)) == 'completed',
+    ).all()
+
 def get_report_data(outlet_code: str, start_date: datetime, end_date: datetime) -> dict:
     """
     Fetches and prepares all data required for the Excel report.
@@ -107,6 +121,7 @@ def get_report_data(outlet_code: str, start_date: datetime, end_date: datetime) 
     if EXCLUDE_COMPLETED_GRAB_REPORTS:
         grab_query = grab_query.filter(or_(GrabFoodReport.status.is_(None), ~GrabFoodReport.status.in_(COMPLETED_GRAB_STATUSES)))
     grab_reports = grab_query.all()
+    grab_disbursements = _get_grab_disbursements(outlet.store_id_grab, start_date, end_date)
     shopee_reports = ShopeeReport.query.filter(ShopeeReport.outlet_code == outlet_code, ShopeeReport.order_create_time >= start_date, ShopeeReport.order_create_time <= end_date_inclusive).all()
     shopeepay_reports = ShopeepayReport.query.filter(ShopeepayReport.outlet_code == outlet_code, ShopeepayReport.create_time >= start_date, ShopeepayReport.create_time <= end_date_inclusive).all()
     tiktok_reports = TiktokReport.query.filter(TiktokReport.outlet_code == outlet_code, TiktokReport.order_time >= start_date, TiktokReport.order_time <= end_date_inclusive).all()
@@ -135,6 +150,7 @@ def get_report_data(outlet_code: str, start_date: datetime, end_date: datetime) 
     _aggregate_gojek(daily_totals, gojek_reports)
     _aggregate_uv(daily_totals, uv_reports)
     grab_totals = _aggregate_grab(daily_totals, grab_reports, outlet.brand)
+    _aggregate_grab_disbursements(daily_totals, grab_disbursements)
     _aggregate_shopee(daily_totals, shopee_reports)
     _aggregate_shopeepay(daily_totals, shopeepay_reports)
     _aggregate_tiktok(daily_totals, tiktok_reports)
@@ -212,10 +228,18 @@ def _init_daily_total():
         'Qpon_Closing_Gross': 0, 'Qpon_Closing_Net': 0, 'Qpon_Closing_Mutation': None,
         'Webshop_Gross': 0, 'Webshop_Net': 0,
         'Cash_Income': 0, 'Cash_Expense': 0,
-        'Gojek_Mutation': None, 'Gojek_Difference': 0, 'Grab_Difference': 0,
+        'Gojek_Mutation': None, 'Gojek_Difference': 0, 'Grab_Difference': 0, 'Grab_Disbursement': None,
         'Grab_Commission': 0, 'Shopee_Mutation': None, 'Shopee_Difference': 0,
         'ShopeePay_Mutation': None, 'ShopeePay_Difference': 0, 'UV': 0
     }
+
+def _aggregate_grab_disbursements(daily_totals, reports):
+    for report in reports:
+        transaction_date = report.transfer_date.date() - timedelta(days=1)
+        if transaction_date in daily_totals:
+            totals = daily_totals[transaction_date]
+            totals['Grab_Disbursement'] = (totals['Grab_Disbursement'] or 0) + float(report.net_amount)
+
 
 def _aggregate_gojek(daily_totals, reports):
     for report in reports:
