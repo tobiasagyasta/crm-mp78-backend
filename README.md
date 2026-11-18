@@ -24,7 +24,8 @@ completed disbursement was found; these are not bank-statement mutations.
 Apply `sql/20261120_grab_disbursement_mutation_link.sql` before using
 disbursement-based matching. The adjacent Grab Mutation column shows bank
 credits with the exact same amount, account and transfer date. Unambiguous
-one-to-one matches are saved when the sheet or preview is generated: the
+one-to-one matches are saved during the disbursement import when bank mutations
+are already available, or when the sheet or preview is generated otherwise: the
 mutation's platform code becomes the Grab store ID, and the payout stores the
 mutation ID. Already coded mutations and ambiguous matches are left unchanged.
 If only some payouts match, the column contains only their matched credits.

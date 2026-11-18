@@ -69,6 +69,7 @@ def import_grab_disbursement_bytes(file_bytes, import_job_id=None, issues=None):
 
     seen = set()
     mutation_account_cache = {}
+    inserted_reports = []
     inserted = duplicates = skipped = 0
     for row_number, row in enumerate(rows, 2):
         identifier = (row.get('ID pencairan dana') or '').strip()
@@ -109,11 +110,14 @@ def import_grab_disbursement_bytes(file_bytes, import_job_id=None, issues=None):
             if not re.fullmatch(r'-?\d+(?:\.\d{1,2})?', amount_text):
                 raise ValueError('Jumlah bersih must be a numeric amount')
             amount = Decimal(amount_text)
-            db.session.add(GrabDisbursement(
+            report = GrabDisbursement(
                 disbursement_id=identifier, store_id=store_id, store_name=store_name,
                 transfer_date=transfer_date, net_amount=amount, status=status,
                 rekening_id=matches[0].id, account_suffix=suffix,
-            ))
+            )
+            db.session.add(report)
+            if status.lower() == 'completed':
+                inserted_reports.append(report)
             seen.add(identifier)
             inserted += 1
         except (ValueError, TypeError, InvalidOperation) as exc:
@@ -121,9 +125,15 @@ def import_grab_disbursement_bytes(file_bytes, import_job_id=None, issues=None):
             issues.record(row_number, 'PARSE_ERROR', str(exc), row)
 
     db.session.flush()
+    # Use the same matcher as sheets, but let the worker commit the import and
+    # matching together. Match only after all rows have been inserted so
+    # duplicate-amount payouts in this file can be detected as ambiguous.
+    from app.services.excel_export.data_service import _match_grab_disbursement_mutations
+    matched_disbursements = _match_grab_disbursement_mutations({}, inserted_reports, commit=False)
     return {
         'total_rows': len(rows), 'processed_rows': len(rows), 'inserted_rows': inserted,
         'skipped_rows': skipped + duplicates, 'duplicate_rows': duplicates,
         'non_duplicate_skipped_rows': skipped, 'failed_rows': 0,
+        'matched_disbursements': matched_disbursements,
         'skipped_rows_debug': issues.preview,
     }

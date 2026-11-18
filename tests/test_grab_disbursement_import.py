@@ -76,6 +76,31 @@ class GrabDisbursementImportTest(TestCase):
         with self.assertRaisesRegex(ValueError, 'Missing required CSV headers'):
             import_grab_disbursement_bytes(b'Tanggal,Nama toko\n')
 
+    def test_upload_matches_exact_mutation_and_rolls_back_atomically(self):
+        mutation = BankMutation(rekening_number='123450385', tanggal=date(2026, 11, 11),
+                                platform_name='Grab', transaction_type='CR', transaction_amount=463674)
+        db.session.add(mutation)
+        db.session.commit()
+        mutation_id = mutation.id
+        result = import_grab_disbursement_bytes((HEADER + ROW.format(id='SID1', suffix='0385')).encode())
+        self.assertEqual(result['matched_disbursements'], 1)
+        self.assertEqual(GrabDisbursement.query.one().mutation_id, mutation_id)
+        self.assertEqual(db.session.get(BankMutation, mutation_id).platform_code, 'store-id')
+        db.session.rollback()
+        self.assertEqual(GrabDisbursement.query.count(), 0)
+        self.assertIsNone(db.session.get(BankMutation, mutation_id).platform_code)
+
+    def test_upload_does_not_guess_when_two_payouts_share_amount(self):
+        mutation = BankMutation(rekening_number='123450385', tanggal=date(2026, 11, 11),
+                                platform_name='Grab', transaction_type='CR', transaction_amount=463674)
+        db.session.add(mutation)
+        db.session.commit()
+        content = HEADER + ROW.format(id='SID1', suffix='0385') + ROW.format(id='SID2', suffix='0385')
+        result = import_grab_disbursement_bytes(content.encode())
+        self.assertEqual(result['matched_disbursements'], 0)
+        self.assertIsNone(mutation.platform_code)
+        self.assertTrue(all(report.mutation_id is None for report in GrabDisbursement.query.all()))
+
     def test_ambiguous_suffix_uses_outlet_account(self):
         db.session.add_all([
             Rekening(id=2, name='One', rekening_number='7770001'),

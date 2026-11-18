@@ -95,13 +95,27 @@ def _get_grab_disbursements(store_id, start_date, end_date):
     ).all()
 
 
-def _match_grab_disbursement_mutations(daily_totals, reports):
+def _match_grab_disbursement_mutations(daily_totals, reports, commit=True):
     """Persist unambiguous exact one-to-one matches across shared accounts."""
     if not reports:
-        return
+        return 0
     accounts = {report.rekening_id: report.rekening.rekening_number for report in reports}
     first = min(report.transfer_date.date() for report in reports)
     last = max(report.transfer_date.date() for report in reports)
+    # Already-linked reports need no candidate or competing-payout search.
+    if all(report.mutation_id is not None for report in reports):
+        linked = BankMutation.query.filter(
+            BankMutation.id.in_([report.mutation_id for report in reports]),
+            BankMutation.platform_name == 'Grab',
+            BankMutation.rekening_number.in_(list(accounts.values())),
+            BankMutation.tanggal >= first,
+            BankMutation.tanggal <= last,
+            or_(BankMutation.transaction_type.is_(None), func.upper(func.trim(BankMutation.transaction_type)) == 'CR'),
+            BankMutation.transaction_amount.isnot(None),
+        ).all()
+        matched = {report.id: mutation for report in reports for mutation in linked
+                   if report.mutation_id == mutation.id}
+        return _apply_grab_disbursement_matches(daily_totals, reports, matched)
     competitors = (GrabDisbursement.query.filter(
         GrabDisbursement.rekening_id.in_(accounts),
         GrabDisbursement.transfer_date >= datetime.combine(first, datetime.min.time()),
@@ -148,15 +162,23 @@ def _match_grab_disbursement_mutations(daily_totals, reports):
             matched[payout.id] = credit
             changed = True
 
-    if changed:
+    if changed and commit:
         db.session.commit()
 
+    return _apply_grab_disbursement_matches(daily_totals, reports, matched)
+
+
+def _apply_grab_disbursement_matches(daily_totals, reports, matched):
+    count = 0
     for report in reports:
         mutation = matched.get(report.id)
+        if mutation:
+            count += 1
         day = report.transfer_date.date() - timedelta(days=1)
         if mutation and day in daily_totals:
             totals = daily_totals[day]
             totals['Grab_Mutation'] = (totals['Grab_Mutation'] or 0) + float(mutation.transaction_amount)
+    return count
 
 def get_report_data(outlet_code: str, start_date: datetime, end_date: datetime) -> dict:
     """
