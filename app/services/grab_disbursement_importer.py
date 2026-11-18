@@ -5,6 +5,7 @@ from io import StringIO
 
 from app.extensions import db
 from app.models.grab_disbursement import GrabDisbursement
+from app.models.bank_mutations import BankMutation
 from app.models.outlet import Outlet
 from app.models.rekening import Rekening
 from app.services.grab_report_importer import _parse_grab_datetime
@@ -30,6 +31,24 @@ def _outlet_rekening_id(store_id, store_name):
     return None
 
 
+def _latest_mutation_rekening(store_id, candidates):
+    """Return (account, has_history); same-day conflicting accounts are ambiguous."""
+    accounts_by_number = {(account.rekening_number or '').strip(): account for account in candidates}
+    query = db.session.query(BankMutation.tanggal, BankMutation.rekening_number).filter(
+        BankMutation.platform_name == 'Grab',
+        BankMutation.platform_code == store_id,
+        BankMutation.rekening_number.in_(list(accounts_by_number)),
+        BankMutation.tanggal.isnot(None),
+    )
+    latest = query.order_by(BankMutation.tanggal.desc()).first()
+    if not latest:
+        return None, False
+    latest_numbers = {number for _, number in query.filter(BankMutation.tanggal == latest[0]).distinct().all()}
+    if len(latest_numbers) != 1:
+        return None, True
+    return accounts_by_number[latest_numbers.pop()], True
+
+
 def import_grab_disbursement_bytes(file_bytes, import_job_id=None, issues=None):
     issues = issues if issues is not None else IssueCollector()
     reader = csv.DictReader(StringIO(file_bytes.decode('utf-8-sig'), newline=''))
@@ -49,6 +68,7 @@ def import_grab_disbursement_bytes(file_bytes, import_job_id=None, issues=None):
                         .filter(GrabDisbursement.disbursement_id.in_(ids[start:start + 500])).all())
 
     seen = set()
+    mutation_account_cache = {}
     inserted = duplicates = skipped = 0
     for row_number, row in enumerate(rows, 2):
         identifier = (row.get('ID pencairan dana') or '').strip()
@@ -67,13 +87,20 @@ def import_grab_disbursement_bytes(file_bytes, import_job_id=None, issues=None):
             matches = [account for account in accounts
                        if (account.rekening_number or '').strip().endswith(suffix)]
             if len(matches) > 1:
-                outlet_rekening_id = _outlet_rekening_id(store_id, store_name)
-                outlet_matches = [account for account in matches if account.id == outlet_rekening_id]
-                if len(outlet_matches) == 1:
-                    matches = outlet_matches
+                cache_key = (store_id, suffix)
+                if cache_key not in mutation_account_cache:
+                    mutation_account_cache[cache_key] = _latest_mutation_rekening(store_id, matches)
+                mutation_account, has_history = mutation_account_cache[cache_key]
+                if mutation_account:
+                    matches = [mutation_account]
+                elif not has_history:
+                    outlet_rekening_id = _outlet_rekening_id(store_id, store_name)
+                    outlet_matches = [account for account in matches if account.id == outlet_rekening_id]
+                    if len(outlet_matches) == 1:
+                        matches = outlet_matches
             if len(matches) != 1:
                 code = 'REKENING_NOT_FOUND' if not matches else 'AMBIGUOUS_REKENING'
-                issues.record(row_number, code, 'Account suffix must match exactly one rekening or the outlet’s linked rekening',
+                issues.record(row_number, code, 'Could not resolve account suffix using Grab mutation history or the outlet’s linked rekening',
                               row, field_name='Akun bank', context={'account_suffix': suffix, 'store_id': store_id})
                 skipped += 1
                 continue
