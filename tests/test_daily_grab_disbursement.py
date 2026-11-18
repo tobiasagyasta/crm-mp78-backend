@@ -1,6 +1,7 @@
 from datetime import date, datetime
 from types import SimpleNamespace
 from unittest import TestCase
+from unittest.mock import MagicMock, patch
 
 from flask import Flask
 from openpyxl import Workbook
@@ -12,6 +13,7 @@ from app.models.rekening import Rekening
 from app.services.excel_export.data_service import (
     _aggregate_grab_disbursements, _calculate_grand_totals,
     _get_grab_disbursements, _init_daily_total, _match_grab_disbursement_mutations,
+    _match_mutations,
 )
 from app.services.excel_export.sheets.daily_sheet import DailySheet
 
@@ -75,6 +77,21 @@ class DailyGrabDisbursementTest(TestCase):
         _aggregate_grab_disbursements(daily, [])
         self.assertIsNone(daily[date(2026, 11, 1)]['Grab_Disbursement'])
 
+    def test_flag_enables_exactly_one_grab_matching_path(self):
+        for enabled, expected in ((True, ['gojek', 'shopee', 'shopeepay']),
+                                  (False, ['gojek', 'grab', 'shopee', 'shopeepay'])):
+            with self.subTest(enabled=enabled), \
+                    patch('app.services.excel_export.data_service.GRAB_DISBURSEMENT_FIRST_MATCHING', enabled), \
+                    patch('app.services.excel_export.data_service.TransactionMatcher') as matcher:
+                matcher.return_value.get_mutations_query.return_value.all.return_value = []
+                _match_mutations({}, 'outlet', datetime(2026, 11, 1), datetime(2026, 11, 2))
+                self.assertEqual([call.args[0] for call in matcher.call_args_list], expected)
+
+    def test_no_disbursements_skip_bank_query(self):
+        with patch.object(BankMutation, 'query', new_callable=MagicMock) as query:
+            _match_grab_disbursement_mutations({}, [])
+            query.filter.assert_not_called()
+
     def test_mutations_match_closest_account_date_and_not_other_stores(self):
         transfer = datetime(2026, 12, 1)
         db.session.add_all([
@@ -98,6 +115,7 @@ class DailyGrabDisbursementTest(TestCase):
         db.session.commit()
         day = date(2026, 11, 30)
         daily = {day: _init_daily_total()}
+        daily[day]['Grab_Net'] = 90000
         reports = _get_grab_disbursements('store', datetime(2026, 11, 30), datetime(2026, 11, 30))
         _match_grab_disbursement_mutations(daily, reports)
         self.assertEqual(daily[day]['Grab_Mutation'], 100100)
@@ -112,6 +130,9 @@ class DailyGrabDisbursementTest(TestCase):
         self.assertEqual(col, headers.index('Grab Pencairan') + 2)
         self.assertEqual(sheet.ws.cell(6, col).value, 100100)
         self.assertEqual(sheet.build_preview()['totals']['Grab Mutation'], 100100)
+        self.assertEqual(headers[col], 'Grab Difference')
+        self.assertEqual(sheet.ws.cell(6, col + 1).value, 10100)
+        self.assertEqual(sheet.build_preview()['totals']['Grab Difference'], 10100)
 
     def test_ambiguous_and_distant_matches_stay_blank(self):
         transfer = datetime(2026, 12, 1)

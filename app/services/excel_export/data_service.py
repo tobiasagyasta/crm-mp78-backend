@@ -30,6 +30,9 @@ GRAB_TRANSFERRED_STATUSES = ('Transferred', 'Ditransfer')
 EXCLUDE_COMPLETED_GRAB_REPORTS = False
 COMPLETED_GRAB_STATUSES = ('Selesai', 'Completed')
 SHOW_MUTATIONS_WITHOUT_PLATFORM_DATA = True
+# True: match Grab bank mutations only against completed disbursements.
+# False: use the legacy Grab Net-based mutation matcher.
+GRAB_DISBURSEMENT_FIRST_MATCHING = False
 
 def _grab_report_datetime_col():
     return func.coalesce(GrabFoodReport.diperbarui_pada, GrabFoodReport.tanggal_dibuat)
@@ -214,7 +217,8 @@ def get_report_data(outlet_code: str, start_date: datetime, end_date: datetime) 
     _aggregate_uv(daily_totals, uv_reports)
     grab_totals = _aggregate_grab(daily_totals, grab_reports, outlet.brand)
     _aggregate_grab_disbursements(daily_totals, grab_disbursements)
-    _match_grab_disbursement_mutations(daily_totals, grab_disbursements)
+    if GRAB_DISBURSEMENT_FIRST_MATCHING:
+        _match_grab_disbursement_mutations(daily_totals, grab_disbursements)
     _aggregate_shopee(daily_totals, shopee_reports)
     _aggregate_shopeepay(daily_totals, shopeepay_reports)
     _aggregate_tiktok(daily_totals, tiktok_reports)
@@ -482,7 +486,9 @@ def _aggregate_cash(daily_totals, income_reports, expense_reports):
         daily_totals[date]['Cash_Expense'] = int(round(cash_expense_temp[date]))
 
 def _match_mutations(daily_totals, outlet_code, start_date, end_date):
-    platforms = ['gojek', 'grab', 'shopee', 'shopeepay']
+    platforms = ['gojek', 'shopee', 'shopeepay']
+    if not GRAB_DISBURSEMENT_FIRST_MATCHING:
+        platforms.insert(1, 'grab')
     for platform in platforms:
         try:
             matcher = TransactionMatcher(platform)

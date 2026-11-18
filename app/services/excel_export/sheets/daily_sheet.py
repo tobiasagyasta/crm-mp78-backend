@@ -129,6 +129,7 @@ class DailySheet(BaseSheet):
             base_headers.insert(base_headers.index('GrabOVO') + 1, 'Grab Net')
         base_headers.insert(base_headers.index('Grab Net') + 1, 'Grab Pencairan')
         base_headers.insert(base_headers.index('Grab Pencairan') + 1, 'Grab Mutation')
+        base_headers.insert(base_headers.index('Grab Mutation') + 1, 'Grab Difference')
         return base_headers
 
     def _add_mp78_management_ac_headers(self, headers):
@@ -284,6 +285,7 @@ class DailySheet(BaseSheet):
             'Gojek Net': GOJEK_FILL, 'Gojek Mutation': GOJEK_FILL,
             'Gojek Difference': DIFFERENCE_FILL, 'GrabFood': GRAB_FILL, 'GrabOVO': GRAB_FILL,
             'Grab Net': GRAB_FILL, 'Grab Net (ac)': GRAB_FILL, 'Grab Pencairan': GRAB_FILL, 'Grab Mutation': GRAB_FILL,
+            'Grab Difference': DIFFERENCE_FILL,
             'Gojek Net (ac)': GOJEK_FILL, 'Grab Net (ac)': GRAB_FILL,
             'Gofood Commission': GOJEK_FILL, 'Gojek Net Mutation (ac)': GOJEK_FILL,
             'GoFood x QRIS (ac)': GOJEK_FILL, 'Grab Commission': GRAB_FILL,
@@ -329,7 +331,7 @@ class DailySheet(BaseSheet):
                     cell.number_format = '#,##0'
 
                 # Apply conditional formatting for difference columns
-                if headers[col-1] in ['Gojek Difference', 'Shopee Difference', 'ShopeePay Difference', 'Qpon Difference']:
+                if headers[col-1] in ['Gojek Difference', 'Grab Difference', 'Shopee Difference', 'ShopeePay Difference', 'Qpon Difference']:
                     if value is not None:
                         if value > 0:
                             cell.fill = PatternFill(start_color='C6EFCE', end_color='C6EFCE', fill_type='solid')  # Light green
@@ -420,6 +422,10 @@ class DailySheet(BaseSheet):
             'Grab Net': lambda totals, date, minusan_total: self._get_grab_net_value(totals),
             'Grab Pencairan': lambda totals, date, minusan_total: totals.get('Grab_Disbursement'),
             'Grab Mutation': lambda totals, date, minusan_total: totals.get('Grab_Mutation'),
+            'Grab Difference': lambda totals, date, minusan_total: (
+                totals['Grab_Mutation'] - self._get_grab_net_value(totals)
+                if totals.get('Grab_Mutation') is not None else None
+            ),
             'Grab Net (ac)': lambda totals, date, minusan_total: self._get_grab_net_ac_value(totals),
             'Grab Commission': lambda totals, date, minusan_total: self._get_grabfood_commission_value(totals),
             'GrabFood x OVO (ac)': lambda totals, date, minusan_total: self._get_grabfood_ovo_ac_value(totals),
@@ -464,6 +470,14 @@ class DailySheet(BaseSheet):
             'Grab Net': lambda: self._get_grab_net_value(grand_totals),
             'Grab Pencairan': lambda: grand_totals.get('Grab_Disbursement'),
             'Grab Mutation': lambda: grand_totals.get('Grab_Mutation'),
+            'Grab Difference': lambda: (
+                sum(
+                    totals['Grab_Mutation'] - self._get_grab_net_value(totals)
+                    for totals in self.data['daily_totals'].values()
+                    if totals.get('Grab_Mutation') is not None
+                ) if any(totals.get('Grab_Mutation') is not None
+                         for totals in self.data['daily_totals'].values()) else None
+            ),
             'Grab Net (ac)': lambda: self._get_grab_net_ac_value(grand_totals),
             'Grab Commission': lambda: self._get_grabfood_commission_value(grand_totals),
             'GrabFood x OVO (ac)': lambda: self._get_grabfood_ovo_ac_value(grand_totals),

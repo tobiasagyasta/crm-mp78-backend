@@ -20,6 +20,11 @@ The adjacent Grab Mutation column shows matched bank credits on the transfer
 date and account, using the closest amount within Rp10,000. Ambiguous matches
 are left blank and a bank mutation cannot be assigned to multiple payouts.
 If only some payouts match, the column contains only their matched credits.
+`GRAB_DISBURSEMENT_FIRST_MATCHING` in
+`app/services/excel_export/data_service.py` defaults to `True`: Grab mutation
+matching only runs when completed disbursements are available. Set it to
+`False` to use the legacy Grab Net-based matcher instead. The two matchers do
+not run together; the Grab Pencairan column remains available in both modes.
 
 🚀 A Flask-based REST API for authentication and user management in a CRM system.
 
