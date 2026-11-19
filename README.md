@@ -1,5 +1,39 @@
 # CRM MP78 Backend
 
+## Daily platform totals rebuild
+
+The existing report importers immediately recalculate affected outlet/day totals,
+including historical imports. For an additional daily repair pass, configure an
+external scheduler (for example a Railway cron job) to run:
+
+```bash
+python -m app.workers.daily_totals
+```
+
+It rebuilds the last 30 completed calendar days in Asia/Jakarta for Gojek,
+Grab and ShopeeFood, excluding ShopeePay. It needs the same database and app
+environment as the backend. The command is a one-shot job: `worker.py` handles
+the imports queue and does not schedule it. A failed rebuild exits with an error
+and rolls back; configure scheduler monitoring and retries.
+
+For a historical backfill or correction, use an inclusive date range:
+
+```bash
+python -m app.workers.daily_totals --start-date 2026-01-01 --end-date 2026-01-31
+```
+
+Use `--platform gojek` (repeatable) to restrict a rebuild, or
+`--lookback-days 60` to change the default rolling window. The rebuild updates
+existing rows in place, retaining zero-valued rows when source records have
+been removed because saved matches can reference them. Old corrections outside
+the rolling window require a manual range rebuild unless made through an
+importer that already updates the affected partitions. This job does not
+recompute mutation matches or aggregate unmatched mutations.
+
+Progress is printed live to stderr; the final JSON summary remains on stdout.
+Progress counts reflect processed partitions, not committed changes: the entire
+rebuild is committed only after all selected platforms finish.
+
 ## Grab disbursement imports
 
 Apply `sql/20261118_create_grab_disbursements.sql` before deploying the importer.

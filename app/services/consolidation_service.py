@@ -1,5 +1,5 @@
 from sqlalchemy import func
-from datetime import datetime
+from datetime import date, datetime
 
 from app.extensions import db
 from app.models.daily_merchant_totals import DailyMerchantTotal
@@ -17,29 +17,82 @@ REPORT_CONFIG = {
     },
     'grab': {
         'model': GrabFoodReport,
-        'date_col': func.cast(
-            func.coalesce(GrabFoodReport.diperbarui_pada, GrabFoodReport.tanggal_dibuat),
-            db.Date,
-        ),
+        'date_col': func.date(func.coalesce(
+            GrabFoodReport.diperbarui_pada, GrabFoodReport.tanggal_dibuat,
+        )),
         'gross_col': GrabFoodReport.amount,
         'net_col': GrabFoodReport.total,
         'filters': [],
     },
     'shopee': {
         'model': ShopeeReport,
-        'date_col': func.cast(ShopeeReport.order_create_time, db.Date),
+        'date_col': func.date(ShopeeReport.order_create_time),
         'gross_col': ShopeeReport.order_amount,
         'net_col': ShopeeReport.net_income,
         'filters': [ShopeeReport.order_status != "Cancelled"],
     },
     'shopeepay': {
         'model': ShopeepayReport,
-        'date_col': func.cast(ShopeepayReport.create_time, db.Date),
+        'date_col': func.date(ShopeepayReport.create_time),
         'gross_col': ShopeepayReport.transaction_amount,
         'net_col': ShopeepayReport.settlement_amount,
         'filters': [ShopeepayReport.transaction_type != "Withdrawal"],
     },
 }
+
+# ShopeePay remains supported by the existing import paths, but is intentionally
+# excluded from the new scheduled rebuild.
+REBUILD_PLATFORMS = ('gojek', 'grab', 'shopee')
+
+
+def rebuild_daily_totals(start_date, end_date, platforms=REBUILD_PLATFORMS, progress=None):
+    """Recalculate existing and source-backed partitions within an inclusive range.
+
+    The caller owns the transaction. Existing rows are retained (and zeroed when
+    their source rows disappear) because transaction_matches can reference them.
+    """
+    if not isinstance(start_date, date) or not isinstance(end_date, date):
+        raise ValueError('start_date and end_date must be dates')
+    if start_date > end_date:
+        raise ValueError('start_date cannot be after end_date')
+    platforms = tuple(platforms)
+    if not platforms or any(platform not in REBUILD_PLATFORMS for platform in platforms):
+        raise ValueError('Unsupported rebuild platform')
+
+    counts = {}
+    for platform in dict.fromkeys(platforms):
+        if progress:
+            progress('platform_start', platform, 0, None)
+        config = REPORT_CONFIG[platform]
+        model, date_col = config['model'], config['date_col']
+        source_rows = db.session.query(model.outlet_code, date_col).filter(
+            model.outlet_code.isnot(None),
+            date_col >= start_date,
+            date_col <= end_date,
+            *config['filters'],
+        ).distinct().all()
+        existing_rows = db.session.query(
+            DailyMerchantTotal.outlet_id, DailyMerchantTotal.date,
+        ).filter(
+            DailyMerchantTotal.report_type == platform,
+            DailyMerchantTotal.date >= start_date,
+            DailyMerchantTotal.date <= end_date,
+        ).all()
+        keys = set()
+        for outlet_id, day in list(source_rows) + list(existing_rows):
+            if isinstance(day, str):
+                day = date.fromisoformat(day)
+            keys.add((outlet_id, day))
+        if progress:
+            progress('partitions_found', platform, 0, len(keys))
+        for index, (outlet_id, day) in enumerate(sorted(keys), 1):
+            update_daily_total_for_outlet(outlet_id, day, platform)
+            if progress:
+                progress('partition_processed', platform, index, len(keys))
+        counts[platform] = len(keys)
+        if progress:
+            progress('platform_complete', platform, len(keys), len(keys))
+    return counts
 
 def update_daily_total_for_outlet(outlet_id: str, date: datetime.date, report_type: str):
     """
