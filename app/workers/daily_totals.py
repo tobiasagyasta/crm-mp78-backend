@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 from app.extensions import db
 from app.services.consolidation_service import REBUILD_PLATFORMS, rebuild_daily_totals
 from app.services.monthly_totals_service import rebuild_monthly_totals
+from app.services.mutation_totals_service import rebuild_daily_mutation_totals
 
 
 def run_daily_totals(start_date, end_date, platforms=REBUILD_PLATFORMS, progress=None):
@@ -24,6 +25,9 @@ def run_daily_totals(start_date, end_date, platforms=REBUILD_PLATFORMS, progress
                 progress('monthly_start', None, None, None)
             monthly_counts = rebuild_monthly_totals(start_date, end_date, platforms)
             if progress:
+                progress('mutation_start', None, None, None)
+            mutation_counts = rebuild_daily_mutation_totals(start_date, end_date, platforms)
+            if progress:
                 progress('committing', None, None, None)
             db.session.commit()
         except Exception:
@@ -34,6 +38,7 @@ def run_daily_totals(start_date, end_date, platforms=REBUILD_PLATFORMS, progress
         'end_date': end_date.isoformat(),
         'partitions': counts,
         'monthly_partitions': monthly_counts,
+        'mutation_totals': mutation_counts,
     }
 
 
@@ -58,6 +63,8 @@ def terminal_progress():
             message = 'Committing all changes...'
         elif event == 'monthly_start':
             message = 'Refreshing monthly totals for affected calendar months...'
+        elif event == 'mutation_start':
+            message = 'Refreshing mutation totals for H+1 bank dates...'
         else:
             return
         print(message, file=sys.stderr, flush=True)

@@ -143,6 +143,7 @@ def _match_grab_disbursement_mutations(daily_totals, reports, commit=True):
                if p.mutation_id in mutation_by_id}
     linked_ids = {p.mutation_id for p in competitors if p.mutation_id is not None}
     changed = False
+    changed_bank_dates = set()
     for payouts, credits in groups.values():
         candidates = []
         for payout in payouts:
@@ -163,9 +164,16 @@ def _match_grab_disbursement_mutations(daily_totals, reports, commit=True):
             linked_ids.add(credit.id)
             matched[payout.id] = credit
             changed = True
+            changed_bank_dates.add(credit.tanggal)
 
-    if changed and commit:
-        db.session.commit()
+    if changed:
+        from app.services.mutation_totals_service import rebuild_daily_mutation_totals
+        db.session.flush()
+        for bank_date in sorted(changed_bank_dates):
+            transaction_date = bank_date - timedelta(days=1)
+            rebuild_daily_mutation_totals(transaction_date, transaction_date, ['grab'])
+        if commit:
+            db.session.commit()
 
     return _apply_grab_disbursement_matches(daily_totals, reports, matched)
 

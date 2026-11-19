@@ -26,9 +26,9 @@ with zero. These are platform report totals, not bank mutation totals.
 
 ## Daily platform totals rebuild
 
-**Deployment:** Apply `sql/20261120_create_monthly_totals.sql` to the target
-database before deploying this version or running the daily worker. Back up
-the database first.
+**Deployment:** Apply `sql/20261120_create_monthly_totals.sql` and
+`sql/20261121_create_daily_mutation_totals.sql` to the target database before
+deploying this version or running the daily worker. Back up the database first.
 
 The existing report importers immediately recalculate affected outlet/day totals,
 including historical imports. For an additional daily repair pass, configure an
@@ -56,7 +56,7 @@ existing rows in place, retaining zero-valued rows when source records have
 been removed because saved matches can reference them. Old corrections outside
 the rolling window require a manual range rebuild unless made through an
 importer that already updates the affected partitions. This job does not
-recompute mutation matches or aggregate unmatched mutations.
+recompute mutation matches.
 
 Progress is printed live to stderr; the final JSON summary remains on stdout.
 Progress counts reflect processed partitions, not committed changes: the entire
@@ -78,6 +78,50 @@ This command uses existing daily totals; backfill daily totals first. It rebuild
 entire calendar months even if the given dates are mid-month. Add `--platform
 shopee` to restrict it. Like the daily command it is transactional, idempotent,
 and prints progress to stderr.
+
+### Daily mutation totals
+
+The daily worker also rebuilds `daily_mutation_totals` for bank dates one day
+after its transaction-date window. Gojek, Grab, and ShopeeFood bank credits
+(`CR`, blank, or unknown direction) are included; explicit debits, unknown
+platforms and rows without a bank date are excluded. Each mutation is counted
+once. Amounts missing from source data are counted separately.
+
+For Gojek and ShopeeFood, the worker uses saved manual matches first; otherwise
+it attributes unique H+1 store-code candidates to a daily outlet total. Gojek
+uses the full store ID and ShopeeFood uses its last four or five digits.
+Candidates must be one-to-one in both directions; ambiguous candidates remain
+unattributed. These SID matches are labelled `sid_h1` and are heuristic, not
+confirmed. For Grab, only completed disbursement links are used; saved
+amount-based Grab matches are ignored. Attributes are labelled `manual`,
+`sid_h1`, or `disbursement` to distinguish their source.
+
+All other credits are `unattributed`,
+with no brand or outlet; their transaction date is only an H+1 candidate
+(`bank_date - 1`), not a confirmed transaction date. This worker does **not**
+write or update saved match records. Links
+whose bank date is outside the lookback are not refreshed; backfill those dates
+after older imports or match changes. Bank dates and attribution are retained
+separately to avoid confusing candidates with actual matches.
+
+The matching endpoints also refresh the selected platform and date range when
+they save match results. Creating new Grab disbursement links refreshes their
+affected bank dates in the same transaction, including when links are made
+during a disbursement import or sheet generation. A refresh failure prevents
+those matching changes from being committed. Direct database edits and other
+changes that do not go through these paths still require a worker run or manual
+backfill.
+
+Backfill by candidate transaction date, without rebuilding platform totals:
+
+```bash
+python -m app.workers.mutation_totals --start-date 2026-01-01 --end-date 2026-01-31
+```
+
+The dates above process bank dates January 2 through February 1. Add
+`--platform shopee` to restrict the rebuild. Mutation totals are separate from
+`daily_merchant_totals` and are not yet included in the BI endpoint or monthly
+totals. Mutation uploads alone do not immediately refresh this table.
 
 ## Grab disbursement imports
 

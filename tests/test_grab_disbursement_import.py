@@ -1,5 +1,6 @@
 from datetime import date, datetime
 from unittest import TestCase
+from unittest.mock import patch
 
 from flask import Flask
 from sqlalchemy import text
@@ -20,6 +21,9 @@ ROW = ('10 Nov 2026 11:31 PM,Store,store-id,{id},463674,Completed,'
 
 class GrabDisbursementImportTest(TestCase):
     def setUp(self):
+        self.refresh = patch('app.services.mutation_totals_service.rebuild_daily_mutation_totals')
+        self.refresh_mock = self.refresh.start()
+        self.addCleanup(self.refresh.stop)
         self.app = Flask(__name__)
         self.app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite://'
         db.init_app(self.app)
@@ -84,6 +88,7 @@ class GrabDisbursementImportTest(TestCase):
         mutation_id = mutation.id
         result = import_grab_disbursement_bytes((HEADER + ROW.format(id='SID1', suffix='0385')).encode())
         self.assertEqual(result['matched_disbursements'], 1)
+        self.refresh_mock.assert_called_once_with(date(2026, 11, 10), date(2026, 11, 10), ['grab'])
         self.assertEqual(GrabDisbursement.query.one().mutation_id, mutation_id)
         self.assertEqual(db.session.get(BankMutation, mutation_id).platform_code, 'store-id')
         db.session.rollback()

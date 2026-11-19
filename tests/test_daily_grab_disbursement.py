@@ -20,6 +20,9 @@ from app.services.excel_export.sheets.daily_sheet import DailySheet
 
 class DailyGrabDisbursementTest(TestCase):
     def setUp(self):
+        self.refresh = patch('app.services.mutation_totals_service.rebuild_daily_mutation_totals')
+        self.refresh_mock = self.refresh.start()
+        self.addCleanup(self.refresh.stop)
         app = Flask(__name__)
         app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite://'
         db.init_app(app)

@@ -439,6 +439,10 @@ class TransactionMatcher:
 
         if matches:
             db.session.bulk_save_objects(matches)
+        if self.platform in ('gojek', 'grab', 'shopee') and start_date and end_date:
+            from app.services.mutation_totals_service import rebuild_daily_mutation_totals
+            db.session.flush()
+            rebuild_daily_mutation_totals(start_date, end_date, [self.platform])
         db.session.commit()
         duration_seconds = time.perf_counter() - started_at
         logger.info(
