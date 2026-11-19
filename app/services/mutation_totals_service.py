@@ -52,11 +52,9 @@ def rebuild_daily_mutation_totals(start_date, end_date, platforms=REBUILD_PLATFO
     ).all())
     for start in range(0, len(ids), 500):
         manual_rows.extend(manual_query.filter(TransactionMatch.mutation_id.in_(ids[start:start + 500])).all())
-    reserved = set()
     manual_ids = {row[0] for row in manual_rows if row[0] is not None}
     for mutation_id, platform, outlet, day, report_type in manual_rows:
         if outlet and day and platform == report_type:
-            reserved.add((platform, outlet, day))
             if mutation_id in id_set:
                 links[mutation_id].add((platform, outlet, day, 'manual'))
     for start in range(0, len(ids), 500):
@@ -78,8 +76,6 @@ def rebuild_daily_mutation_totals(start_date, end_date, platforms=REBUILD_PLATFO
         .filter(DailyMerchantTotal.date >= start_date, DailyMerchantTotal.date <= end_date,
                 DailyMerchantTotal.report_type.in_([p for p in platforms if p != 'grab'])).all())
     for outlet, day, platform, gojek_id, shopee_id in daily_rows:
-        if (platform, outlet, day) in reserved:
-            continue
         store_id = (gojek_id if platform == 'gojek' else shopee_id) or ''
         store_id = store_id.strip()
         if not store_id:
@@ -88,7 +84,6 @@ def rebuild_daily_mutation_totals(start_date, end_date, platforms=REBUILD_PLATFO
         for code in codes:
             code_index[(platform, day + timedelta(days=1), code)].add((platform, outlet, day))
     candidates = {}
-    counts = defaultdict(int)
     for mutation in mutations:
         platform = reverse[mutation.platform_name]
         code = (mutation.platform_code or '').strip()
@@ -96,13 +91,10 @@ def rebuild_daily_mutation_totals(start_date, end_date, platforms=REBUILD_PLATFO
             continue
         choices = code_index.get((platform, mutation.tanggal, code), set())
         candidates[mutation.id] = choices
-        for choice in choices:
-            counts[choice] += 1
     for mutation_id, choices in candidates.items():
         if len(choices) == 1:
             choice = next(iter(choices))
-            if counts[choice] == 1:
-                links[mutation_id].add((*choice, 'sid_h1'))
+            links[mutation_id].add((*choice, 'sid_h1'))
 
     outlet_codes = sorted({link[1] for entries in links.values() for link in entries})
     brands = {}

@@ -88,8 +88,21 @@ class MutationTotalsTest(TestCase):
         rebuild_daily_mutation_totals(date(2026, 1, 1), date(2026, 1, 1), ['shopee'])
         db.session.commit()
         row = DailyMutationTotal.query.one()
-        self.assertEqual(row.attribution, 'unattributed')
+        self.assertEqual(row.attribution, 'sid_h1')
         self.assertEqual(row.mutation_count, 2)
+
+    def test_shared_shopee_suffix_is_not_attributed(self):
+        from app.models.daily_merchant_totals import DailyMerchantTotal
+        db.session.execute(text("UPDATE bank_mutations SET platform_code='3456' WHERE id=2"))
+        db.session.execute(text("UPDATE outlets SET store_id_shopee='993456' WHERE outlet_code='b'"))
+        db.session.add_all([
+            DailyMerchantTotal(outlet_id='a', date=date(2026, 1, 1), report_type='shopee', total_net=30),
+            DailyMerchantTotal(outlet_id='b', date=date(2026, 1, 1), report_type='shopee', total_net=30),
+        ])
+        db.session.commit()
+        rebuild_daily_mutation_totals(date(2026, 1, 1), date(2026, 1, 1), ['shopee'])
+        db.session.commit()
+        self.assertEqual(DailyMutationTotal.query.one().attribution, 'unattributed')
 
     def test_gojek_uses_full_store_id(self):
         from app.models.daily_merchant_totals import DailyMerchantTotal
@@ -102,3 +115,16 @@ class MutationTotalsTest(TestCase):
         row = DailyMutationTotal.query.filter_by(attribution='sid_h1').one()
         self.assertEqual(row.outlet_code, 'b')
         self.assertEqual(row.amount, Decimal('25'))
+
+    def test_manual_match_does_not_block_other_credits_for_outlet(self):
+        from app.models.daily_merchant_totals import DailyMerchantTotal
+        db.session.add(DailyMerchantTotal(outlet_id='a', date=date(2026, 1, 1),
+                                         report_type='gojek', total_gross=100, total_net=90))
+        db.session.execute(text("UPDATE bank_mutations SET platform_code='g1', transaction_amount=25 WHERE id=5"))
+        db.session.commit()
+        rebuild_daily_mutation_totals(date(2026, 1, 1), date(2026, 1, 1), ['gojek'])
+        db.session.commit()
+        rows = {r.attribution: r for r in DailyMutationTotal.query.all()}
+        self.assertEqual(rows['manual'].outlet_code, 'a')
+        self.assertEqual(rows['sid_h1'].outlet_code, 'a')
+        self.assertEqual(rows['sid_h1'].amount, Decimal('25'))

@@ -123,8 +123,9 @@ once. Amounts missing from source data are counted separately.
 For Gojek and ShopeeFood, the worker uses saved manual matches first; otherwise
 it attributes unique H+1 store-code candidates to a daily outlet total. Gojek
 uses the full store ID and ShopeeFood uses its last four or five digits.
-Candidates must be one-to-one in both directions; ambiguous candidates remain
-unattributed. These SID matches are labelled `sid_h1` and are heuristic, not
+Each mutation must identify exactly one outlet on the previous day; multiple
+mutations may be attributed to that same outlet. Codes that identify multiple
+outlets remain unattributed. These SID matches are labelled `sid_h1` and are heuristic, not
 confirmed. For Grab, only completed disbursement links are used; saved
 amount-based Grab matches are ignored. Attributes are labelled `manual`,
 `sid_h1`, or `disbursement` to distinguish their source.
