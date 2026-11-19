@@ -3,12 +3,194 @@ from datetime import date, datetime
 from decimal import Decimal
 from app.extensions import db
 from app.models.daily_merchant_totals import DailyMerchantTotal
+from app.models.daily_mutation_totals import DailyMutationTotal
+from app.models.monthly_totals import MonthlyTotal
 from app.models.outlet import Outlet
 from collections import defaultdict
 
 bi_bp = Blueprint('bi', __name__, url_prefix='/bi')
 
 DAILY_TOTAL_PLATFORMS = ('gojek', 'grab', 'shopee')
+
+
+def _bi_filters():
+    start = date.fromisoformat(request.args.get('start_date', ''))
+    end = date.fromisoformat(request.args.get('end_date', ''))
+    if start > end:
+        raise ValueError('start_date cannot be after end_date')
+    platforms = list(dict.fromkeys(value.strip().lower() for value in request.args.getlist('platform')))
+    if any(value not in DAILY_TOTAL_PLATFORMS for value in platforms):
+        raise ValueError('platform must be gojek, grab or shopee')
+    brand = request.args.get('brand')
+    if brand is not None:
+        brand = brand.strip()
+        if not brand:
+            raise ValueError('brand cannot be empty')
+    include_outlets = request.args.get('include_outlets', 'false').lower()
+    if include_outlets not in ('true', 'false'):
+        raise ValueError('include_outlets must be true or false')
+    page, per_page = int(request.args.get('page', '1')), int(request.args.get('per_page', '25'))
+    if page < 1 or not 1 <= per_page <= 100:
+        raise ValueError('page must be positive and per_page must be between 1 and 100')
+    return start, end, platforms or list(DAILY_TOTAL_PLATFORMS), brand, include_outlets == 'true', page, per_page
+
+
+def _outlet_name(code):
+    return db.func.coalesce(
+        db.func.nullif(db.func.trim(Outlet.outlet_name_gojek), ''),
+        db.func.nullif(db.func.trim(Outlet.outlet_name_grab), ''),
+        db.func.nullif(db.func.trim(Outlet.outlet_name_webshop), ''),
+        db.func.nullif(db.func.trim(Outlet.outlet_name_qpon), ''), code,
+    )
+
+
+@bi_bp.route('/monthly-totals', methods=['GET'])
+def get_monthly_totals():
+    """Calendar-month platform totals; partial months are not supported."""
+    try:
+        start, end, platforms, brand, include_outlets, page, per_page = _bi_filters()
+        from calendar import monthrange
+        if start.day != 1 or end.day != monthrange(end.year, end.month)[1]:
+            raise ValueError('monthly range must start on the first and end on the last day of a month')
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+    filters = [MonthlyTotal.month >= start, MonthlyTotal.month <= end,
+               MonthlyTotal.report_type.in_(platforms)]
+    if brand is not None:
+        filters.append(MonthlyTotal.brand == brand)
+    gross = db.func.coalesce(db.func.sum(MonthlyTotal.total_gross), 0)
+    net = db.func.coalesce(db.func.sum(MonthlyTotal.total_net), 0)
+    rows = (db.session.query(MonthlyTotal.brand, MonthlyTotal.month, MonthlyTotal.report_type, gross, net)
+            .filter(*filters).group_by(MonthlyTotal.brand, MonthlyTotal.month, MonthlyTotal.report_type)
+            .order_by(MonthlyTotal.brand, MonthlyTotal.month, MonthlyTotal.report_type).all())
+    response = {
+        'filters': {'start_date': start.isoformat(), 'end_date': end.isoformat(), 'brand': brand,
+                    'platforms': platforms, 'date_basis': 'transaction_date', 'period': 'calendar_month'},
+        'totals': {'gross': str(sum((Decimal(str(row[3])) for row in rows), Decimal(0))),
+                   'net': str(sum((Decimal(str(row[4])) for row in rows), Decimal(0)))},
+        'monthly': [{'brand': b, 'month': month.isoformat(), 'platform': platform,
+                     'gross': str(g), 'net': str(n)} for b, month, platform, g, n in rows],
+    }
+    if include_outlets:
+        name = _outlet_name(MonthlyTotal.outlet_id)
+        query = (db.session.query(MonthlyTotal.outlet_id.label('outlet_code'),
+                                  MonthlyTotal.brand.label('brand'), name.label('outlet_name'),
+                                  gross.label('gross'), net.label('net'))
+                 .outerjoin(Outlet, Outlet.outlet_code == MonthlyTotal.outlet_id)
+                 .filter(*filters).group_by(MonthlyTotal.outlet_id, MonthlyTotal.brand, name))
+        count = query.order_by(None).count()
+        outlet_rows = query.order_by(db.func.lower(name), MonthlyTotal.outlet_id).offset(
+            (page - 1) * per_page).limit(per_page).all()
+        outlet_platforms = defaultdict(list)
+        outlet_codes = [r.outlet_code for r in outlet_rows]
+        if outlet_codes:
+            detail = (db.session.query(MonthlyTotal.outlet_id, MonthlyTotal.brand,
+                                       MonthlyTotal.report_type, gross, net)
+                      .filter(*filters, MonthlyTotal.outlet_id.in_(outlet_codes))
+                      .group_by(MonthlyTotal.outlet_id, MonthlyTotal.brand, MonthlyTotal.report_type)
+                      .order_by(MonthlyTotal.report_type).all())
+            for code, outlet_brand, platform, g, n in detail:
+                outlet_platforms[(code, outlet_brand)].append(
+                    {'platform': platform, 'gross': str(g), 'net': str(n)})
+        response['outlets'] = {
+            'data': [{'outlet_code': r.outlet_code, 'outlet_name': r.outlet_name, 'brand': r.brand,
+                      'gross': str(r.gross), 'net': str(r.net),
+                      'platforms': outlet_platforms[(r.outlet_code, r.brand)]} for r in outlet_rows],
+            'pagination': {'page': page, 'per_page': per_page, 'total_records': count,
+                           'total_pages': (count + per_page - 1) // per_page},
+        }
+    return jsonify(response)
+
+
+@bi_bp.route('/daily-mutation-totals', methods=['GET'])
+def get_daily_mutation_totals():
+    """Return mutation totals separately by attribution and actual bank date."""
+    try:
+        start, end, platforms, brand, include_outlets, page, per_page = _bi_filters()
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+    common = [DailyMutationTotal.transaction_date >= start, DailyMutationTotal.transaction_date <= end,
+              DailyMutationTotal.platform.in_(platforms)]
+    attributed = DailyMutationTotal.attribution != 'unattributed'
+    amount = db.func.coalesce(db.func.sum(DailyMutationTotal.amount), 0)
+    count = db.func.coalesce(db.func.sum(DailyMutationTotal.mutation_count), 0)
+    missing = db.func.coalesce(db.func.sum(DailyMutationTotal.missing_amount_count), 0)
+    selected = common + ([DailyMutationTotal.brand == brand, attributed] if brand is not None else [])
+    rows = (db.session.query(DailyMutationTotal.brand, DailyMutationTotal.transaction_date,
+                             DailyMutationTotal.bank_date, DailyMutationTotal.platform,
+                             DailyMutationTotal.attribution, amount, count, missing)
+            .filter(*selected)
+            .group_by(DailyMutationTotal.brand, DailyMutationTotal.transaction_date,
+                      DailyMutationTotal.bank_date, DailyMutationTotal.platform, DailyMutationTotal.attribution)
+            .order_by(DailyMutationTotal.transaction_date, DailyMutationTotal.bank_date,
+                      DailyMutationTotal.platform, DailyMutationTotal.attribution).all())
+    def serialize(row):
+        b, transaction_day, bank_day, platform, attribution, value, number, missing_number = row
+        return {'brand': b, 'date': transaction_day.isoformat(), 'bank_date': bank_day.isoformat(),
+                'platform': platform, 'attribution': attribution, 'amount': str(value),
+                'mutation_count': number, 'missing_amount_count': missing_number,
+                'date_is_candidate': attribution == 'unattributed'}
+
+    response = {
+        'filters': {'start_date': start.isoformat(), 'end_date': end.isoformat(), 'brand': brand,
+                    'platforms': platforms, 'date_basis': 'transaction_date_or_h1_candidate'},
+        'daily': [serialize(row) for row in rows],
+    }
+    summaries = {}
+    for row in rows:
+        attribution = row[4]
+        entry = summaries.setdefault(attribution, {'amount': Decimal(0), 'mutation_count': 0, 'missing_amount_count': 0})
+        entry['amount'] += Decimal(str(row[5]))
+        entry['mutation_count'] += row[6]
+        entry['missing_amount_count'] += row[7]
+    response['totals_by_attribution'] = [
+        {'attribution': key, 'amount': str(value['amount']), 'mutation_count': value['mutation_count'],
+         'missing_amount_count': value['missing_amount_count']} for key, value in sorted(summaries.items())]
+    if brand is not None:
+        unassigned = (db.session.query(DailyMutationTotal.brand, DailyMutationTotal.transaction_date,
+                                       DailyMutationTotal.bank_date, DailyMutationTotal.platform,
+                                       DailyMutationTotal.attribution, amount, count, missing)
+                      .filter(*common, DailyMutationTotal.attribution == 'unattributed')
+                      .group_by(DailyMutationTotal.brand, DailyMutationTotal.transaction_date,
+                                DailyMutationTotal.bank_date, DailyMutationTotal.platform, DailyMutationTotal.attribution)
+                      .order_by(DailyMutationTotal.transaction_date, DailyMutationTotal.bank_date,
+                                DailyMutationTotal.platform).all())
+        response['unattributed_all_brands'] = [serialize(row) for row in unassigned]
+    if include_outlets:
+        name = _outlet_name(DailyMutationTotal.outlet_code)
+        query = (db.session.query(DailyMutationTotal.outlet_code.label('outlet_code'),
+                                  DailyMutationTotal.brand.label('brand'), name.label('outlet_name'),
+                                  amount.label('amount'), count.label('mutation_count'),
+                                  missing.label('missing_amount_count'))
+                 .outerjoin(Outlet, Outlet.outlet_code == DailyMutationTotal.outlet_code)
+                 .filter(*selected, DailyMutationTotal.outlet_code.isnot(None), attributed)
+                 .group_by(DailyMutationTotal.outlet_code, DailyMutationTotal.brand, name))
+        total = query.order_by(None).count()
+        outlet_rows = query.order_by(db.func.lower(name), DailyMutationTotal.outlet_code).offset(
+            (page - 1) * per_page).limit(per_page).all()
+        outlet_details = defaultdict(list)
+        codes = [r.outlet_code for r in outlet_rows]
+        if codes:
+            details = (db.session.query(DailyMutationTotal.outlet_code, DailyMutationTotal.brand,
+                                        DailyMutationTotal.platform, DailyMutationTotal.attribution,
+                                        amount, count, missing)
+                       .filter(*selected, attributed, DailyMutationTotal.outlet_code.in_(codes))
+                       .group_by(DailyMutationTotal.outlet_code, DailyMutationTotal.brand,
+                                 DailyMutationTotal.platform, DailyMutationTotal.attribution)
+                       .order_by(DailyMutationTotal.platform, DailyMutationTotal.attribution).all())
+            for code, outlet_brand, platform, attribution, value, number, missing_number in details:
+                outlet_details[(code, outlet_brand)].append({
+                    'platform': platform, 'attribution': attribution, 'amount': str(value),
+                    'mutation_count': number, 'missing_amount_count': missing_number})
+        response['outlets'] = {
+            'data': [{'outlet_code': r.outlet_code, 'outlet_name': r.outlet_name, 'brand': r.brand,
+                      'amount': str(r.amount), 'mutation_count': r.mutation_count,
+                      'missing_amount_count': r.missing_amount_count,
+                      'breakdown': outlet_details[(r.outlet_code, r.brand)]} for r in outlet_rows],
+            'pagination': {'page': page, 'per_page': per_page, 'total_records': total,
+                           'total_pages': (total + per_page - 1) // per_page},
+        }
+    return jsonify(response)
 
 
 @bi_bp.route('/daily-totals', methods=['GET'])

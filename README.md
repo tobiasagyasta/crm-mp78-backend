@@ -24,6 +24,39 @@ breaks ties. Pagination does not affect the overall, brand or daily totals.
 Amounts are decimal strings; absent combinations are omitted rather than filled
 with zero. These are platform report totals, not bank mutation totals.
 
+### Monthly platform and daily mutation endpoints
+
+`GET /bi/monthly-totals` accepts the same filters and optional outlet pagination
+as the daily endpoint. The range must cover **whole calendar months**: start on
+the first day and end on the last day (for the current month, use its calendar
+end even if it is in the future). The `monthly` array has one row per brand,
+month and platform; `month` is the first day of the calendar month. It reads
+`monthly_totals`, whose brand and values reflect the last monthly refresh.
+`totals` cover the full filtered range, independent of outlet pagination.
+
+`GET /bi/daily-mutation-totals` accepts the same date, brand, platform and
+pagination parameters. Its `daily` rows include transaction `date`, actual
+`bank_date`, platform, brand, `attribution`, `amount`, `mutation_count` and
+`missing_amount_count`. `totals_by_attribution` keeps `manual`, `sid_h1`,
+`disbursement` and `unattributed` separate. `sid_h1` is heuristic; for
+`unattributed` the date is only a candidate (`date_is_candidate: true`).
+An outlet breakdown, when requested, excludes unattributed rows and includes
+platform/attribution details. Amounts are decimal strings.
+
+Without a brand filter, unattributed mutations appear in `daily` and its
+attribution totals. With a brand filter, they instead appear in
+`unattributed_all_brands`: they cannot be assigned to the selected brand and
+must not be added to that brand's totals. They remain subject to the date and
+platform filters. Monthly platform rows can be compared with mutation rows by
+requesting the same whole-month range and grouping mutation transaction/candidate
+dates by month, while keeping attribution categories separate. These endpoints
+read precomputed aggregates and do not initiate matching or refresh them.
+
+```text
+GET /bi/monthly-totals?start_date=2026-01-01&end_date=2026-01-31&brand=MP78
+GET /bi/daily-mutation-totals?start_date=2026-01-01&end_date=2026-01-31&brand=MP78&include_outlets=true
+```
+
 ## Daily platform totals rebuild
 
 **Deployment:** Apply `sql/20261120_create_monthly_totals.sql` and
