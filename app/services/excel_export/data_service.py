@@ -33,6 +33,7 @@ SHOW_MUTATIONS_WITHOUT_PLATFORM_DATA = True
 # True: match Grab bank mutations only against completed disbursements.
 # False: fall back to the legacy matcher on dates without a disbursement.
 GRAB_DISBURSEMENT_FIRST_MATCHING = False
+GRAB_DISBURSEMENT_MATCH_TOLERANCE = 5
 
 def _grab_report_datetime_col():
     return func.coalesce(GrabFoodReport.diperbarui_pada, GrabFoodReport.tanggal_dibuat)
@@ -96,7 +97,7 @@ def _get_grab_disbursements(store_id, start_date, end_date):
 
 
 def _match_grab_disbursement_mutations(daily_totals, reports, commit=True):
-    """Persist exact one-to-one matches across shared accounts."""
+    """Persist closest one-to-one matches across shared accounts within Rp5."""
     if not reports:
         return 0
     accounts = {report.rekening_id: report.rekening.rekening_number for report in reports}
@@ -143,24 +144,25 @@ def _match_grab_disbursement_mutations(daily_totals, reports, commit=True):
     linked_ids = {p.mutation_id for p in competitors if p.mutation_id is not None}
     changed = False
     for payouts, credits in groups.values():
-        payouts_by_amount = defaultdict(list)
-        credits_by_amount = defaultdict(list)
+        candidates = []
         for payout in payouts:
-            if payout.mutation_id is None:
-                payouts_by_amount[payout.net_amount].append(payout)
-        for credit in credits:
-            if credit.id not in linked_ids and not (credit.platform_code or '').strip():
-                credits_by_amount[credit.transaction_amount].append(credit)
-        for amount, candidates in payouts_by_amount.items():
-            eligible = credits_by_amount.get(amount, [])
-            # Both queries are ordered by ID, so equal candidates are paired
-            # consistently and no mutation or payout is reused.
-            for payout, credit in zip(candidates, eligible):
-                payout.mutation_id = credit.id
-                credit.platform_code = payout.store_id
-                linked_ids.add(credit.id)
-                matched[payout.id] = credit
-                changed = True
+            if payout.mutation_id is not None or payout.net_amount is None:
+                continue
+            for credit in credits:
+                if credit.id in linked_ids or (credit.platform_code or '').strip():
+                    continue
+                difference = abs(payout.net_amount - credit.transaction_amount)
+                if difference <= GRAB_DISBURSEMENT_MATCH_TOLERANCE:
+                    candidates.append((difference, payout.id, credit.id, payout, credit))
+        # Closest amounts win; IDs make ties deterministic.
+        for _, _, _, payout, credit in sorted(candidates, key=lambda candidate: candidate[:3]):
+            if payout.mutation_id is not None or credit.id in linked_ids:
+                continue
+            payout.mutation_id = credit.id
+            credit.platform_code = payout.store_id
+            linked_ids.add(credit.id)
+            matched[payout.id] = credit
+            changed = True
 
     if changed and commit:
         db.session.commit()

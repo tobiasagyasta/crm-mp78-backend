@@ -102,7 +102,8 @@ the following calendar day's transfer date (H+1). A blank means no matching
 completed disbursement was found; these are not bank-statement mutations.
 Apply `sql/20261120_grab_disbursement_mutation_link.sql` before using
 disbursement-based matching. The adjacent Grab Mutation column shows bank
-credits with the exact same amount, account and transfer date. One-to-one
+credits on the same account and transfer date, matching the closest amount
+within Rp5. One-to-one
 matches are saved during the disbursement import when bank mutations
 are already available, or when the sheet or preview is generated otherwise: the
 mutation's platform code becomes the Grab store ID, and the payout stores the

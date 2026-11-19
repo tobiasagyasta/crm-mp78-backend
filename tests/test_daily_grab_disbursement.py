@@ -183,14 +183,14 @@ class DailyGrabDisbursementTest(TestCase):
         self.assertEqual([db.session.get(BankMutation, p.mutation_id).platform_code for p in payouts],
                          ['store', 'other'])
 
-    def test_near_amount_and_preassigned_code_are_not_matched(self):
+    def test_outside_tolerance_and_preassigned_code_are_not_matched(self):
         transfer = datetime(2026, 12, 1)
         db.session.add(GrabDisbursement(disbursement_id='a', store_id='store', store_name='Store',
                                        transfer_date=transfer, net_amount=100000, status='Completed',
                                        rekening_id=1, account_suffix='0385'))
         db.session.add_all([
             BankMutation(rekening_number='1230385', tanggal=transfer.date(), platform_name='Grab',
-                         transaction_type='CR', transaction_amount=100001),
+                         transaction_type='CR', transaction_amount=100006),
             BankMutation(rekening_number='1230385', tanggal=transfer.date(), platform_name='Grab',
                          transaction_type='CR', transaction_amount=100000, platform_code='other'),
         ])
@@ -201,3 +201,33 @@ class DailyGrabDisbursementTest(TestCase):
         _match_grab_disbursement_mutations(daily, reports)
         self.assertIsNone(daily[day]['Grab_Mutation'])
         self.assertIsNone(reports[0].mutation_id)
+
+    def test_tolerance_in_both_directions_and_closest_match(self):
+        transfer = datetime(2026, 12, 1)
+        for index, (amount, credit_amount, should_match) in enumerate([
+            (493975, 493974, True), (200000, 200005, True),
+            (300000, 299995, True), (400000, 399994, False),
+            (500000, 500006, False),
+        ]):
+            db.session.add(GrabDisbursement(
+                disbursement_id=str(index), store_id='store', store_name='Store',
+                transfer_date=transfer, net_amount=amount, status='Completed',
+                rekening_id=1, account_suffix='0385'))
+            db.session.add(BankMutation(
+                rekening_number='1230385', tanggal=transfer.date(), platform_name='Grab',
+                transaction_type='CR', transaction_amount=credit_amount))
+        # A closer credit must win even when it has a higher ID.
+        db.session.add(BankMutation(
+            rekening_number='1230385', tanggal=transfer.date(), platform_name='Grab',
+            transaction_type='CR', transaction_amount=493975))
+        db.session.commit()
+        reports = GrabDisbursement.query.order_by(GrabDisbursement.id).all()
+        day = date(2026, 11, 30)
+        daily = {day: _init_daily_total()}
+        self.assertEqual(_match_grab_disbursement_mutations(daily, reports), 3)
+        self.assertEqual([p.mutation_id is not None for p in reports],
+                         [True, True, True, False, False])
+        self.assertEqual(db.session.get(BankMutation, reports[0].mutation_id).transaction_amount, 493975)
+        self.assertEqual(daily[day]['Grab_Mutation'], 493975 + 200005 + 299995)
+        self.assertTrue(all(db.session.get(BankMutation, p.mutation_id).platform_code == 'store'
+                            for p in reports[:3]))
