@@ -1,6 +1,34 @@
 # CRM MP78 Backend
 
+## BI daily platform totals
+
+`GET /bi/daily-totals` reads `daily_merchant_totals` on an inclusive transaction
+date basis. `start_date` and `end_date` are required (`YYYY-MM-DD`); `brand` is
+an optional exact, case-sensitive match to the outlet's current brand. Repeat
+`platform` to filter: `gojek`, `grab`, or `shopee` (ShopeeFood). With no platform
+filter, all three are included; ShopeePay is not included. Both active and
+inactive outlets are included. Missing outlet/brand mappings appear with
+`brand: null` unless a specific brand is selected.
+
+```text
+GET /bi/daily-totals?start_date=2026-01-01&end_date=2026-01-31&brand=MP78&platform=gojek&platform=grab&include_outlets=true&page=1&per_page=25
+```
+
+The response contains `filters`, overall `totals`, `brands` (including platform
+breakdowns), and `daily` rows by brand, date and platform. Set
+`include_outlets=true` to include range totals and platform breakdowns for each
+outlet, with `outlets.pagination`. Pagination defaults to page 1 and 25 outlets;
+`per_page` is capped at 100. Outlets are ordered case-insensitively by their
+Gojek name, falling back to Grab, Webshop, Qpon, then outlet code; outlet code
+breaks ties. Pagination does not affect the overall, brand or daily totals.
+Amounts are decimal strings; absent combinations are omitted rather than filled
+with zero. These are platform report totals, not bank mutation totals.
+
 ## Daily platform totals rebuild
+
+**Deployment:** Apply `sql/20261120_create_monthly_totals.sql` to the target
+database before deploying this version or running the daily worker. Back up
+the database first.
 
 The existing report importers immediately recalculate affected outlet/day totals,
 including historical imports. For an additional daily repair pass, configure an
@@ -33,6 +61,23 @@ recompute mutation matches or aggregate unmatched mutations.
 Progress is printed live to stderr; the final JSON summary remains on stdout.
 Progress counts reflect processed partitions, not committed changes: the entire
 rebuild is committed only after all selected platforms finish.
+
+The daily worker also refreshes `monthly_totals` from daily totals for every
+calendar month touched by its date range. Monthly rows are per outlet, month
+(first day), and platform; `brand` comes from the outlet's current brand and
+may be null for missing outlets or brands. They contain platform gross and net,
+not mutation totals. An import refreshes daily totals immediately, but monthly
+totals are refreshed on the next daily worker run if their month intersects the
+worker's lookback. Imports in older months require a manual monthly rebuild:
+
+```bash
+python -m app.workers.monthly_totals --start-date 2026-01-01 --end-date 2026-12-31
+```
+
+This command uses existing daily totals; backfill daily totals first. It rebuilds
+entire calendar months even if the given dates are mid-month. Add `--platform
+shopee` to restrict it. Like the daily command it is transactional, idempotent,
+and prints progress to stderr.
 
 ## Grab disbursement imports
 
