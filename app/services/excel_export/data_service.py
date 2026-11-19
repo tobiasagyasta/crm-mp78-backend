@@ -108,7 +108,6 @@ def _match_grab_disbursement_mutations(daily_totals, reports, commit=True):
         linked = BankMutation.query.filter(
             BankMutation.id.in_([report.mutation_id for report in reports]),
             BankMutation.platform_name == 'Grab',
-            BankMutation.rekening_number.in_(list(accounts.values())),
             BankMutation.tanggal >= first,
             BankMutation.tanggal <= last,
             or_(BankMutation.transaction_type.is_(None), func.upper(func.trim(BankMutation.transaction_type)) == 'CR'),
@@ -131,6 +130,15 @@ def _match_grab_disbursement_mutations(daily_totals, reports, commit=True):
         or_(BankMutation.transaction_type.is_(None), func.upper(func.trim(BankMutation.transaction_type)) == 'CR'),
         BankMutation.transaction_amount.isnot(None),
     ).order_by(BankMutation.id).with_for_update().all()
+    # Links can belong to payouts outside this account/date selection. Exclude
+    # them regardless of the linked payout's status or the mutation direction.
+    candidate_ids = [mutation.id for mutation in mutations]
+    globally_linked_ids = set()
+    for offset in range(0, len(candidate_ids), 500):
+        globally_linked_ids.update(
+            value for (value,) in db.session.query(GrabDisbursement.mutation_id)
+            .filter(GrabDisbursement.mutation_id.in_(candidate_ids[offset:offset + 500])).all()
+        )
 
     groups = defaultdict(lambda: [[], []])
     for report in competitors:
@@ -138,10 +146,24 @@ def _match_grab_disbursement_mutations(daily_totals, reports, commit=True):
     for mutation in mutations:
         groups[(mutation.rekening_number, mutation.tanggal)][1].append(mutation)
 
+    # Existing cross-account links must remain visible in mixed linked/unlinked
+    # batches too, not only in the all-linked fast path.
+    missing_link_ids = {p.mutation_id for p in competitors if p.mutation_id is not None}
+    missing_link_ids.difference_update(mutation.id for mutation in mutations)
+    if missing_link_ids:
+        mutations.extend(BankMutation.query.filter(
+            BankMutation.id.in_(missing_link_ids), BankMutation.platform_name == 'Grab',
+            BankMutation.tanggal >= first, BankMutation.tanggal <= last,
+            or_(BankMutation.transaction_type.is_(None),
+                func.upper(func.trim(BankMutation.transaction_type)) == 'CR'),
+            BankMutation.transaction_amount.isnot(None),
+        ).all())
     mutation_by_id = {mutation.id: mutation for mutation in mutations}
     matched = {p.id: mutation_by_id[p.mutation_id] for p in competitors
                if p.mutation_id in mutation_by_id}
-    linked_ids = {p.mutation_id for p in competitors if p.mutation_id is not None}
+    linked_ids = globally_linked_ids | {
+        p.mutation_id for p in competitors if p.mutation_id is not None
+    }
     changed = False
     changed_bank_dates = set()
     for payouts, credits in groups.values():
@@ -165,6 +187,72 @@ def _match_grab_disbursement_mutations(daily_totals, reports, commit=True):
             matched[payout.id] = credit
             changed = True
             changed_bank_dates.add(credit.tanggal)
+
+    # Only unmatched payouts enter the fallback. Historical coded Grab credits
+    # establish which alternate full account numbers have been used by a store.
+    unmatched = [payout for payout in competitors if payout.mutation_id is None]
+    if unmatched:
+        stores = {payout.store_id for payout in unmatched if payout.store_id}
+        history = (db.session.query(BankMutation.platform_code, BankMutation.rekening_number)
+                   .filter(BankMutation.platform_name == 'Grab',
+                           BankMutation.platform_code.in_(stores),
+                           BankMutation.rekening_number.isnot(None))
+                   .distinct().all())
+        store_accounts = defaultdict(set)
+        for store_id, number in history:
+            if number and number.strip():
+                store_accounts[store_id].add(number)
+        alternate_accounts = {
+            number for payout in unmatched for number in store_accounts[payout.store_id]
+            if number != accounts[payout.rekening_id]
+        }
+        if alternate_accounts:
+            alternate_credits = (BankMutation.query.filter(
+                BankMutation.platform_name == 'Grab',
+                BankMutation.rekening_number.in_(alternate_accounts),
+                BankMutation.tanggal >= first, BankMutation.tanggal <= last,
+                or_(BankMutation.transaction_type.is_(None),
+                    func.upper(func.trim(BankMutation.transaction_type)) == 'CR'),
+                BankMutation.transaction_amount.isnot(None),
+                or_(BankMutation.platform_code.is_(None),
+                    func.trim(BankMutation.platform_code) == ''),
+            ).order_by(BankMutation.id).with_for_update().all())
+            # A credit may already be linked to a payout outside the original
+            # account group; never attempt to use it again.
+            alternate_ids = [credit.id for credit in alternate_credits]
+            already_linked = set()
+            for offset in range(0, len(alternate_ids), 500):
+                already_linked.update(
+                    value for (value,) in db.session.query(GrabDisbursement.mutation_id)
+                    .filter(GrabDisbursement.mutation_id.in_(alternate_ids[offset:offset + 500])).all()
+                )
+            candidate_payouts = defaultdict(list)
+            candidate_credits = defaultdict(list)
+            for payout in unmatched:
+                if payout.net_amount is None:
+                    continue
+                for credit in alternate_credits:
+                    if (credit.id in linked_ids or credit.id in already_linked
+                            or credit.rekening_number == accounts[payout.rekening_id]
+                            or credit.rekening_number not in store_accounts[payout.store_id]
+                            or credit.tanggal != payout.transfer_date.date()):
+                        continue
+                    if abs(payout.net_amount - credit.transaction_amount) <= GRAB_DISBURSEMENT_MATCH_TOLERANCE:
+                        candidate_payouts[credit.id].append(payout)
+                        candidate_credits[payout.id].append(credit)
+            for payout in unmatched:
+                choices = candidate_credits[payout.id]
+                if len(choices) != 1:
+                    continue
+                credit = choices[0]
+                if len(candidate_payouts[credit.id]) != 1:
+                    continue
+                payout.mutation_id = credit.id
+                credit.platform_code = payout.store_id
+                linked_ids.add(credit.id)
+                matched[payout.id] = credit
+                changed = True
+                changed_bank_dates.add(credit.tanggal)
 
     if changed:
         from app.services.mutation_totals_service import rebuild_daily_mutation_totals

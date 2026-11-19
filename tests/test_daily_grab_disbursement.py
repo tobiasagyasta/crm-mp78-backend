@@ -205,6 +205,89 @@ class DailyGrabDisbursementTest(TestCase):
         self.assertIsNone(daily[day]['Grab_Mutation'])
         self.assertIsNone(reports[0].mutation_id)
 
+    def test_alternate_historical_account_matches_and_remains_visible(self):
+        transfer = datetime(2026, 11, 8, 3, 23)
+        payout = GrabDisbursement(disbursement_id='p', store_id='mpr-store', store_name='MPR',
+                                  transfer_date=transfer, net_amount=100270, status='Completed',
+                                  rekening_id=1, account_suffix='0385')
+        db.session.add_all([
+            payout,
+            BankMutation(rekening_number='alternate0229', tanggal=date(2026, 10, 27),
+                         platform_name='Grab', platform_code='mpr-store', transaction_amount=1),
+            BankMutation(rekening_number='alternate0229', tanggal=transfer.date(),
+                         platform_name='Grab', transaction_type='CR', transaction_amount=100270),
+        ])
+        db.session.commit()
+        day = date(2026, 11, 7)
+        daily = {day: _init_daily_total()}
+        _match_grab_disbursement_mutations(daily, [payout])
+        self.assertEqual(daily[day]['Grab_Mutation'], 100270)
+        self.assertEqual(db.session.get(BankMutation, payout.mutation_id).rekening_number, 'alternate0229')
+        repeat = {day: _init_daily_total()}
+        _match_grab_disbursement_mutations(repeat, [payout])
+        self.assertEqual(repeat[day]['Grab_Mutation'], 100270)
+
+    def test_alternate_account_must_be_known_and_unambiguous(self):
+        transfer = datetime(2026, 11, 8)
+        payout = GrabDisbursement(disbursement_id='p', store_id='store', store_name='Store',
+                                  transfer_date=transfer, net_amount=100270, status='Completed',
+                                  rekening_id=1, account_suffix='0385')
+        db.session.add_all([
+            payout,
+            BankMutation(rekening_number='alternate', tanggal=transfer.date(),
+                         platform_name='Grab', transaction_type='CR', transaction_amount=100270),
+        ])
+        db.session.commit()
+        daily = {date(2026, 11, 7): _init_daily_total()}
+        _match_grab_disbursement_mutations(daily, [payout])
+        self.assertIsNone(payout.mutation_id)
+        db.session.add_all([
+            BankMutation(rekening_number='alternate', tanggal=date(2026, 10, 1),
+                         platform_name='Grab', platform_code='store', transaction_amount=1),
+            BankMutation(rekening_number='alternate', tanggal=transfer.date(),
+                         platform_name='Grab', transaction_type='CR', transaction_amount=100270),
+        ])
+        db.session.commit()
+        _match_grab_disbursement_mutations(daily, [payout])
+        self.assertIsNone(payout.mutation_id)
+
+    def test_same_account_takes_priority_over_alternate(self):
+        transfer = datetime(2026, 11, 8)
+        payout = GrabDisbursement(disbursement_id='p', store_id='store', store_name='Store',
+                                  transfer_date=transfer, net_amount=100270, status='Completed',
+                                  rekening_id=1, account_suffix='0385')
+        direct = BankMutation(rekening_number='1230385', tanggal=transfer.date(),
+                              platform_name='Grab', transaction_type='CR', transaction_amount=100270)
+        db.session.add_all([
+            payout, direct,
+            BankMutation(rekening_number='alternate', tanggal=date(2026, 10, 1),
+                         platform_name='Grab', platform_code='store', transaction_amount=1),
+            BankMutation(rekening_number='alternate', tanggal=transfer.date(),
+                         platform_name='Grab', transaction_type='CR', transaction_amount=100270),
+        ])
+        db.session.commit()
+        _match_grab_disbursement_mutations({date(2026, 11, 7): _init_daily_total()}, [payout])
+        self.assertEqual(payout.mutation_id, direct.id)
+
+    def test_credit_linked_to_payout_outside_scope_is_never_reused(self):
+        transfer = datetime(2026, 11, 8)
+        db.session.add(Rekening(id=2, name='Other', rekening_number='other-account'))
+        credit = BankMutation(rekening_number='1230385', tanggal=transfer.date(),
+                              platform_name='Grab', transaction_type='CR', transaction_amount=100270)
+        db.session.add(credit)
+        db.session.flush()
+        requested = GrabDisbursement(disbursement_id='requested', store_id='store', store_name='Store',
+                                     transfer_date=transfer, net_amount=100270, status='Completed',
+                                     rekening_id=1, account_suffix='0385')
+        already = GrabDisbursement(disbursement_id='already', store_id='other', store_name='Other',
+                                   transfer_date=transfer, net_amount=100270, status='Completed',
+                                   rekening_id=2, account_suffix='0000', mutation_id=credit.id)
+        db.session.add_all([requested, already])
+        db.session.commit()
+        _match_grab_disbursement_mutations({date(2026, 11, 7): _init_daily_total()}, [requested])
+        self.assertIsNone(requested.mutation_id)
+        self.assertEqual(already.mutation_id, credit.id)
+
     def test_tolerance_in_both_directions_and_closest_match(self):
         transfer = datetime(2026, 12, 1)
         for index, (amount, credit_amount, should_match) in enumerate([
