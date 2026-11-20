@@ -9,6 +9,7 @@ from app.models.gojek_reports import GojekReport
 from app.models.qpon_reports import QponReport
 from app.models.tiktok_reports import TiktokReport
 from app.models.webshop_report import WebshopReport
+from app.models.maxim_report import MaximReport
 from app.services.excel_export.base_sheet import BaseSheet
 from app.services.excel_export import mpr_calculations as mpr_calc
 
@@ -54,6 +55,14 @@ class MonthlyManagementCommissionSheet(BaseSheet):
             "commission_key": "webshop_commission",
             "after_key": "webshop_net_after_commission",
             "rate": 0.03,
+        },
+        {
+            "key": "maxim",
+            "label": "Maxim",
+            "net_key": "maxim_net",
+            "commission_key": "maxim_commission",
+            "after_key": "maxim_net_after_commission",
+            "rate": 0,
         },
     )
     PERIOD_COLUMN_SPAN = len(PLATFORM_GROUPS) * 3
@@ -187,7 +196,7 @@ class MonthlyManagementCommissionSheet(BaseSheet):
         end_dt = datetime.combine(query_end, time.max)
 
         platform_nets = {
-            period: {"gojek": 0, "tiktok": 0, "qpon": 0, "webshop": 0}
+            period: {"gojek": 0, "tiktok": 0, "qpon": 0, "webshop": 0, "maxim": 0}
             for period in periods
         }
         period_set = set(periods)
@@ -235,6 +244,17 @@ class MonthlyManagementCommissionSheet(BaseSheet):
             period = self._resolve_period(report.created_at.date(), periods, closing_day)
             if period in period_set:
                 platform_nets[period]["webshop"] += float(report.nett_value or 0)
+
+        for report in MaximReport.query.filter(
+            MaximReport.outlet_code == outlet_code,
+            MaximReport.created_at >= start_dt,
+            MaximReport.created_at <= end_dt,
+        ).all():
+            if not report.created_at:
+                continue
+            period = self._resolve_period(report.created_at.date(), periods, closing_day)
+            if period in period_set:
+                platform_nets[period]["maxim"] += float(report.nett_value or 0)
 
         return platform_nets
 

@@ -5,6 +5,7 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 from app.extensions import db
 from app.models.outlet import Outlet
+from app.services.webshop_report_source import classify_report_source
 
 
 class WebshopReport(db.Model):
@@ -12,6 +13,8 @@ class WebshopReport(db.Model):
 
     HEADER_TO_FIELD = {
         "order id": "order_id",
+        "provider": "provider",
+        "order source": "order_source",
         "brand": "brand_name",
         "branch": "branch",
         "status": "status",
@@ -136,7 +139,7 @@ class WebshopReport(db.Model):
         return None
 
     @staticmethod
-    def parse_webshop_row(row: list[str], columns: dict) -> dict | None:
+    def parse_order_row(row: list[str], columns: dict, commission_rate: Decimal) -> dict | None:
         try:
             if not row:
                 return None
@@ -159,7 +162,7 @@ class WebshopReport(db.Model):
             branch = WebshopReport._clean_str(_value("branch")).strip('"').strip("'")
 
             gross_value = WebshopReport._parse_decimal_amount(_value("gross_value"))
-            nett_value = (gross_value * Decimal("0.97")).quantize(
+            nett_value = (gross_value * (Decimal("1") - commission_rate)).quantize(
                 Decimal("0.01"), rounding=ROUND_HALF_UP
             )
             created_at = WebshopReport._parse_created_at(_value("created_at"))
@@ -179,6 +182,12 @@ class WebshopReport(db.Model):
         except Exception as e:
             print(f"[WEBSHOP Parse Error] Row: {row} | Error: {str(e)}")
             return None
+
+    @staticmethod
+    def parse_webshop_row(row: list[str], columns: dict) -> dict | None:
+        if classify_report_source(row, columns) != "webshop":
+            return None
+        return WebshopReport.parse_order_row(row, columns, Decimal("0.03"))
 
 
 def load_webshop_csv(file_path: str) -> list[dict]:

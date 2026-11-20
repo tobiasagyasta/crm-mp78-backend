@@ -6,6 +6,7 @@ AVAILABLE_CLOSING_PLATFORMS = {
     "tiktok": "Tiktok",
     "qpon": "Qpon",
     "webshop": "Webshop",
+    "maxim": "Maxim",
 }
 
 PLATFORM_ALIASES = {
@@ -34,6 +35,9 @@ PLATFORM_ALIASES = {
     "webshop": "webshop",
     "webshopnet": "webshop",
     "webshop_net": "webshop",
+    "maxim": "maxim",
+    "maximnet": "maxim",
+    "maxim_net": "maxim",
 }
 
 HEADER_PLATFORM_MAP = {
@@ -47,6 +51,7 @@ HEADER_PLATFORM_MAP = {
     "Tiktok_Net": "tiktok",
     "Qpon_Net": "qpon",
     "Webshop_Net": "webshop",
+    "Maxim_Net": "maxim",
 }
 
 

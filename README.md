@@ -1,5 +1,25 @@
 # CRM MP78 Backend
 
+## Webshop and Maxim imports
+
+Apply `sql/20261122_create_maxim_reports.sql` to the target database before
+deploying this version. `POST /reports/upload/webshop` accepts the shared CSV export and
+returns the existing import counts plus `platform_counts` for `webshop` and
+`maxim`. Only delivered orders are imported. `Provider=klikit` with
+`Order Source=Webshop` is Webshop; `Provider=Maxim` with an empty or Maxim
+order source is Maxim. Other combinations are skipped and reported. Both use
+the Webshop outlet-name mapping.
+
+Maxim has no commission for now: its net is the CSV's Net Order Value.
+Webshop retains its existing 3% import calculation. Both models retain the
+historical field naming where `gross_value` stores Net Order Value. Maxim is
+reported separately and is not currently part of the BI daily/monthly aggregate
+endpoints described below.
+
+Previously imported Maxim rows may already be in `webshop_reports`. They cannot
+be identified from that table alone. Uploading them again is rejected as a
+duplicate; reconcile them against original exports before moving any data.
+
 ## BI daily platform totals
 
 `GET /bi/daily-totals` reads `daily_merchant_totals` on an inclusive transaction

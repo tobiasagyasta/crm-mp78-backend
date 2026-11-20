@@ -6,6 +6,7 @@ from app.models.mpr_mapping import MprMapping
 from app.models.outlet import Outlet
 from app.models.shopee_reports import ShopeeReport
 from app.models.tiktok_reports import TiktokReport
+from app.models.maxim_report import MaximReport
 from app.services.excel_export import mpr_calculations as mpr_calc
 
 
@@ -30,6 +31,7 @@ def calculate_mpr_totals(
     grab_query = GrabFoodReport.query.filter(GrabFoodReport.outlet_code == mpr_outlet_code)
     shopee_query = ShopeeReport.query.filter(ShopeeReport.outlet_code == mpr_outlet_code)
     tiktok_query = TiktokReport.query.filter(TiktokReport.outlet_code == mpr_outlet_code)
+    maxim_query = MaximReport.query.filter(MaximReport.outlet_code == mpr_outlet_code)
 
     if start_date and end_date_inclusive:
         gojek_query = gojek_query.filter(
@@ -47,6 +49,10 @@ def calculate_mpr_totals(
         tiktok_query = tiktok_query.filter(
             TiktokReport.order_time >= start_date,
             TiktokReport.order_time <= end_date_inclusive,
+        )
+        maxim_query = maxim_query.filter(
+            MaximReport.created_at >= start_date,
+            MaximReport.created_at <= end_date_inclusive,
         )
 
     totals = {
@@ -82,6 +88,7 @@ def calculate_mpr_totals(
         "grab": mpr_calc.grab_net_value(totals, is_mpr=True),
         "shopee": mpr_calc.shopee_net_value(totals, is_mpr=True),
         "tiktok": mpr_calc.tiktok_net_ac_value(totals, is_mpr=True),
+        "maxim": sum(float(report.nett_value or 0) for report in maxim_query.all()),
     }
 
     return _round_totals(mpr_totals)

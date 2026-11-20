@@ -49,6 +49,14 @@ class MonthlyMprCommissionSheet(BaseSheet):
             "after_key": "tiktok_net_after_commission",
             "rate": 1 - mpr_calc.MPR_TIKTOK_NET_RATE,
         },
+        {
+            "key": "maxim",
+            "label": "Maxim",
+            "net_key": "maxim_net",
+            "commission_key": "maxim_commission",
+            "after_key": "maxim_net_after_commission",
+            "rate": 0,
+        },
     )
     PERIOD_COLUMN_SPAN = len(PLATFORM_GROUPS) * 3
 

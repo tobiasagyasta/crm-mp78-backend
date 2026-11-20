@@ -11,6 +11,7 @@ from app.models.shopee_reports import ShopeeReport
 from app.models.shopeepay_reports import ShopeepayReport
 from app.models.tiktok_reports import TiktokReport
 from app.models.webshop_report import WebshopReport
+from app.models.maxim_report import MaximReport
 from app.services.excel_export import mpr_calculations as mpr_calc
 
 
@@ -384,6 +385,9 @@ def generate_monthly_mpr_commission_data(
             'tiktok_net': 0,
             'tiktok_commission': 0,
             'tiktok_net_after_commission': 0,
+            'maxim_net': 0,
+            'maxim_commission': 0,
+            'maxim_net_after_commission': 0,
         }
 
     def _empty_monthly_totals() -> dict:
@@ -461,6 +465,7 @@ def generate_monthly_mpr_commission_data(
     shopee_query = ShopeeReport.query.filter(ShopeeReport.brand_name.in_(selected_brands))
     shopeepay_query = ShopeepayReport.query.filter(ShopeepayReport.brand_name.in_(selected_brands))
     tiktok_query = TiktokReport.query.filter(TiktokReport.brand_name.in_(selected_brands))
+    maxim_query = MaximReport.query.filter(MaximReport.outlet_code.in_(outlet_name_map))
 
     if range_mode:
         gojek_query = gojek_query.filter(
@@ -482,6 +487,10 @@ def generate_monthly_mpr_commission_data(
         tiktok_query = tiktok_query.filter(
             db.func.cast(TiktokReport.order_time, db.Date) >= start_date,
             db.func.cast(TiktokReport.order_time, db.Date) <= end_date,
+        )
+        maxim_query = maxim_query.filter(
+            MaximReport.created_at >= datetime.combine(start_date, datetime.min.time()),
+            MaximReport.created_at <= datetime.combine(end_date, datetime.max.time()),
         )
     else:
         query_start_date = date(year, 1, 1)
@@ -505,6 +514,10 @@ def generate_monthly_mpr_commission_data(
         tiktok_query = tiktok_query.filter(
             db.func.cast(TiktokReport.order_time, db.Date) >= query_start_date,
             db.func.cast(TiktokReport.order_time, db.Date) <= query_end_date,
+        )
+        maxim_query = maxim_query.filter(
+            MaximReport.created_at >= datetime.combine(query_start_date, datetime.min.time()),
+            MaximReport.created_at <= datetime.combine(query_end_date, datetime.max.time()),
         )
 
     for report in gojek_query.all():
@@ -584,6 +597,19 @@ def generate_monthly_mpr_commission_data(
             'tiktok_net',
             'tiktok_commission',
             'tiktok_net_after_commission',
+        )
+
+    for report in maxim_query.all():
+        if not report.created_at:
+            continue
+        _accumulate(
+            report.outlet_code,
+            report.created_at.date(),
+            float(report.nett_value or 0),
+            0,
+            'maxim_net',
+            'maxim_commission',
+            'maxim_net_after_commission',
         )
 
     if range_mode and periods_set is not None:
@@ -766,6 +792,9 @@ def generate_monthly_management_commission_data_custom_range(
             "webshop_net": 0,
             "webshop_commission": 0,
             "webshop_net_after_commission": 0,
+            "maxim_net": 0,
+            "maxim_commission": 0,
+            "maxim_net_after_commission": 0,
         }
 
     data = {}
@@ -901,6 +930,24 @@ def generate_monthly_management_commission_data_custom_range(
             "webshop_commission",
             "webshop_net_after_commission",
             webshop_rate,
+        )
+
+    maxim_reports = MaximReport.query.filter(
+        MaximReport.outlet_code.in_(outlet_codes),
+        MaximReport.created_at >= start_dt,
+        MaximReport.created_at <= end_dt,
+    ).all()
+    for report in maxim_reports:
+        if not report.created_at:
+            continue
+        _accumulate(
+            report.outlet_code,
+            report.created_at.date(),
+            float(report.nett_value or 0),
+            "maxim_net",
+            "maxim_commission",
+            "maxim_net_after_commission",
+            0,
         )
 
     return {

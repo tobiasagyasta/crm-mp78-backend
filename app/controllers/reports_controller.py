@@ -17,6 +17,7 @@ from app.models.tiktok_reports import TiktokReport
 from app.models.outlet_count_pkb import OutletCountPKB
 from app.models.ultra_voucher import VoucherReport
 from app.models.webshop_report import WebshopReport
+from app.models.maxim_report import MaximReport
 from app.extensions import db
 import sys
 from app.services.consolidation_service import update_daily_total_for_outlet
@@ -1898,6 +1899,7 @@ def get_reports_totals():
         tiktok_query = TiktokReport.query
         qpon_query = QponReport.query
         webshop_query = WebshopReport.query
+        maxim_query = MaximReport.query
         cash_query = CashReport.query
         manual_entries_query = ManualEntry.query
         mpr_totals = None
@@ -1914,6 +1916,7 @@ def get_reports_totals():
             tiktok_query = tiktok_query.filter(TiktokReport.outlet_code == outlet_code)
             qpon_query = qpon_query.filter(QponReport.outlet_code == outlet_code)
             webshop_query = WebshopReport.query.filter(WebshopReport.outlet_code == outlet_code)
+            maxim_query = maxim_query.filter(MaximReport.outlet_code == outlet_code)
             cash_query = cash_query.filter(CashReport.outlet_code == outlet_code)
             manual_entries_query = manual_entries_query.filter(ManualEntry.outlet_code == outlet_code)
 
@@ -1926,6 +1929,7 @@ def get_reports_totals():
             tiktok_query = tiktok_query.filter(TiktokReport.brand_name == brand_name)
             qpon_query = qpon_query.filter(QponReport.brand_name == brand_name)
             webshop_query = WebshopReport.query.filter(WebshopReport.brand_name == brand_name)
+            maxim_query = maxim_query.filter(MaximReport.brand_name == brand_name)
             manual_entries_query = manual_entries_query.filter(ManualEntry.brand_name == brand_name)
 
         # Default cash queries (used when date filter is not provided)
@@ -1967,6 +1971,10 @@ def get_reports_totals():
             webshop_query = webshop_query.filter(
                 WebshopReport.created_at >= start_date,
                 WebshopReport.created_at <= end_date_inclusive
+            )
+            maxim_query = maxim_query.filter(
+                MaximReport.created_at >= start_date,
+                MaximReport.created_at <= end_date_inclusive
             )
             # Use SQLAlchemy filtering for cash reports instead of post-filtering
             cash_income_query = cash_query.filter(
@@ -2038,6 +2046,7 @@ def get_reports_totals():
             for report in qpon_query.all()
         )
         webshop_total = sum(float(report.nett_value or 0) for report in webshop_query.all())
+        maxim_total = sum(float(report.nett_value or 0) for report in maxim_query.all())
         
         # Calculate cash totals using the filtered queries
         cash_income = sum(float(report.total or 0) for report in cash_income_query.all())
@@ -2048,7 +2057,7 @@ def get_reports_totals():
         manual_entries_total = sum(float(entry.amount or 0) for entry in manual_entries_query.all())
 
         # Calculate running total
-        running_total = gojek_total + grab_total + shopee_total + shopeepay_total + tiktok_total + qpon_total + webshop_total + cash_net - manual_entries_total
+        running_total = gojek_total + grab_total + shopee_total + shopeepay_total + tiktok_total + qpon_total + webshop_total + maxim_total + cash_net - manual_entries_total
         response = {
             'outlet_code': outlet_code,
             'brand_name': brand_name,
@@ -2065,6 +2074,7 @@ def get_reports_totals():
                 'tiktok': round(tiktok_total, 2),
                 'qpon': round(qpon_total, 2),
                 'webshop': round(webshop_total, 2),
+                'maxim': round(maxim_total, 2),
                 'cash': {
                     'income': round(cash_income, 2),
                     'expense': round(cash_expense, 2),

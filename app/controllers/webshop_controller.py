@@ -1,4 +1,5 @@
 import csv
+from decimal import Decimal
 from io import StringIO
 
 from flask import jsonify, request
@@ -6,6 +7,8 @@ from flask import jsonify, request
 from app.controllers.reports_controller import reports_bp
 from app.extensions import db
 from app.models.webshop_report import WebshopReport
+from app.models.maxim_report import MaximReport
+from app.services.webshop_report_source import classify_report_source
 
 
 @reports_bp.route("/upload/webshop", methods=["POST"])
@@ -20,6 +23,7 @@ def upload_report_webshop():
 
     try:
         total_reports = 0
+        platform_counts = {"webshop": 0, "maxim": 0}
         skipped_reports = 0
         debug_skipped = []
         seen_order_ids = set()
@@ -44,14 +48,34 @@ def upload_report_webshop():
                 continue
 
             columns = WebshopReport._resolve_columns(headers)
+            if "provider" not in columns or "order_source" not in columns:
+                skipped_reports += 1
+                debug_skipped.append({
+                    "row_number": 1,
+                    "reason": "Missing Provider or Order Source CSV header",
+                    "row": headers,
+                })
+                continue
             reports = []
             report_debug_rows = []
+            file_counts = {"webshop": 0, "maxim": 0}
 
             for idx, row in enumerate(reader):
                 row_number = idx + 2
 
                 try:
-                    parsed = WebshopReport.parse_webshop_row(row, columns)
+                    platform = classify_report_source(row, columns)
+                    if platform is None:
+                        skipped_reports += 1
+                        debug_skipped.append({
+                            "row_number": row_number,
+                            "reason": "Unknown or ambiguous provider/order source",
+                            "row": row,
+                        })
+                        continue
+                    model = MaximReport if platform == "maxim" else WebshopReport
+                    rate = Decimal("0") if platform == "maxim" else Decimal("0.03")
+                    parsed = WebshopReport.parse_order_row(row, columns, rate)
                     if parsed is None:
                         skipped_reports += 1
                         debug_skipped.append(
@@ -86,7 +110,12 @@ def upload_report_webshop():
                         )
                         continue
 
-                    exists = WebshopReport.query.filter_by(order_id=order_id).first()
+                    # Order IDs originate from the same export. Checking both tables
+                    # also prevents historical Maxim imports being counted twice.
+                    exists = (
+                        WebshopReport.query.filter_by(order_id=order_id).first()
+                        or MaximReport.query.filter_by(order_id=order_id).first()
+                    )
                     if exists:
                         skipped_reports += 1
                         debug_skipped.append(
@@ -98,10 +127,10 @@ def upload_report_webshop():
                         )
                         continue
 
-                    reports.append(WebshopReport(**parsed))
+                    reports.append(model(**parsed))
                     report_debug_rows.append((row_number, row))
                     seen_order_ids.add(order_id)
-                    total_reports += 1
+                    file_counts[platform] += 1
                 except Exception as row_error:
                     db.session.rollback()
                     skipped_reports += 1
@@ -118,10 +147,14 @@ def upload_report_webshop():
                 try:
                     db.session.bulk_save_objects(reports)
                     db.session.commit()
+                    total_reports += len(reports)
+                    for platform, count in file_counts.items():
+                        platform_counts[platform] += count
                 except Exception as bulk_error:
                     db.session.rollback()
-                    total_reports -= len(reports)
                     skipped_reports += len(reports)
+                    for report in reports:
+                        seen_order_ids.discard(report.order_id)
                     for row_number, row in report_debug_rows:
                         debug_skipped.append(
                             {
@@ -136,6 +169,7 @@ def upload_report_webshop():
                 {
                     "msg": "Webshop reports uploaded successfully",
                     "total_records": total_reports,
+                    "platform_counts": platform_counts,
                     "skipped_records": skipped_reports,
                     "skipped_rows_debug": debug_skipped,
                 }

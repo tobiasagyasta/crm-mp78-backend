@@ -28,7 +28,7 @@ class ReportsTotalsRekeningsTest(TestCase):
         models = [
             controller.GojekReport, controller.GrabFoodReport, controller.ShopeeReport,
             controller.ShopeepayReport, controller.TiktokReport, QponReport,
-            controller.WebshopReport, controller.CashReport, controller.ManualEntry,
+            controller.WebshopReport, controller.MaximReport, controller.CashReport, controller.ManualEntry,
         ]
         query = MagicMock()
         query.filter.return_value = query

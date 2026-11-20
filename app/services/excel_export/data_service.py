@@ -15,6 +15,7 @@ from app.models.qpon_reports import QponReport
 from app.models.bank_mutations import BankMutation
 from app.models.rekening import Rekening
 from app.models.webshop_report import WebshopReport
+from app.models.maxim_report import MaximReport
 from app.models.pukis import Pukis
 from app.models.ultra_voucher import VoucherReport
 from app.models.income_category import IncomeCategory
@@ -327,6 +328,7 @@ def get_report_data(outlet_code: str, start_date: datetime, end_date: datetime) 
     if qpon_closing_shift:
         qpon_closing_reports = QponReport.query.filter(QponReport.outlet_code == outlet_code, QponReport.bill_created_at >= start_date - timedelta(days=qpon_closing_shift), QponReport.bill_created_at <= end_date_inclusive - timedelta(days=qpon_closing_shift)).all()
     webshop_reports = WebshopReport.query.filter(WebshopReport.outlet_code == outlet_code, WebshopReport.created_at >= start_date, WebshopReport.created_at <= end_date_inclusive).all()
+    maxim_reports = MaximReport.query.filter(MaximReport.outlet_code == outlet_code, MaximReport.created_at >= start_date, MaximReport.created_at <= end_date_inclusive).all()
     uv_reports = VoucherReport.query.filter(VoucherReport.outlet_code == outlet_code, VoucherReport.order_date >= start_date, VoucherReport.order_date <= end_date_inclusive).all()
     cash_income_reports = CashReport.query.filter(CashReport.outlet_code == outlet_code, CashReport.type == 'income', CashReport.tanggal >= start_date, CashReport.tanggal <= end_date_inclusive).all()
     cash_expense_reports = CashReport.query.filter(CashReport.outlet_code == outlet_code, CashReport.type == 'expense', CashReport.tanggal >= start_date, CashReport.tanggal <= end_date_inclusive).all()
@@ -350,6 +352,7 @@ def get_report_data(outlet_code: str, start_date: datetime, end_date: datetime) 
     _aggregate_qpon_closing(daily_totals, qpon_closing_reports, shift_days=qpon_closing_shift)
     _aggregate_qpon_mutations(daily_totals, qpon_closing_reports, closing=True, shift_days=qpon_closing_shift)
     _aggregate_webshop(daily_totals, webshop_reports)
+    _aggregate_webshop(daily_totals, maxim_reports, platform='Maxim')
     _aggregate_cash(daily_totals, cash_income_reports, cash_expense_reports)
 
     # Match mutations
@@ -417,6 +420,7 @@ def _init_daily_total():
         'Qpon_Gross': 0, 'Qpon_Net': 0, 'Qpon_Mutation': None, 'Qpon_Difference': None,
         'Qpon_Closing_Gross': 0, 'Qpon_Closing_Net': 0, 'Qpon_Closing_Mutation': None,
         'Webshop_Gross': 0, 'Webshop_Net': 0,
+        'Maxim_Gross': 0, 'Maxim_Net': 0,
         'Cash_Income': 0, 'Cash_Expense': 0,
         'Gojek_Mutation': None, 'Gojek_Difference': 0, 'Grab_Difference': 0, 'Grab_Disbursement': None, 'Grab_Mutation': None,
         'Grab_Commission': 0, 'Shopee_Mutation': None, 'Shopee_Difference': 0,
@@ -579,7 +583,7 @@ def _aggregate_qpon_closing(daily_totals, reports, shift_days=7):
         daily_totals[date]['Qpon_Closing_Net'] += qpon_amount
         daily_totals[date]['Qpon_Closing_Gross'] += float(report.gross_amount or 0)
 
-def _aggregate_webshop(daily_totals, reports):
+def _aggregate_webshop(daily_totals, reports, platform='Webshop'):
     for report in reports:
         if not report.created_at:
             continue
@@ -592,8 +596,8 @@ def _aggregate_webshop(daily_totals, reports):
         if net_amount is None:
             net_amount = getattr(report, "net_value", 0)
 
-        daily_totals[date]['Webshop_Net'] += float(net_amount or 0)
-        daily_totals[date]['Webshop_Gross'] += float(report.gross_value or 0)
+        daily_totals[date][f'{platform}_Net'] += float(net_amount or 0)
+        daily_totals[date][f'{platform}_Gross'] += float(report.gross_value or 0)
 
 def _aggregate_cash(daily_totals, income_reports, expense_reports):
     cash_income_temp = defaultdict(float)

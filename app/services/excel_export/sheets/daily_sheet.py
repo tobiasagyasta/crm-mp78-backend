@@ -127,6 +127,10 @@ class DailySheet(BaseSheet):
 
         if 'Grab Net' not in base_headers:
             base_headers.insert(base_headers.index('GrabOVO') + 1, 'Grab Net')
+        webshop_index = base_headers.index('Webshop Net')
+        if 'Webshop Net (ac)' in base_headers:
+            webshop_index = base_headers.index('Webshop Net (ac)')
+        base_headers.insert(webshop_index + 1, 'Maxim Net')
         base_headers.insert(base_headers.index('Grab Net') + 1, 'Grab Pencairan')
         base_headers.insert(base_headers.index('Grab Pencairan') + 1, 'Grab Mutation')
         base_headers.insert(base_headers.index('Grab Mutation') + 1, 'Grab Difference')
@@ -298,6 +302,7 @@ class DailySheet(BaseSheet):
             'Tiktok Net': TIKTOK_FILL, 'Tiktok Settlement Time': TIKTOK_FILL,
             'Qpon Net': TIKTOK_FILL, 'Qpon Mutation': TIKTOK_FILL, 'Qpon Difference': DIFFERENCE_FILL,
             'Webshop Net': TIKTOK_FILL,
+            'Maxim Net': TIKTOK_FILL,
             'UV': PatternFill(start_color='35F0F0', end_color='35F0F0', fill_type='solid'),
             'Cash Income (Admin)': CASH_FILL, 'Cash Expense (Admin)': CASH_FILL, 'Sisa Cash (Admin)': CASH_FILL
         }
@@ -445,6 +450,7 @@ class DailySheet(BaseSheet):
             'Qpon Difference': lambda totals, date, minusan_total: totals.get('Qpon_Difference'),
             'Qpon Net (ac)': lambda totals, date, minusan_total: self._get_standard_net_ac_value(totals, 'Qpon_Net'),
             'Webshop Net': lambda totals, date, minusan_total: totals.get('Webshop_Net', 0),
+            'Maxim Net': lambda totals, date, minusan_total: totals.get('Maxim_Net', 0),
             'Webshop Net (ac)': lambda totals, date, minusan_total: self._get_standard_net_ac_value(totals, 'Webshop_Net'),
             'UV': lambda totals, date, minusan_total: totals.get('UV', 0),
             'Cash Income (Admin)': lambda totals, date, minusan_total: totals.get('Cash_Income', 0),
@@ -497,6 +503,7 @@ class DailySheet(BaseSheet):
             'Qpon Difference': lambda: grand_totals.get('Qpon_Difference', 0),
             'Qpon Net (ac)': lambda: self._get_standard_net_ac_value(grand_totals, 'Qpon_Net'),
             'Webshop Net': lambda: grand_totals.get('Webshop_Net', 0),
+            'Maxim Net': lambda: grand_totals.get('Maxim_Net', 0),
             'Webshop Net (ac)': lambda: self._get_standard_net_ac_value(grand_totals, 'Webshop_Net'),
             'UV': lambda: grand_totals.get('UV', 0),
             'Cash Income (Admin)': lambda: grand_totals.get('Cash_Income', 0),

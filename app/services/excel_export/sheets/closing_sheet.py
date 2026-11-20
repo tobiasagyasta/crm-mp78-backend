@@ -119,7 +119,7 @@ class ClosingSheet(BaseSheet):
                 cell.fill = SHOPEE_FILL
             elif name in [
                 'Tiktok', 'Tiktok (ac)', 'Tiktok MPR (ac)',
-                'Qpon', 'Qpon (ac)', 'Qpon MPR (ac)', 'Webshop', 'Webshop (ac)'
+                'Qpon', 'Qpon (ac)', 'Qpon MPR (ac)', 'Webshop', 'Webshop (ac)', 'Maxim'
             ]:
                 cell.fill = TIKTOK_FILL
 
@@ -236,6 +236,7 @@ class ClosingSheet(BaseSheet):
             ('ShopeePay', 'ShopeePay_Net', 'mpr'),
             ('Tiktok MPR (ac)', 'Tiktok_Net', 'mpr'),
             ('Qpon MPR (ac)', self.QPON_AC_HEADER, 'mpr'),
+            ('Maxim MPR', 'Maxim_Net', 'mpr'),
         ]
 
     def _get_main_table_platforms(self):
@@ -251,14 +252,7 @@ class ClosingSheet(BaseSheet):
         if not self.data.get('mpr_report_data'):
             return platform_definitions
 
-        return platform_definitions + [
-            ('Gojek MPR (ac)', 'Gojek_Mutation', 'mpr'),
-            ('Grab MPR (ac)', 'Grab_Net', 'mpr'),
-            ('ShopeeFood', 'Shopee_Net', 'mpr'),
-            ('ShopeePay', 'ShopeePay_Net', 'mpr'),
-            ('Tiktok MPR (ac)', 'Tiktok_Net', 'mpr'),
-            ('Qpon MPR (ac)', self.QPON_AC_HEADER, 'mpr'),
-        ]
+        return platform_definitions + self._get_platform_definitions_for_mpr()
 
     def _get_platform_grand_total_with_fallback(self, report_type, header):
         if header in ('Shopee_Mutation', 'ShopeePay_Mutation', 'Shopee_Net', 'ShopeePay_Net'):
@@ -355,12 +349,14 @@ class ClosingSheet(BaseSheet):
             self._get_closing_grand_total_income_contribution('main', 'Tiktok_Net') +
             self._get_closing_grand_total_income_contribution('main', self.QPON_AC_HEADER) +
             self._get_closing_grand_total_income_contribution('main', 'Webshop_Net') +
+            self._get_closing_grand_total_income_contribution('main', 'Maxim_Net') +
             self._get_closing_grand_total_income_contribution('mpr', 'Gojek_Mutation') +
             self._get_closing_grand_total_income_contribution('mpr', 'Grab_Net') +
             self._get_closing_grand_total_income_contribution('mpr', 'Shopee_Net') +
             self._get_closing_grand_total_income_contribution('mpr', 'ShopeePay_Net') +
             self._get_closing_grand_total_income_contribution('mpr', 'Tiktok_Net') +
             self._get_closing_grand_total_income_contribution('mpr', self.QPON_AC_HEADER) +
+            self._get_closing_grand_total_income_contribution('mpr', 'Maxim_Net') +
             sum(float(entry.amount) for entry, _, _ in manual_entries if entry.entry_type == 'income') +
             mp78_income_total +
             self._get_grand_total_with_fallback('UV')
@@ -777,6 +773,7 @@ class ClosingSheet(BaseSheet):
                 'Input Tiktok',
                 'Input Qpon',
                 'Input Webshop',
+                'Input Maxim',
                 'Input tagihan',
                 'Input Adm Kantor',
                 'Input Adm Gudang',
@@ -930,6 +927,8 @@ class ClosingSheet(BaseSheet):
             return mpr_calc.tiktok_net_ac_value_for_brand(totals, self.data['outlet'].brand)
         if header == 'Webshop_Net':
             return totals.get('Webshop_Net', 0)
+        if header == 'Maxim_Net':
+            return totals.get('Maxim_Net', 0)
 
         return None
 
@@ -1213,6 +1212,7 @@ class ClosingSheet(BaseSheet):
                 ('Tiktok', 'Tiktok_Net', 'main'),
                 ('Qpon', self.QPON_CLOSING_NET_HEADER, 'main'),
                 ('Webshop', 'Webshop_Net', 'main'),
+                ('Maxim', 'Maxim_Net', 'main'),
             ]
 
         if self._is_mpr_brand():
@@ -1224,6 +1224,7 @@ class ClosingSheet(BaseSheet):
                 ('Tiktok', 'Tiktok_Net', 'main'),
                 ('Qpon (ac)', self.QPON_AC_HEADER, 'main'),
                 ('Webshop', 'Webshop_Net', 'main'),
+                ('Maxim', 'Maxim_Net', 'main'),
             ]
 
         if self._uses_mp78_management_ac():
@@ -1235,6 +1236,7 @@ class ClosingSheet(BaseSheet):
                 ('Tiktok (ac)', 'Tiktok_Net', 'main'),
                 ('Qpon (ac)', self.QPON_AC_HEADER, 'main'),
                 ('Webshop', 'Webshop_Net', 'main'),
+                ('Maxim', 'Maxim_Net', 'main'),
             ]
 
         return [
@@ -1245,6 +1247,7 @@ class ClosingSheet(BaseSheet):
             ('Tiktok', 'Tiktok_Net', 'main'),
             ('Qpon (ac)', self.QPON_AC_HEADER, 'main'),
             ('Webshop', 'Webshop_Net', 'main'),
+            ('Maxim', 'Maxim_Net', 'main'),
         ]
 
     def _get_main_grand_total_platform_definitions(self):

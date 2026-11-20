@@ -13,6 +13,7 @@ from app.models.shopeepay_reports import ShopeepayReport
 from app.models.shopee_reports import ShopeeReport
 from app.models.tiktok_reports import TiktokReport
 from app.models.webshop_report import WebshopReport
+from app.models.maxim_report import MaximReport
 from app.utils.summary_helpers import (
     day_bounds,
     get_pagination,
@@ -98,6 +99,16 @@ REPORT_EXISTENCE_CONFIG = {
         "is_datetime": True,
         "gross_expression": WebshopReport.gross_value,
         "net_expression": WebshopReport.nett_value,
+        "id_attr": "order_id",
+        "date_attr": "created_at",
+        "display_attr": "branch",
+    },
+    "maxim": {
+        "model": MaximReport,
+        "date_expression": MaximReport.created_at,
+        "is_datetime": True,
+        "gross_expression": MaximReport.gross_value,
+        "net_expression": MaximReport.nett_value,
         "id_attr": "order_id",
         "date_attr": "created_at",
         "display_attr": "branch",
