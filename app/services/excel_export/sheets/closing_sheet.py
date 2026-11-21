@@ -409,8 +409,8 @@ class ClosingSheet(BaseSheet):
             )
             value_cell.number_format = '#,##0'
             value_cell.alignment = RIGHT_ALIGN
-            # if platform_disabled:
-            #     value_cell.fill = CLOSED_OFF_FILL
+            if platform_disabled:
+                value_cell.fill = CLOSED_OFF_FILL
             final_i += 1
             if header == 'Grab_Net' and not self._is_non_commission_brand():
                 self._write_management_commission_row(
