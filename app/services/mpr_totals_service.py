@@ -4,6 +4,7 @@ from app.models.gojek_reports import GojekReport
 from app.models.grabfood_reports import GrabFoodReport
 from app.models.mpr_mapping import MprMapping
 from app.models.outlet import Outlet
+from app.models.qpon_reports import QponReport
 from app.models.shopee_reports import ShopeeReport
 from app.models.tiktok_reports import TiktokReport
 from app.models.maxim_report import MaximReport
@@ -31,6 +32,7 @@ def calculate_mpr_totals(
     grab_query = GrabFoodReport.query.filter(GrabFoodReport.outlet_code == mpr_outlet_code)
     shopee_query = ShopeeReport.query.filter(ShopeeReport.outlet_code == mpr_outlet_code)
     tiktok_query = TiktokReport.query.filter(TiktokReport.outlet_code == mpr_outlet_code)
+    qpon_query = QponReport.query.filter(QponReport.outlet_code == mpr_outlet_code)
     maxim_query = MaximReport.query.filter(MaximReport.outlet_code == mpr_outlet_code)
 
     if start_date and end_date_inclusive:
@@ -54,6 +56,10 @@ def calculate_mpr_totals(
             MaximReport.created_at >= start_date,
             MaximReport.created_at <= end_date_inclusive,
         )
+        qpon_query = qpon_query.filter(
+            QponReport.bill_created_at >= start_date,
+            QponReport.bill_created_at <= end_date_inclusive,
+        )
 
     totals = {
         "Gojek_Net": 0,
@@ -62,6 +68,7 @@ def calculate_mpr_totals(
         "GrabOVO_Net": 0,
         "Shopee_Net": 0,
         "Tiktok_Net": 0,
+        "Qpon_Net": sum(float(report.nett_amount or 0) for report in qpon_query.all()),
     }
 
     for report in gojek_query.all():
@@ -88,6 +95,7 @@ def calculate_mpr_totals(
         "grab": mpr_calc.grab_net_value(totals, is_mpr=True),
         "shopee": mpr_calc.shopee_net_value(totals, is_mpr=True),
         "tiktok": mpr_calc.tiktok_net_ac_value(totals, is_mpr=True),
+        "qpon": mpr_calc.qpon_net_ac_value(totals),
         "maxim": sum(float(report.nett_value or 0) for report in maxim_query.all()),
     }
 

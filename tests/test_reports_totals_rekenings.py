@@ -1,5 +1,5 @@
 from contextlib import ExitStack
-from datetime import date
+from datetime import date, datetime
 from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
@@ -22,6 +22,7 @@ class ReportsTotalsRekeningsTest(TestCase):
         db.init_app(self.app)
         self.context = self.app.app_context()
         self.context.push()
+        QponReport.__table__.create(db.engine)
 
     def tearDown(self):
         db.session.remove()
@@ -30,7 +31,7 @@ class ReportsTotalsRekeningsTest(TestCase):
     def request_totals(self, code, mapping=None, outlet=None, mpr_outlet=None, dates=''):
         models = [
             controller.GojekReport, controller.GrabFoodReport, controller.ShopeeReport,
-            controller.ShopeepayReport, controller.TiktokReport, QponReport,
+            controller.ShopeepayReport, controller.TiktokReport,
             controller.WebshopReport, controller.MaximReport, controller.CashReport, controller.ManualEntry,
         ]
         query = MagicMock()
@@ -40,7 +41,6 @@ class ReportsTotalsRekeningsTest(TestCase):
             for model in models:
                 stack.enter_context(patch.object(model, 'query', query))
             stack.enter_context(patch.object(controller, 'get_mpr_mapping_for_outlet', return_value=(outlet, mapping)))
-            stack.enter_context(patch.object(controller, 'calculate_mpr_totals', return_value={'gojek': 0}))
             outlet_query = stack.enter_context(patch.object(controller.Outlet, 'query'))
             outlet_query.filter_by.return_value.first.return_value = mpr_outlet
             lookup = stack.enter_context(patch.object(controller.RekeningInfoService, 'get_outlet_rekenings'))
@@ -55,6 +55,14 @@ class ReportsTotalsRekeningsTest(TestCase):
         outlet = SimpleNamespace(outlet_code='MP', brand='MP78', number='001')
         mpr = SimpleNamespace(outlet_code='MPR', brand='MPR', number='002')
         mapping = SimpleNamespace(mpr_outlet_code='MPR')
+        for code, billed, amount in [
+            ('MP', datetime(2026, 11, 1), 500),
+            ('MPR', datetime(2026, 11, 30, 23, 59), 200),
+            ('MPR', datetime(2026, 12, 1), 300),
+        ]:
+            db.session.add(QponReport(billing_id=f'{code}-{billed}', outlet_code=code,
+                                      bill_created_at=billed, nett_amount=amount))
+        db.session.commit()
         data, status, calls = self.request_totals(
             'MP', mapping, outlet, mpr, '&start_date=2026-11-01&end_date=2026-11-30'
         )
@@ -63,10 +71,11 @@ class ReportsTotalsRekeningsTest(TestCase):
         self.assertEqual(data['rekenings']['mpr'][0]['rekening_number'], '002')
         self.assertEqual(calls[0].args[1:], (date(2026, 11, 1), date(2026, 11, 30)))
         self.assertEqual(calls[1].args[1:], calls[0].args[1:])
-        self.assertIn('mpr_totals', data['totals'])
+        self.assertEqual(data['totals']['qpon'], 500)
+        self.assertEqual(data['totals']['mpr_totals']['qpon'], 198)
 
     def test_latest_accounts_use_outlet_references_and_bank_date(self):
-        for model in (BankMutation, Rekening, QponReport, controller.WebshopReport, controller.MaximReport):
+        for model in (BankMutation, Rekening, controller.WebshopReport, controller.MaximReport):
             model.__table__.create(db.engine)
         outlet = Outlet(outlet_code='ABC', store_id_shopee='123456')
         db.session.add_all([QponReport(billing_id='bill1', outlet_code='ABC'),
