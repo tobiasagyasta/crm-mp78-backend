@@ -210,7 +210,7 @@ class ClosingSheet(BaseSheet):
 
     def _get_grand_total_with_fallback(self, header):
         if header in ('Grab_Net', 'Grab_Net_Raw'):
-            return self.data['grand_totals'].get('Grab_Disbursement')
+            return mpr_calc.grab_income(self.data['grand_totals'])
         grand_totals = self.data['grand_totals']
         value = grand_totals.get(header)
         if header.endswith('_Mutation') and not value:
@@ -339,7 +339,7 @@ class ClosingSheet(BaseSheet):
         self.ws.cell(row=row_start + 1, column=col_start).alignment = CENTER_ALIGN
         self.ws.cell(row=row_start + 1, column=col_start).fill = BLUE_FILL
 
-        grab_net_total = self.data['grand_totals'].get('Grab_Disbursement')
+        grab_net_total = mpr_calc.grab_income(self.data['grand_totals'])
         grab_management_expense = self._get_closing_grab_management_commission_expense(grab_net_total)
         mp78_income_total = self._get_mp78_mutation_total(mp78_mutations, 'income')
         mp78_expense_total = self._get_mp78_mutation_total(mp78_mutations, 'expense')
@@ -879,7 +879,7 @@ class ClosingSheet(BaseSheet):
             totals = report_data.get('daily_totals', {}).get(date, {})
 
         if header in ('Grab_Net', 'Grab_Net_Raw'):
-            return totals.get('Grab_Disbursement')
+            return mpr_calc.grab_income(totals)
         value = totals.get(header)
         if header.endswith('_Mutation') and not value:
             net_key = header.replace('_Mutation', '_Net')
@@ -900,7 +900,7 @@ class ClosingSheet(BaseSheet):
             totals = self.data.get('daily_totals', {}).get(date, {})
 
         if header == 'Grab_Net_Raw':
-            return totals.get('Grab_Disbursement')
+            return mpr_calc.grab_income(totals)
 
         return None
 
@@ -1131,14 +1131,14 @@ class ClosingSheet(BaseSheet):
             return None
 
         if header == 'Grab_Net':
-            return self.data['grand_totals'].get('Grab_Disbursement')
+            return mpr_calc.grab_income(self.data['grand_totals'])
 
         return self._get_platform_grand_total_with_fallback('main', header)
 
     def _get_closing_grand_total_income_value_for_label(self, label, header, grab_net_total=None):
         if self._is_mpr_brand():
             if label == 'Grab':
-                return self._get_grand_total_with_fallback('Grab_Disbursement')
+                return mpr_calc.grab_income(self.data['grand_totals'])
 
         return self._get_closing_grand_total_income_value(header, grab_net_total)
 

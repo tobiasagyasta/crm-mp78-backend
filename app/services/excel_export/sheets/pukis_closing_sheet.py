@@ -1,4 +1,5 @@
 from app.services.excel_export.base_sheet import BaseSheet
+from app.services.excel_export.mpr_calculations import grab_income
 from app.services.excel_export.utils.excel_utils import (
     HEADER_FONT, YELLOW_FILL, CENTER_ALIGN, THIN_BORDER, auto_fit_columns, RIGHT_ALIGN,
     CASH_FILL, GOJEK_FILL, GRAB_FILL, SHOPEE_FILL, TIKTOK_FILL, DATA_FILL, LIGHT_BLUE_FILL,
@@ -106,7 +107,7 @@ class PukisClosingSheet(BaseSheet):
                 date.strftime("%d-%b-%y"),
                 daily_totals[date]['Cash_Income'] - daily_totals[date]['Cash_Expense'],
                 gojek_value,
-                daily_totals[date].get('Grab_Disbursement'),
+                grab_income(daily_totals[date]),
                 daily_totals[date]['Shopee_Net'],
                 daily_totals[date]['Tiktok_Net'],
                 self._get_qpon_closing_value(totals),  # QPON
@@ -147,7 +148,7 @@ class PukisClosingSheet(BaseSheet):
             "TOTAL",
             grand_totals.get('Cash_Income', 0) - grand_totals.get('Cash_Expense', 0),
             grand_totals.get('Gojek_Mutation') or grand_totals.get('Gojek_Net', 0),
-            grand_totals.get('Grab_Disbursement'),
+            grab_income(grand_totals),
             grand_totals.get('Shopee_Net', 0),
             grand_totals.get('Tiktok_Net', 0),
             sum(

@@ -1,5 +1,5 @@
 from app.services.excel_export.base_sheet import BaseSheet
-from app.services.excel_export.mpr_calculations import grabfood_payout
+from app.services.excel_export.mpr_calculations import grab_income, grabfood_payout
 from app.services.excel_export.utils.excel_utils import (
     HEADER_FONT, BOLD_RED_FONT, YELLOW_FILL, GRAB_FILL, CASH_FILL, SHOPEE_FILL,
     COMMISSION_FILL, auto_fit_columns
@@ -48,7 +48,7 @@ class SummarySheet(BaseSheet):
 
         platforms = [
             ('Gojek', grand_totals['Gojek_Gross'], grand_totals['Gojek_Net']),
-            ('Grab (Total)', grabfood_gross_total + grabovo_gross_total, grand_totals.get('Grab_Disbursement')),
+            ('Grab (Total)', grabfood_gross_total + grabovo_gross_total, grab_income(grand_totals)),
             ('Shopee', grand_totals['Shopee_Gross'], grand_totals['Shopee_Net']),
             ('ShopeePay', grand_totals['ShopeePay_Gross'], grand_totals['ShopeePay_Net']),
             ('Tiktok', grand_totals['Tiktok_Gross'], grand_totals['Tiktok_Net']),
@@ -163,7 +163,7 @@ class SummarySheet(BaseSheet):
         manual_expense = sum(float(entry.amount or 0) for entry, _, _ in manual_entries if entry.entry_type == 'expense')
 
         online_net_total = (
-            grand_totals['Gojek_Net'] + (grand_totals.get('Grab_Disbursement') or 0) +
+            grand_totals['Gojek_Net'] + (grab_income(grand_totals) or 0) +
             grand_totals['Shopee_Net'] + grand_totals['ShopeePay_Net'] +
             grand_totals['Tiktok_Net'] + grand_totals['Qpon_Net'] +
             grand_totals['Webshop_Net'] + grand_totals.get('Maxim_Net', 0) + grand_totals['UV']

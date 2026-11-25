@@ -129,12 +129,18 @@ def tiktok_net_ac_value(totals, is_mpr=False, commission_rate=None):
     return net - (net * commission_rate)
 
 
-def grabfood_payout(totals):
+def grab_income(totals):
+    if 'Grab_Income' in totals:
+        return totals['Grab_Income']
     payout = totals.get('Grab_Disbursement')
+    return payout if payout is not None else totals.get('Grab_Net')
+
+
+def grabfood_payout(totals):
+    payout = grab_income(totals)
     if payout is None:
         return None
-    # Period totals include only the OVO portion of days with a payout.
-    return totals.get('GrabFood_Payout', payout - totals.get('GrabOVO_Net', 0))
+    return payout - totals.get('GrabOVO_Net', 0)
 
 
 def grab_payout_commission(totals):
@@ -143,12 +149,12 @@ def grab_payout_commission(totals):
 
 
 def grab_payout_after_commission(totals, rate):
-    payout = totals.get('Grab_Disbursement')
+    payout = grab_income(totals)
     return None if payout is None else payout - payout * rate
 
 
 def grab_net_ac_value(totals):
-    payout = totals.get('Grab_Disbursement')
+    payout = grab_income(totals)
     return None if payout is None else payout - grab_payout_commission(totals)
 
 

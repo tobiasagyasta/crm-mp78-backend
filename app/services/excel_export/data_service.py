@@ -506,13 +506,13 @@ def _aggregate_grab(daily_totals, reports, brand):
     for date in daily_totals:
         if mpr_calc.is_mp78_brand(brand):
             daily_totals[date]['Grab_Commission'] = (
-                (daily_totals[date].get('Grab_Disbursement') or 0) * mpr_calc.MP78_GRAB_MANAGEMENT_COMMISSION_RATE
+                (mpr_calc.grab_income(daily_totals[date]) or 0) * mpr_calc.MP78_GRAB_MANAGEMENT_COMMISSION_RATE
             )
         elif mpr_calc.is_mpr_brand(brand):
             daily_totals[date]['Grab_Commission'] = mpr_calc.grab_payout_commission(daily_totals[date]) or 0
         elif brand not in ["Pukis & Martabak Kota Baru"]:
             daily_totals[date]['Grab_Commission'] = (
-                (daily_totals[date].get('Grab_Disbursement') or 0) * mpr_calc.MANAGEMENT_COMMISSION_RATE
+                (mpr_calc.grab_income(daily_totals[date]) or 0) * mpr_calc.MANAGEMENT_COMMISSION_RATE
             )
         else:
             daily_totals[date]['Grab_Commission'] = 0
@@ -701,9 +701,9 @@ def _match_mutations(daily_totals, outlet_code, start_date, end_date):
 def _calculate_grand_totals(daily_totals):
     grand_totals = defaultdict(float)
     for day_totals in daily_totals.values():
-        food_payout = mpr_calc.grabfood_payout(day_totals)
-        if food_payout is not None:
-            grand_totals['GrabFood_Payout'] += food_payout
+        grab_income = mpr_calc.grab_income(day_totals)
+        if grab_income is not None:
+            grand_totals['Grab_Income'] += grab_income
         for key, value in day_totals.items():
             if value is not None and isinstance(value, (int, float)):
                 grand_totals[key] += value

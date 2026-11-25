@@ -85,7 +85,8 @@ class DailyGrabDisbursementTest(TestCase):
         days = [date(2026, 11, n) for n in (1, 2)]
         daily = {day: _init_daily_total() for day in days}
         for totals in daily.values():
-            totals.update(Grab_Net=1000, GrabOVO_Net=250, Grab_Mutation=905)
+            totals.update(Grab_Net=1000, GrabOVO_Net=250)
+        daily[days[0]]['Grab_Mutation'] = 905
         daily[days[0]]['Grab_Disbursement'] = 900
         data = {'outlet': SimpleNamespace(brand='MPR', outlet_name_gojek='Outlet'),
                 'start_date': days[0], 'end_date': days[-1], 'all_dates': days,
@@ -95,7 +96,7 @@ class DailyGrabDisbursementTest(TestCase):
         sheet.generate()
         col = sheet._get_headers().index('GrabFood x OVO (ac)') + 1
         closing = ClosingSheet(Workbook(), {**data, 'mpr_report_data': data})
-        for row, day, expected in [(6, days[0], 848), (7, days[1], None), (8, None, 848)]:
+        for row, day, expected in [(6, days[0], 848), (7, days[1], 940), (8, None, 1788)]:
             self.assertEqual(sheet.ws.cell(row, col).value, expected)
             self.assertEqual(closing._get_mpr_grab_ac_display_value('main', day), expected)
             self.assertEqual(closing._get_mpr_display_value('Grab_Net', day), expected)

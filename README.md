@@ -229,12 +229,12 @@ If only some payouts match, the column contains only their matched credits.
 `GRAB_DISBURSEMENT_FIRST_MATCHING` in
 `app/services/excel_export/data_service.py` is `True`: without a completed
 disbursement, Grab Mutation stays blank. Across brands, Grab commissions and
-closing and summary income use completed payouts. The daily Grab Net column
+closing and summary income use the completed payout when present and Grab Net
+otherwise. This choice is made per day before summing the period. The daily Grab Net column
 still shows the sales report amount for comparison; Grab Difference compares
 the matched bank amount with the payout. For MPR brands, daily `GrabFood x OVO
-(ac)` and closing use Grab Pencairan less the GrabFood management commission.
-OVO is exempt from that commission. Dates without a payout contribute neither
-income nor commission to the MPR Grab closing total.
+(ac)` and closing deduct the GrabFood management commission from that day's
+selected amount. OVO is exempt from that commission.
 
 🚀 A Flask-based REST API for authentication and user management in a CRM system.
 
