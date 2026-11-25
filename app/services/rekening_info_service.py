@@ -1,10 +1,15 @@
 from dataclasses import dataclass
 
-from sqlalchemy import or_
+from sqlalchemy import case, func, or_, select
 
+from app.extensions import db
 from app.models.bank_mutations import BankMutation
+from app.models.grab_disbursement import GrabDisbursement
+from app.models.maxim_report import MaximReport
 from app.models.outlet import Outlet
+from app.models.qpon_reports import QponReport
 from app.models.rekening import Rekening
+from app.models.webshop_report import WebshopReport
 
 
 @dataclass(frozen=True)
@@ -32,11 +37,11 @@ class RekeningInfoService:
     )
 
     @classmethod
-    def get_outlet_rekenings(cls, outlet: Outlet, start_date=None, end_date=None) -> list[OutletRekeningInfo]:
+    def get_outlet_rekenings(cls, outlet: Outlet, start_date=None, end_date=None, *, latest=False) -> list[OutletRekeningInfo]:
         if not outlet:
             return []
 
-        mutation_rows = cls._get_mutation_rekening_rows(outlet, start_date, end_date)
+        mutation_rows = cls._get_mutation_rekening_rows(outlet, start_date, end_date, latest)
         if mutation_rows:
             return mutation_rows
 
@@ -62,8 +67,10 @@ class RekeningInfoService:
         return outlet_code or getattr(outlet, "outlet_name_gojek", None) or "-"
 
     @classmethod
-    def _get_mutation_rekening_rows(cls, outlet: Outlet, start_date=None, end_date=None) -> list[OutletRekeningInfo]:
+    def _get_mutation_rekening_rows(cls, outlet: Outlet, start_date=None, end_date=None, latest=False) -> list[OutletRekeningInfo]:
         conditions = cls._build_mutation_conditions(outlet)
+        if latest:
+            conditions.extend(cls._additional_report_conditions(outlet))
         if not conditions:
             return []
 
@@ -73,19 +80,23 @@ class RekeningInfoService:
         if end_date is not None:
             query = query.filter(BankMutation.tanggal <= end_date)
 
-        rows = (
-            query
-            .with_entities(
-                BankMutation.platform_name,
-                BankMutation.rekening_number,
-            )
-            .distinct()
-            .order_by(
-                BankMutation.platform_name.asc(),
-                BankMutation.rekening_number.asc(),
-            )
-            .all()
-        )
+        if latest:
+            # MC credits are imported as "Shopee"; they settle ShopeePay.
+            platform = case((BankMutation.platform_name == 'Shopee', 'ShopeePay'),
+                            else_=BankMutation.platform_name)
+            ranked = query.filter(
+                BankMutation.tanggal.isnot(None), func.trim(BankMutation.rekening_number) != '',
+            ).with_entities(
+                platform.label('platform'), BankMutation.rekening_number,
+                func.dense_rank().over(partition_by=platform, order_by=BankMutation.tanggal.desc()).label('rank'),
+            ).subquery()
+            # Keep both accounts if the latest bank date has conflicting evidence.
+            rows = (db.session.query(ranked.c.platform, ranked.c.rekening_number)
+                    .filter(ranked.c.rank == 1).distinct()
+                    .order_by(ranked.c.platform, ranked.c.rekening_number).all())
+        else:
+            rows = (query.with_entities(BankMutation.platform_name, BankMutation.rekening_number)
+                    .distinct().order_by(BankMutation.platform_name, BankMutation.rekening_number).all())
 
         if not rows:
             return []
@@ -125,6 +136,35 @@ class RekeningInfoService:
             )
 
         return result
+
+    @classmethod
+    def _additional_report_conditions(cls, outlet):
+        code = outlet.outlet_code
+        conditions = []
+        for platform, report, reference in (
+            ('Qpon', QponReport, QponReport.billing_id),
+            ('Webshop', WebshopReport, WebshopReport.order_id),
+            ('Maxim', MaximReport, MaximReport.order_id),
+        ):
+            keys = select(reference).where(report.outlet_code == code)
+            match = BankMutation.platform_code.in_(keys)
+            if platform != 'Qpon':
+                outlet_keys = [code]
+                if outlet.outlet_code_tiktok_webshop:
+                    outlet_keys.append(outlet.outlet_code_tiktok_webshop)
+                match = or_(match, BankMutation.platform_code.in_(outlet_keys))
+            conditions.append((BankMutation.platform_name == platform) & match)
+        shopee_codes = cls._platform_codes_for_outlet(outlet, 'Shopee', 'store_id_shopee')
+        if shopee_codes:
+            conditions.append((BankMutation.platform_name == 'ShopeePay')
+                              & BankMutation.platform_code.in_(shopee_codes))
+        if outlet.store_id_grab:
+            conditions.append((BankMutation.platform_name == 'Grab') & BankMutation.id.in_(
+                select(GrabDisbursement.mutation_id).where(GrabDisbursement.store_id == outlet.store_id_grab)
+            ))
+        if outlet.pkb_code:
+            conditions.append((BankMutation.platform_name == 'PKB') & (BankMutation.platform_code == outlet.pkb_code))
+        return conditions
 
     @classmethod
     def _build_mutation_conditions(cls, outlet: Outlet):

@@ -8,7 +8,10 @@ from flask import Flask
 
 from app.controllers import reports_controller as controller
 from app.extensions import db
+from app.models.bank_mutations import BankMutation
+from app.models.outlet import Outlet
 from app.models.qpon_reports import QponReport
+from app.models.rekening import Rekening
 from app.services.rekening_info_service import OutletRekeningInfo
 
 
@@ -41,7 +44,7 @@ class ReportsTotalsRekeningsTest(TestCase):
             outlet_query = stack.enter_context(patch.object(controller.Outlet, 'query'))
             outlet_query.filter_by.return_value.first.return_value = mpr_outlet
             lookup = stack.enter_context(patch.object(controller.RekeningInfoService, 'get_outlet_rekenings'))
-            lookup.side_effect = lambda obj, start, end: (
+            lookup.side_effect = lambda obj, start, end, *, latest: (
                 [OutletRekeningInfo(obj.outlet_code, 'Gojek', 'Bank', obj.number)] if obj else []
             )
             with self.app.test_request_context(f'/?outlet_code={code}{dates}'):
@@ -61,6 +64,24 @@ class ReportsTotalsRekeningsTest(TestCase):
         self.assertEqual(calls[0].args[1:], (date(2026, 11, 1), date(2026, 11, 30)))
         self.assertEqual(calls[1].args[1:], calls[0].args[1:])
         self.assertIn('mpr_totals', data['totals'])
+
+    def test_latest_accounts_use_outlet_references_and_bank_date(self):
+        for model in (BankMutation, Rekening, QponReport, controller.WebshopReport, controller.MaximReport):
+            model.__table__.create(db.engine)
+        outlet = Outlet(outlet_code='ABC', store_id_shopee='123456')
+        db.session.add_all([QponReport(billing_id='bill1', outlet_code='ABC'),
+                            QponReport(billing_id='bill2', outlet_code='OTHER')])
+        for platform, key, day, account in [
+            ('Qpon', 'bill1', 3, 'new'), ('Qpon', 'bill1', 1, 'old'),
+            ('Qpon', 'bill2', 4, 'unrelated'), ('Qpon', 'bill1', 6, 'future'),
+            ('Shopee', '3456', 2, 'pay'), ('Webshop', 'ABC', 2, 'web'),
+        ]:
+            db.session.add(BankMutation(platform_name=platform, platform_code=key,
+                                        rekening_number=account, tanggal=date(2026, 11, day)))
+        rows = controller.RekeningInfoService.get_outlet_rekenings(
+            outlet, end_date=date(2026, 11, 5), latest=True)
+        self.assertEqual([(r.platform_name, r.rekening_number) for r in rows],
+                         [('Qpon', 'new'), ('ShopeePay', 'pay'), ('Webshop', 'web')])
 
     def test_unmapped_and_all_have_empty_mpr_accounts(self):
         outlet = SimpleNamespace(outlet_code='MP', brand='MP78', number='001')

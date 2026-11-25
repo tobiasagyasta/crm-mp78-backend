@@ -1813,7 +1813,7 @@ def get_reports_totals():
                         'rekening_number': row.rekening_number,
                     }
                     for row in RekeningInfoService.get_outlet_rekenings(
-                        rekening_outlet, rekening_start, rekening_end
+                        rekening_outlet, rekening_start, rekening_end, latest=True
                     )
                 ]
 
