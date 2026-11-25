@@ -608,6 +608,15 @@ class BankMutation(db.Model):
         if not normalized_row:
             return None
 
+        description = normalized_row[1]
+        if (re.search(r'\bTKPD\b', description, re.I)
+                and re.search(r'\bTOKOPEDIA\s+PT\b', description, re.I)
+                and normalized_row[3].upper().endswith('CR')):
+            data = BankMutation.parse_unassigned_row(normalized_row, rekening_number)
+            del data['platform_code'], data['platform_name']
+            data['_mutation_model'] = 'tiktok'
+            return data
+
         parser = BankMutation.detect_platform(normalized_row)
         if not parser:
             mp78_data = BankMutation.parse_mp78_row(normalized_row, rekening_number)

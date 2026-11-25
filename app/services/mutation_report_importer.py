@@ -1,4 +1,6 @@
 import csv
+import re
+from datetime import datetime
 from io import BytesIO, StringIO
 
 import openpyxl
@@ -8,6 +10,7 @@ from app.extensions import db
 from app.models.bank_mutations import BankMutation
 from app.models.import_job import ImportJob
 from app.models.mp78_mutations import MP78Mutation
+from app.models.tiktok_mutation import TikTokMutation
 from app.services.import_job_issues import IssueCollector
 
 
@@ -66,6 +69,33 @@ def _mutation_rows_from_excel(file_bytes):
     return rows
 
 
+def _statement_csv_rows(text, delimiter):
+    for row in csv.reader(StringIO(text), delimiter=delimiter):
+        if len(row) == 1 and delimiter in row[0]:
+            row = next(csv.reader([row[0]], delimiter=delimiter))
+        yield row
+
+
+def _dated_statement_rows(rows):
+    period = None
+    for row in rows:
+        if row:
+            match = re.fullmatch(r'Periode\s*:\s*(\d{2}/\d{2}/\d{4})\s*-\s*(\d{2}/\d{2}/\d{4})',
+                                 row[0].strip(), re.I)
+            if match:
+                period = tuple(datetime.strptime(s, '%d/%m/%Y').date() for s in match.groups())
+            elif period and re.fullmatch(r'\d{2}/\d{2}', row[0].strip()):
+                for year in range(period[0].year, period[1].year + 1):
+                    try:
+                        day = datetime.strptime(f'{row[0].strip()}/{year}', '%d/%m/%Y').date()
+                    except ValueError:
+                        continue
+                    if period[0] <= day <= period[1]:
+                        row[0] = day.isoformat()
+                        break
+        yield row
+
+
 def _mutation_rows_from_upload(file_bytes, filename=''):
     filename = (filename or '').lower()
     if filename.endswith(('.xlsx', '.xlsm')):
@@ -76,7 +106,7 @@ def _mutation_rows_from_upload(file_bytes, filename=''):
     # the delimiter from the table header rather than relying on the first line.
     delimiter = None
     for candidate in (',', ';'):
-        reader = csv.reader(StringIO(file_contents), delimiter=candidate)
+        reader = _statement_csv_rows(file_contents, candidate)
         if any(len(row) > 1 and _is_mutation_table_header(row) for row in reader):
             delimiter = candidate
             break
@@ -86,7 +116,7 @@ def _mutation_rows_from_upload(file_bytes, filename=''):
         except csv.Error:
             delimiter = ','
 
-    reader = csv.reader(StringIO(file_contents), delimiter=delimiter)
+    reader = _dated_statement_rows(_statement_csv_rows(file_contents, delimiter))
     rows = [(number, header, row, None) for number, header, row in
             _mutation_rows_from_table(enumerate(reader, start=1))]
     if rows:
@@ -164,7 +194,7 @@ def import_mutation_report_bytes(file_bytes, rekening_number, filename='', impor
     )
 
     mutations = []
-    mp78_mutations = []
+    separate_mutations = []
     for row_number, header_row, row, sheet_name in rows:
         processed_rows += 1
         try:
@@ -184,14 +214,15 @@ def import_mutation_report_bytes(file_bytes, rekening_number, filename='', impor
                 continue
 
             mutation_model = parsed.pop('_mutation_model', 'bank')
-            if mutation_model == 'mp78':
-                mutation = MP78Mutation(rekening_number=rekening_number, **parsed)
-                exists = MP78Mutation.query.filter_by(transaction_id=mutation.transaction_id).first()
+            if mutation_model in ('mp78', 'tiktok'):
+                model = TikTokMutation if mutation_model == 'tiktok' else MP78Mutation
+                mutation = model(rekening_number=rekening_number, **parsed)
+                exists = model.query.filter_by(transaction_id=mutation.transaction_id).first()
                 if exists:
                     skipped_mutations += 1
                     duplicate_rows += 1
                     continue
-                mp78_mutations.append((mutation, row_number, row, sheet_name))
+                separate_mutations.append((mutation, row_number, row, sheet_name))
                 total_mutations += 1
                 continue
 
@@ -222,9 +253,9 @@ def import_mutation_report_bytes(file_bytes, rekening_number, filename='', impor
             issues.record(row_number, 'PARSE_ERROR', f'Parse error: {exc}', row, sheet_name=sheet_name)
 
     integrity_skips, integrity_duplicates = _save_objects_with_integrity_fallback(mutations, issues)
-    mp78_skips, mp78_duplicates = _save_objects_with_integrity_fallback(mp78_mutations, issues)
-    integrity_skips += mp78_skips
-    duplicate_rows += integrity_duplicates + mp78_duplicates
+    separate_skips, separate_duplicates = _save_objects_with_integrity_fallback(separate_mutations, issues)
+    integrity_skips += separate_skips
+    duplicate_rows += integrity_duplicates + separate_duplicates
     if integrity_skips:
         skipped_mutations += integrity_skips
         total_mutations -= integrity_skips

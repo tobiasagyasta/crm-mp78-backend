@@ -9,7 +9,7 @@ from app.models.cash_reports import CashReport
 from app.models.manual_entry import ManualEntry
 from app.models.shopeepay_reports import ShopeepayReport
 from app.models.bank_mutations import BankMutation
-from app.models.mp78_mutations import MP78Mutation
+from app.services.mutation_report_importer import import_mutation_report_bytes
 from app.models.expense_category import ExpenseCategory
 from app.models.income_category import IncomeCategory
 from app.models.pukis import Pukis
@@ -484,211 +484,14 @@ def upload_report_mutation():
     skipped_mutations = 0
     debug_skipped = []
 
-    def _is_blank_row(row):
-        return not row or not any(str(value).strip() for value in row if value is not None)
-
-    def _is_mutation_table_header(row):
-        row_text = " ".join(str(value).strip().upper() for value in row if value is not None)
-        return (
-            ('TANGGAL' in row_text or 'DATE' in row_text)
-            and ('KETERANGAN' in row_text or 'DESCRIPTION' in row_text)
-            and ('CABANG' in row_text or 'BRANCH' in row_text)
-            and ('JUMLAH' in row_text or 'AMOUNT' in row_text)
-            and ('SALDO' in row_text or 'BALANCE' in row_text)
-        )
-
-    def _debug_row(row):
-        return [
-            value.isoformat() if hasattr(value, 'isoformat') else value
-            for value in row
-        ]
-
-    def _mutation_rows_from_excel(file_bytes):
-        workbook = openpyxl.load_workbook(BytesIO(file_bytes), data_only=True, read_only=True)
-        rows = []
-
-        for worksheet in workbook.worksheets:
-            rows.extend(
-                _mutation_rows_from_table(
-                    enumerate(worksheet.iter_rows(values_only=True), start=1)
-                )
-            )
-
-        return rows
-
-    def _mutation_rows_from_table(numbered_rows, min_header_row=1):
-        rows = []
-        in_mutation_table = False
-        header_row = None
-
-        for row_number, row in numbered_rows:
-            row = list(row)
-            if _is_blank_row(row):
-                continue
-            if row_number >= min_header_row and _is_mutation_table_header(row):
-                in_mutation_table = True
-                header_row = row
-                continue
-            if not in_mutation_table:
-                continue
-
-            first_cell = str(row[0]).strip().upper() if row[0] is not None else ''
-            if first_cell.startswith(('SALDO', 'MUTASI')):
-                break
-
-            rows.append((row_number, header_row, row))
-
-        return rows
-
-    def _mutation_rows_from_upload(file):
-        file_bytes = file.read()
-        filename = (file.filename or '').lower()
-        if filename.endswith(('.xlsx', '.xlsm')):
-            return _mutation_rows_from_excel(file_bytes)
-
-        file_contents = file_bytes.decode('utf-8-sig')
-        csv_file = StringIO(file_contents)
-        reader = csv.reader(csv_file)
-        rows = _mutation_rows_from_table(enumerate(reader, start=1))
-        if rows:
-            return rows
-
-        csv_file.seek(0)
-        reader = csv.reader(csv_file)
-        next(reader, None)  # Skip legacy CSV header
-        return [(idx, None, row) for idx, row in enumerate(reader, start=2)]
-
     try:
         for file in files:
-            mutations = []
-            mp78_mutations = []
-            for row_number, header_row, row in _mutation_rows_from_upload(file):
-                try:
-                    # Skip if the date column is 'PEND'
-                    first_cell = str(row[0]).strip().upper() if row and row[0] is not None else ''
-                    if first_cell == 'PEND':
-                        skipped_mutations += 1
-                        debug_skipped.append({
-                            'row_number': row_number,
-                            'reason': "Date column is 'PEND'",
-                            'row': _debug_row(row)
-                        })
-                        continue
+            result = import_mutation_report_bytes(file.read(), rekening_number, file.filename)
+            db.session.commit()
+            total_mutations += result['inserted_rows']
+            skipped_mutations += result['skipped_rows']
+            debug_skipped.extend(result['skipped_rows_debug'])
 
-                    parsed = BankMutation.parse_mutation_row(row, rekening_number)
-                    if not parsed:
-                        skipped_mutations += 1
-                        debug_skipped.append({
-                            'row_number': row_number,
-                            'reason': 'Unknown platform or parse failed',
-                            'header': _debug_row(header_row) if header_row else None,
-                            'row': _debug_row(row)
-                        })
-                        continue
-
-                    mutation_model = parsed.pop('_mutation_model', 'bank')
-                    if mutation_model == 'mp78':
-                        mutation = MP78Mutation(
-                            rekening_number=rekening_number,
-                            **parsed
-                        )
-
-                        exists = MP78Mutation.query.filter_by(
-                            transaction_id=mutation.transaction_id,
-                        ).first()
-                        if exists:
-                            skipped_mutations += 1
-                            debug_skipped.append({
-                                'row_number': row_number,
-                                'reason': 'Duplicate MP78 mutation entry',
-                                'row': _debug_row(row)
-                            })
-                            continue
-
-                        mp78_mutations.append(mutation)
-                        total_mutations += 1
-                        continue
-
-                    mutation = BankMutation(
-                        rekening_number=rekening_number,
-                        **parsed
-                    )
-
-                    if mutation.platform_name == 'Unknown' and mutation.transaction_id:
-                        exists = BankMutation.query.filter_by(
-                            transaction_id=mutation.transaction_id,
-                        ).first()
-                    else:
-                        exists = BankMutation.query.filter_by(
-                            tanggal=mutation.tanggal,
-                            transaction_amount=mutation.transaction_amount,
-                            platform_code=mutation.platform_code,
-                        ).first()
-                    if exists:
-                        skipped_mutations += 1
-                        debug_skipped.append({
-                            'row_number': row_number,
-                            'reason': 'Duplicate mutation entry',
-                            'row': _debug_row(row)
-                        })
-                        continue
-
-                    mutations.append(mutation)
-                    total_mutations += 1
-
-                except Exception as e:
-                    skipped_mutations += 1
-                    debug_skipped.append({
-                        'row_number': row_number,
-                        'reason': f'Exception: {str(e)}',
-                        'row': _debug_row(row)
-                    })
-
-            # Bulk save mutations for this file
-            if mutations:
-                try:
-                    db.session.bulk_save_objects(mutations)
-                    db.session.commit()
-                except IntegrityError:
-                    db.session.rollback()
-                    # Handle mutations one by one if bulk insert fails
-                    for mutation in mutations:
-                        try:
-                            db.session.add(mutation)
-                            db.session.commit()
-                        except IntegrityError:
-                            db.session.rollback()
-                            skipped_mutations += 1
-                        except Exception as e:
-                            db.session.rollback()
-                            debug_skipped.append({
-                                'row_number': None,
-                                'reason': f'Error saving mutation: {str(e)}',
-                                'row': None
-                            })
-
-            if mp78_mutations:
-                try:
-                    db.session.bulk_save_objects(mp78_mutations)
-                    db.session.commit()
-                except IntegrityError:
-                    db.session.rollback()
-                    for mutation in mp78_mutations:
-                        try:
-                            db.session.add(mutation)
-                            db.session.commit()
-                        except IntegrityError:
-                            db.session.rollback()
-                            skipped_mutations += 1
-                        except Exception as e:
-                            db.session.rollback()
-                            debug_skipped.append({
-                                'row_number': None,
-                                'reason': f'Error saving MP78 mutation: {str(e)}',
-                                'row': None
-                            })
-
-       
         seen_reasons = set()
         one_per_reason = []
 
