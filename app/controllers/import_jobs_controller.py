@@ -164,6 +164,26 @@ def upload_shopee_import_job():
     return _upload_report_import_job('shopee')
 
 
+@import_jobs_bp.route('/upload/shopee-adjustment', methods=['POST'])
+def upload_shopee_adjustment_import_job():
+    return _upload_report_import_job('shopee_adjustment')
+
+
+@import_jobs_bp.route('/upload/shopeepay', methods=['POST'])
+def upload_shopeepay_import_job():
+    return _upload_report_import_job('shopeepay')
+
+
+@import_jobs_bp.route('/upload/qpon', methods=['POST'])
+def upload_qpon_import_job():
+    return _upload_report_import_job('qpon')
+
+
+@import_jobs_bp.route('/upload/webshop', methods=['POST'])
+def upload_webshop_import_job():
+    return _upload_report_import_job('webshop')
+
+
 @import_jobs_bp.route('', methods=['GET'])
 def list_import_jobs():
     page = max(request.args.get('page', 1, type=int), 1)

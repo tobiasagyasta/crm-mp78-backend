@@ -10,6 +10,12 @@ from app.services.mutation_report_importer import import_mutation_report_bytes
 from app.services.shopee_report_importer import import_shopee_report_bytes
 from app.services.tiktok_report_importer import import_tiktok_report_bytes
 from app.services.tiktok_disbursement_importer import import_tiktok_disbursement_bytes
+from app.services.merchant_report_importers import (
+    import_qpon_report_bytes,
+    import_shopee_adjustment_bytes,
+    import_shopeepay_report_bytes,
+    import_webshop_report_bytes,
+)
 
 
 def test_import_worker_job(message='ok'):
@@ -76,6 +82,14 @@ def process_report_import_job(import_job_id):
                 result = import_gojek_report_bytes(file_bytes, import_job_id=import_job.id, issues=issues)
             elif import_job.report_type == 'shopee':
                 result = import_shopee_report_bytes(file_bytes, import_job_id=import_job.id, issues=issues)
+            elif import_job.report_type == 'shopee_adjustment':
+                result = import_shopee_adjustment_bytes(file_bytes, import_job_id=import_job.id, issues=issues)
+            elif import_job.report_type == 'shopeepay':
+                result = import_shopeepay_report_bytes(file_bytes, import_job_id=import_job.id, issues=issues)
+            elif import_job.report_type == 'qpon':
+                result = import_qpon_report_bytes(file_bytes, import_job_id=import_job.id, issues=issues)
+            elif import_job.report_type == 'webshop':
+                result = import_webshop_report_bytes(file_bytes, import_job_id=import_job.id, issues=issues)
             else:
                 raise ValueError(f'Unsupported report type: {import_job.report_type}')
 
