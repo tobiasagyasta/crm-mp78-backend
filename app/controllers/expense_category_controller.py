@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify
 from app.extensions import db
 from app.models.expense_category import ExpenseCategory
+from app.services.manual_entry_installment_service import INSTALLMENT_CATEGORY_NAME
 
 expense_category_bp = Blueprint("expense_category_bp", __name__, url_prefix="/expense_categories")
 
@@ -43,6 +44,10 @@ def update_expense_category(category_id):
         return jsonify({"error": "Expense category not found"}), 404
 
     data = request.get_json()
+    if category.name == INSTALLMENT_CATEGORY_NAME and data.get("name", category.name) != category.name:
+        return jsonify({"error": "Pembayaran Termin is a system category and cannot be renamed"}), 400
+    if data.get("name") == INSTALLMENT_CATEGORY_NAME and category.name != INSTALLMENT_CATEGORY_NAME:
+        return jsonify({"error": "Pembayaran Termin is a reserved category name"}), 400
     if "name" in data and data["name"]:
         category.name = data["name"]
     
@@ -56,6 +61,8 @@ def delete_expense_category(category_id):
     if not category:
         return jsonify({"error": "Expense category not found"}), 404
 
+    if category.name == INSTALLMENT_CATEGORY_NAME:
+        return jsonify({"error": "Pembayaran Termin is a system category and cannot be deleted"}), 400
     db.session.delete(category)
     db.session.commit()
     return jsonify({"message": "Expense category deleted successfully"})

@@ -11,6 +11,10 @@ from app.services.manual_entry_import_service import (
     import_manual_entries_from_mayora_csv_content,
     parse_uploaded_date,
 )
+from app.services.manual_entry_installment_service import (
+    INSTALLMENT_CATEGORY_NAME,
+    build_installment_entries,
+)
 
 manual_entries_bp = Blueprint('manual_entries', __name__, url_prefix='/manual-entries')
 
@@ -148,6 +152,20 @@ def create_entry():
     data = request.get_json()
 
     try:
+        category = None
+        if data.get('entry_type') == 'expense' and 'category_id' in data:
+            category = db.session.get(ExpenseCategory, data['category_id'])
+        if category and category.name == INSTALLMENT_CATEGORY_NAME:
+            entries = build_installment_entries(data)
+            db.session.add_all(entries)
+            db.session.commit()
+            return jsonify({
+                'installment_group_id': entries[0].installment_group_id,
+                'installment_count': len(entries),
+                'entries': [entry.to_dict() for entry in entries],
+            }), 201
+        if 'installment_count' in data:
+            return jsonify({'error': 'installment_count is only supported for Pembayaran Termin expenses'}), 400
         entry = ManualEntry(
             outlet_code=data['outlet_code'],
             brand_name=data['brand_name'],
@@ -165,8 +183,10 @@ def create_entry():
         return jsonify(entry.to_dict()), 201
 
     except KeyError as e:
+        db.session.rollback()
         return jsonify({'error': f'Missing required field: {str(e)}'}), 400
     except ValueError as e:
+        db.session.rollback()
         return jsonify({'error': str(e)}), 400
     except IntegrityError as e:
         db.session.rollback()
@@ -276,6 +296,14 @@ def update_entry(entry_id):
     data = request.get_json()
 
     try:
+        if entry.installment_group_id:
+            return jsonify({'error': 'Installment entries cannot be edited individually; delete the schedule and create a new one'}), 400
+        if 'installment_count' in data:
+            return jsonify({'error': 'Create a new Pembayaran Termin entry to set an installment schedule'}), 400
+        new_type = data.get('entry_type', entry.entry_type)
+        new_category = db.session.get(ExpenseCategory, data.get('category_id', entry.category_id)) if new_type == 'expense' else None
+        if new_category and new_category.name == INSTALLMENT_CATEGORY_NAME:
+            return jsonify({'error': 'Create a new Pembayaran Termin entry to set an installment schedule'}), 400
         if 'outlet_code' in data:
             entry.outlet_code = data['outlet_code']
         if 'entry_type' in data:
@@ -295,6 +323,7 @@ def update_entry(entry_id):
         return jsonify(entry.to_dict())
 
     except ValueError as e:
+        db.session.rollback()
         return jsonify({'error': str(e)}), 400
     except IntegrityError as e:
         db.session.rollback()
@@ -308,9 +337,13 @@ def delete_entry(entry_id):
     entry = ManualEntry.query.get_or_404(entry_id)
     
     try:
-        db.session.delete(entry)
+        group_id = entry.installment_group_id
+        if group_id:
+            ManualEntry.query.filter_by(installment_group_id=group_id).delete(synchronize_session=False)
+        else:
+            db.session.delete(entry)
         db.session.commit()
-        return jsonify({'message': 'Entry deleted successfully'}), 200
+        return jsonify({'message': 'Installment schedule deleted successfully' if group_id else 'Entry deleted successfully'}), 200
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500

@@ -10,11 +10,14 @@ class ManualEntry(db.Model):
     outlet_code = db.Column(db.String(100), nullable = False)
     brand_name = db.Column(db.String, nullable = False)
     entry_type = db.Column(db.Enum('income', 'expense', name='entry_types'), nullable=False)
-    amount = db.Column(db.Numeric(10, 2), nullable=False)
+    amount = db.Column(db.Numeric(18, 2), nullable=False)
     description = db.Column(db.String(255))
     start_date = db.Column(db.Date, nullable=False)  # Replace date with start_date
     end_date = db.Column(db.Date, nullable=False)    # Add end_date
     category_id = db.Column(db.Integer, nullable=False)
+    installment_group_id = db.Column(db.String(36), nullable=True, index=True)
+    installment_number = db.Column(db.Integer, nullable=True)
+    installment_count = db.Column(db.Integer, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -53,6 +56,9 @@ class ManualEntry(db.Model):
             "end_date": self.end_date.strftime('%Y-%m-%d'),      # Add end_date
             "category_id": self.category_id,
             "category_name": category_name,
+            "installment_group_id": self.installment_group_id,
+            "installment_number": self.installment_number,
+            "installment_count": self.installment_count,
             "created_at": self.created_at.strftime('%Y-%m-%d %H:%M:%S'),
             "updated_at": self.updated_at.strftime('%Y-%m-%d %H:%M:%S')
         }
