@@ -11,6 +11,7 @@ from app.models.manual_entry import ManualEntry
 from app.models.mp78_mutations import MP78Mutation
 from app.models.shopeepay_reports import ShopeepayReport
 from app.models.tiktok_reports import TiktokReport
+from app.models.tiktok_disbursement import TiktokDisbursement
 from app.models.qpon_reports import QponReport
 from app.models.bank_mutations import BankMutation
 from app.models.rekening import Rekening
@@ -95,6 +96,18 @@ def _get_grab_disbursements(store_id, start_date, end_date):
         GrabDisbursement.transfer_date < transfer_end,
         func.lower(func.trim(GrabDisbursement.status)) == 'completed',
     ).all()
+
+
+def _get_tiktok_disbursements(reports):
+    """Fetch all statement entries for the already-selected TikTok order items."""
+    item_ids = list({report.outlet_order_id.strip() for report in reports
+                     if report.outlet_order_id and report.outlet_order_id.strip()})
+    disbursements = []
+    for start in range(0, len(item_ids), 500):
+        disbursements.extend(TiktokDisbursement.query.filter(
+            TiktokDisbursement.item_order_id.in_(item_ids[start:start + 500])
+        ).all())
+    return disbursements
 
 
 def _match_grab_disbursement_mutations(daily_totals, reports, commit=True):
@@ -351,6 +364,7 @@ def get_report_data(outlet_code: str, start_date: datetime, end_date: datetime) 
     _aggregate_shopee(daily_totals, shopee_reports)
     _aggregate_shopeepay(daily_totals, shopeepay_reports)
     _aggregate_tiktok(daily_totals, tiktok_reports)
+    _aggregate_tiktok_disbursements(daily_totals, tiktok_reports, _get_tiktok_disbursements(tiktok_reports))
     _aggregate_tiktok_closing(daily_totals, tiktok_closing_reports, shift_days=tiktok_closing_shift)
     _aggregate_qpon(daily_totals, qpon_reports)
     _aggregate_qpon_mutations(daily_totals, qpon_reports)
@@ -420,7 +434,7 @@ def _init_daily_total():
     return {
         'Gojek_QRIS' : 0,'Gojek_Gross': 0, 'Gojek_Net': 0, 'Grab_Gross': 0, 'Grab_Net': 0, 'GrabOVO_Gross': 0, 'GrabOVO_Net': 0,
         'ShopeePay_Gross': 0, 'ShopeePay_Net': 0, 'Shopee_Gross': 0, 'Shopee_Net': 0,
-        'Tiktok_Gross': 0, 'Tiktok_Net': 0, 'Tiktok_Settlement_Time': set(),
+        'Tiktok_Gross': 0, 'Tiktok_Net': 0, 'Tiktok_Disbursement': None, 'Tiktok_Settlement_Time': set(),
         'Tiktok_Closing_Gross': 0, 'Tiktok_Closing_Net': 0,
         'Qpon_Gross': 0, 'Qpon_Net': 0, 'Qpon_Mutation': None, 'Qpon_Difference': None,
         'Qpon_Closing_Gross': 0, 'Qpon_Closing_Net': 0, 'Qpon_Closing_Mutation': None,
@@ -526,6 +540,21 @@ def _aggregate_tiktok(daily_totals, reports):
         daily_totals[date]['Tiktok_Gross'] += float(report.gross_amount or 0)
         if report.settlement_time:
             daily_totals[date]['Tiktok_Settlement_Time'].add(report.settlement_time.date())
+
+
+def _aggregate_tiktok_disbursements(daily_totals, reports, disbursements):
+    dates_by_item = {
+        report.outlet_order_id.strip(): report.order_time.date()
+        for report in reports if report.outlet_order_id and report.outlet_order_id.strip()
+    }
+    for disbursement in disbursements:
+        date = dates_by_item.get(disbursement.item_order_id)
+        if date in daily_totals:
+            totals = daily_totals[date]
+            totals['Tiktok_Disbursement'] = (
+                (totals['Tiktok_Disbursement'] or 0) + float(disbursement.total_settlement_amount)
+            )
+
 
 def _aggregate_tiktok_closing(daily_totals, reports, shift_days=7):
     for report in reports:

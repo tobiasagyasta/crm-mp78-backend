@@ -65,6 +65,7 @@ class TiktokClosingShiftTest(TestCase):
             patch.object(data_service.ManualEntry, 'query'),
             patch.object(data_service.MP78Mutation, 'query'),
             patch.object(data_service, '_get_grab_disbursements', return_value=[]),
+            patch.object(data_service, '_get_tiktok_disbursements', return_value=[]),
             patch.object(data_service, '_match_grab_disbursement_mutations'),
             patch.object(data_service, '_aggregate_qpon_mutations'),
             patch.object(data_service, '_match_mutations'),

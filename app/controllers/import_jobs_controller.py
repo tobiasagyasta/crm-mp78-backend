@@ -100,7 +100,7 @@ def _upload_report_import_job(report_type, extra_data=None):
         queue = get_import_queue()
         response_jobs = []
         for import_job in import_jobs:
-            job_timeout = 7200 if report_type in ('tiktok', 'mutation') else 1800
+            job_timeout = 7200 if report_type in ('tiktok', 'tiktok_disbursement', 'mutation') else 1800
             rq_job = queue.enqueue(
                 process_report_import_job,
                 import_job.id,
@@ -138,6 +138,11 @@ def upload_grab_disbursement_import_job():
 @import_jobs_bp.route('/upload/tiktok', methods=['POST'])
 def upload_tiktok_import_job():
     return _upload_report_import_job('tiktok')
+
+
+@import_jobs_bp.route('/upload/tiktok-disbursement', methods=['POST'])
+def upload_tiktok_disbursement_import_job():
+    return _upload_report_import_job('tiktok_disbursement')
 
 
 @import_jobs_bp.route('/upload/mutation', methods=['POST'])

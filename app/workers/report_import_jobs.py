@@ -9,6 +9,7 @@ from app.services.grab_disbursement_importer import import_grab_disbursement_byt
 from app.services.mutation_report_importer import import_mutation_report_bytes
 from app.services.shopee_report_importer import import_shopee_report_bytes
 from app.services.tiktok_report_importer import import_tiktok_report_bytes
+from app.services.tiktok_disbursement_importer import import_tiktok_disbursement_bytes
 
 
 def test_import_worker_job(message='ok'):
@@ -57,6 +58,8 @@ def process_report_import_job(import_job_id):
                 result = import_grab_disbursement_bytes(file_bytes, import_job_id=import_job.id, issues=issues)
             elif import_job.report_type == 'tiktok':
                 result = import_tiktok_report_bytes(file_bytes, import_job_id=import_job.id, issues=issues)
+            elif import_job.report_type == 'tiktok_disbursement':
+                result = import_tiktok_disbursement_bytes(file_bytes, import_job_id=import_job.id, issues=issues)
             elif import_job.report_type == 'mutation':
                 extra_data = import_job.extra_data or {}
                 rekening_number = extra_data.get('rekening_number')

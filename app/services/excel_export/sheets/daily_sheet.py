@@ -134,6 +134,7 @@ class DailySheet(BaseSheet):
         base_headers.insert(base_headers.index('Grab Net') + 1, 'Grab Pencairan')
         base_headers.insert(base_headers.index('Grab Pencairan') + 1, 'Grab Mutation')
         base_headers.insert(base_headers.index('Grab Mutation') + 1, 'Grab Difference')
+        base_headers.insert(base_headers.index('Tiktok Net') + 1, 'Tiktok Pencairan')
         return base_headers
 
     def _add_mp78_management_ac_headers(self, headers):
@@ -299,7 +300,7 @@ class DailySheet(BaseSheet):
             'Webshop Net (ac)': TIKTOK_FILL,
             'Shopee Net': SHOPEE_FILL, 'Shopee Mutation': SHOPEE_FILL, 'Shopee Difference': DIFFERENCE_FILL,
             'ShopeePay Net': SHOPEEPAY_FILL, 'ShopeePay Mutation': SHOPEEPAY_FILL, 'ShopeePay Difference': DIFFERENCE_FILL,
-            'Tiktok Net': TIKTOK_FILL, 'Tiktok Settlement Time': TIKTOK_FILL,
+            'Tiktok Net': TIKTOK_FILL, 'Tiktok Pencairan': TIKTOK_FILL, 'Tiktok Settlement Time': TIKTOK_FILL,
             'Qpon Net': TIKTOK_FILL, 'Qpon Mutation': TIKTOK_FILL, 'Qpon Difference': DIFFERENCE_FILL,
             'Webshop Net': TIKTOK_FILL,
             'Maxim Net': TIKTOK_FILL,
@@ -443,6 +444,7 @@ class DailySheet(BaseSheet):
             'ShopeePay Net (ac)': lambda totals, date, minusan_total: self._get_shopeepay_net_ac_value(totals),
             'ShopeePay Difference': lambda totals, date, minusan_total: totals.get('ShopeePay_Difference', 0),
             'Tiktok Net': lambda totals, date, minusan_total: totals.get('Tiktok_Net', 0),
+            'Tiktok Pencairan': lambda totals, date, minusan_total: totals.get('Tiktok_Disbursement'),
             'Tiktok Settlement Time': lambda totals, date, minusan_total: self._get_tiktok_settlement_time_value(totals),
             'Tiktok Net (ac)': lambda totals, date, minusan_total: self._get_standard_net_ac_value(totals, 'Tiktok_Net'),
             'Qpon Net': lambda totals, date, minusan_total: totals.get('Qpon_Net', 0),
@@ -496,6 +498,7 @@ class DailySheet(BaseSheet):
             'ShopeePay Net (ac)': lambda: self._get_shopeepay_net_ac_value(grand_totals),
             'ShopeePay Difference': lambda: grand_totals.get('ShopeePay_Difference', 0),
             'Tiktok Net': lambda: grand_totals.get('Tiktok_Net', 0),
+            'Tiktok Pencairan': lambda: grand_totals.get('Tiktok_Disbursement'),
             'Tiktok Settlement Time': lambda: None,
             'Tiktok Net (ac)': lambda: self._get_standard_net_ac_value(grand_totals, 'Tiktok_Net'),
             'Qpon Net': lambda: grand_totals.get('Qpon_Net', 0),

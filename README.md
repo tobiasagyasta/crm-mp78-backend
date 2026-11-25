@@ -1,5 +1,22 @@
 # CRM MP78 Backend
 
+## TikTok disbursement imports
+
+Apply `sql/20261125_create_tiktok_disbursements.sql` before deploying. Upload a
+TikTok earnings CSV like `docs/earningsreport.csv` as multipart field `file` to
+`POST /import-jobs/upload/tiktok-disbursement`. The endpoint returns a background
+import job; use the existing import-job status and issue endpoints to track it.
+The importer preserves IDs as text and stores amounts as decimals. Duplicate
+statement number, item order ID and type combinations are skipped; the statement
+number is also retained to distinguish entries from different statements.
+Dates use the sample's `MM/DD/YYYY` format, with time on order creation.
+The Daily sheet and its preview show `Tiktok Pencairan` next to `Tiktok Net`:
+the sum of matching disbursement settlement amounts, attributed to the TikTok
+report's order date. A day without matching entries is blank. All matching
+statement/type entries, including refunds, are included. Item IDs are looked up
+using the index on `tiktok_disbursements.item_order_id` created by the SQL file;
+the existing trimmed TikTok report index is not needed for this lookup.
+
 ## Webshop and Maxim imports
 
 Apply `sql/20261122_create_maxim_reports.sql` to the target database before
