@@ -212,6 +212,16 @@ class DailySheet(BaseSheet):
     def _get_grab_net_value(self, totals):
         return mpr_calc.grab_net_value(totals)
 
+    @staticmethod
+    def _grab_difference(totals):
+        payout, mutation = totals.get('Grab_Disbursement'), totals.get('Grab_Mutation')
+        return None if payout is None or mutation is None else mutation - payout
+
+    def _grab_difference_total(self):
+        differences = (self._grab_difference(totals) for totals in self.data['daily_totals'].values())
+        matched = [difference for difference in differences if difference is not None]
+        return sum(matched) if matched else None
+
     def _get_shopee_net_value(self, totals):
         return totals.get('Shopee_Net', 0)
 
@@ -231,11 +241,7 @@ class DailySheet(BaseSheet):
         if self._is_mp78_brand():
             return mpr_calc.mp78_ac_value_for_header(totals, 'Grab_Net')
 
-        return mpr_calc.net_after_commission_value(
-            totals,
-            'Grab_Net',
-            mpr_calc.MANAGEMENT_COMMISSION_RATE,
-        )
+        return mpr_calc.grab_payout_after_commission(totals, mpr_calc.MANAGEMENT_COMMISSION_RATE)
 
     def _get_gofood_commission_value(self, totals):
         return self._get_gofood_value(totals) * self.MPR_COMMISSION_RATE
@@ -247,10 +253,10 @@ class DailySheet(BaseSheet):
         return (self._get_gofood_value(totals) * mpr_calc.MPR_STANDARD_NET_RATE) + self._get_gojek_qris_value(totals)
 
     def _get_grabfood_commission_value(self, totals):
-        return self._get_grabfood_value(totals) * self.MPR_COMMISSION_RATE
+        return mpr_calc.grab_payout_commission(totals)
 
     def _get_grabfood_ovo_ac_value(self, totals):
-        return (self._get_grabfood_value(totals) * mpr_calc.MPR_STANDARD_NET_RATE) + self._get_grab_ovo_value(totals)
+        return mpr_calc.grab_net_ac_value(totals)
 
     def _get_standard_net_ac_value(self, totals, net_key):
         if net_key == 'Tiktok_Net':
@@ -428,10 +434,7 @@ class DailySheet(BaseSheet):
             'Grab Net': lambda totals, date, minusan_total: self._get_grab_net_value(totals),
             'Grab Pencairan': lambda totals, date, minusan_total: totals.get('Grab_Disbursement'),
             'Grab Mutation': lambda totals, date, minusan_total: totals.get('Grab_Mutation'),
-            'Grab Difference': lambda totals, date, minusan_total: (
-                totals['Grab_Mutation'] - self._get_grab_net_value(totals)
-                if totals.get('Grab_Mutation') is not None else None
-            ),
+            'Grab Difference': lambda totals, date, minusan_total: self._grab_difference(totals),
             'Grab Net (ac)': lambda totals, date, minusan_total: self._get_grab_net_ac_value(totals),
             'Grab Commission': lambda totals, date, minusan_total: self._get_grabfood_commission_value(totals),
             'GrabFood x OVO (ac)': lambda totals, date, minusan_total: self._get_grabfood_ovo_ac_value(totals),
@@ -478,14 +481,7 @@ class DailySheet(BaseSheet):
             'Grab Net': lambda: self._get_grab_net_value(grand_totals),
             'Grab Pencairan': lambda: grand_totals.get('Grab_Disbursement'),
             'Grab Mutation': lambda: grand_totals.get('Grab_Mutation'),
-            'Grab Difference': lambda: (
-                sum(
-                    totals['Grab_Mutation'] - self._get_grab_net_value(totals)
-                    for totals in self.data['daily_totals'].values()
-                    if totals.get('Grab_Mutation') is not None
-                ) if any(totals.get('Grab_Mutation') is not None
-                         for totals in self.data['daily_totals'].values()) else None
-            ),
+            'Grab Difference': self._grab_difference_total,
             'Grab Net (ac)': lambda: self._get_grab_net_ac_value(grand_totals),
             'Grab Commission': lambda: self._get_grabfood_commission_value(grand_totals),
             'GrabFood x OVO (ac)': lambda: self._get_grabfood_ovo_ac_value(grand_totals),

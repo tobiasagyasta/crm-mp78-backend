@@ -1,4 +1,5 @@
 from app.services.excel_export.base_sheet import BaseSheet
+from app.services.excel_export.mpr_calculations import grabfood_payout
 from app.services.excel_export.utils.excel_utils import (
     HEADER_FONT, BOLD_RED_FONT, YELLOW_FILL, GRAB_FILL, CASH_FILL, SHOPEE_FILL,
     COMMISSION_FILL, auto_fit_columns
@@ -44,12 +45,10 @@ class SummarySheet(BaseSheet):
         grand_totals = self.data['grand_totals']
         grabfood_gross_total = self.data['grabfood_gross_total']
         grabovo_gross_total = self.data['grabovo_gross_total']
-        grabfood_net_total = self.data['grabfood_net_total']
-        grabovo_net_total = self.data['grabovo_net_total']
 
         platforms = [
             ('Gojek', grand_totals['Gojek_Gross'], grand_totals['Gojek_Net']),
-            ('Grab (Total)', grabfood_gross_total + grabovo_gross_total, grabfood_net_total + grabovo_net_total),
+            ('Grab (Total)', grabfood_gross_total + grabovo_gross_total, grand_totals.get('Grab_Disbursement')),
             ('Shopee', grand_totals['Shopee_Gross'], grand_totals['Shopee_Net']),
             ('ShopeePay', grand_totals['ShopeePay_Gross'], grand_totals['ShopeePay_Net']),
             ('Tiktok', grand_totals['Tiktok_Gross'], grand_totals['Tiktok_Net']),
@@ -158,13 +157,13 @@ class SummarySheet(BaseSheet):
         grand_totals = self.data['grand_totals']
         manual_entries = self.data['manual_entries']
         outlet = self.data['outlet']
-        grabfood_net_total = self.data['grabfood_net_total']
+        grabfood_net_total = grabfood_payout(grand_totals) or 0
 
         manual_income = sum(float(entry.amount or 0) for entry, _, _ in manual_entries if entry.entry_type == 'income')
         manual_expense = sum(float(entry.amount or 0) for entry, _, _ in manual_entries if entry.entry_type == 'expense')
 
         online_net_total = (
-            grand_totals['Gojek_Net'] + grand_totals['Grab_Net'] +
+            grand_totals['Gojek_Net'] + (grand_totals.get('Grab_Disbursement') or 0) +
             grand_totals['Shopee_Net'] + grand_totals['ShopeePay_Net'] +
             grand_totals['Tiktok_Net'] + grand_totals['Qpon_Net'] +
             grand_totals['Webshop_Net'] + grand_totals.get('Maxim_Net', 0) + grand_totals['UV']
@@ -216,8 +215,8 @@ class SummarySheet(BaseSheet):
             cell.fill = COMMISSION_FILL
         current_row += 1
 
-        grabfood_net_total = self.data['grabfood_net_total']
         grand_totals = self.data['grand_totals']
+        grabfood_net_total = grabfood_payout(grand_totals) or 0
         management_commission = grabfood_net_total * 1/74
         partner_commission = grabfood_net_total * 1/74
         tiktok_commission = grand_totals['Tiktok_Net'] * 1/74

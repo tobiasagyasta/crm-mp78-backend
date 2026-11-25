@@ -16,6 +16,7 @@ from app.services.excel_export.data_service import (
     _match_mutations,
 )
 from app.services.excel_export.sheets.daily_sheet import DailySheet
+from app.services.excel_export.sheets.closing_sheet import ClosingSheet
 
 
 class DailyGrabDisbursementTest(TestCase):
@@ -80,6 +81,25 @@ class DailyGrabDisbursementTest(TestCase):
         _aggregate_grab_disbursements(daily, [])
         self.assertIsNone(daily[date(2026, 11, 1)]['Grab_Disbursement'])
 
+    def test_mpr_after_commission_in_daily_and_closing(self):
+        days = [date(2026, 11, n) for n in (1, 2)]
+        daily = {day: _init_daily_total() for day in days}
+        for totals in daily.values():
+            totals.update(Grab_Net=1000, GrabOVO_Net=250, Grab_Mutation=905)
+        daily[days[0]]['Grab_Disbursement'] = 900
+        data = {'outlet': SimpleNamespace(brand='MPR', outlet_name_gojek='Outlet'),
+                'start_date': days[0], 'end_date': days[-1], 'all_dates': days,
+                'daily_totals': daily, 'grand_totals': _calculate_grand_totals(daily),
+                'minusan_by_date': {}}
+        sheet = DailySheet(Workbook(), data)
+        sheet.generate()
+        col = sheet._get_headers().index('GrabFood x OVO (ac)') + 1
+        closing = ClosingSheet(Workbook(), {**data, 'mpr_report_data': data})
+        for row, day, expected in [(6, days[0], 848), (7, days[1], None), (8, None, 848)]:
+            self.assertEqual(sheet.ws.cell(row, col).value, expected)
+            self.assertEqual(closing._get_mpr_grab_ac_display_value('main', day), expected)
+            self.assertEqual(closing._get_mpr_display_value('Grab_Net', day), expected)
+
     def test_flag_enables_exactly_one_grab_matching_path(self):
         for enabled, expected in ((True, ['gojek', 'shopee', 'shopeepay']),
                                   (False, ['gojek', 'grab', 'shopee', 'shopeepay'])):
@@ -120,6 +140,7 @@ class DailyGrabDisbursementTest(TestCase):
         daily = {day: _init_daily_total()}
         daily[day]['Grab_Net'] = 90000
         reports = _get_grab_disbursements('store', datetime(2026, 11, 30), datetime(2026, 11, 30))
+        _aggregate_grab_disbursements(daily, reports)
         _match_grab_disbursement_mutations(daily, reports)
         self.assertEqual(daily[day]['Grab_Mutation'], 100000)
         saved = GrabDisbursement.query.filter_by(disbursement_id='a').one()
@@ -140,8 +161,8 @@ class DailyGrabDisbursementTest(TestCase):
         self.assertEqual(sheet.ws.cell(6, col).value, 100000)
         self.assertEqual(sheet.build_preview()['totals']['Grab Mutation'], 100000)
         self.assertEqual(headers[col], 'Grab Difference')
-        self.assertEqual(sheet.ws.cell(6, col + 1).value, 10000)
-        self.assertEqual(sheet.build_preview()['totals']['Grab Difference'], 10000)
+        self.assertEqual(sheet.ws.cell(6, col + 1).value, 0)
+        self.assertEqual(sheet.build_preview()['totals']['Grab Difference'], 0)
 
     def test_duplicate_payouts_share_no_mutation(self):
         transfer = datetime(2026, 12, 1)

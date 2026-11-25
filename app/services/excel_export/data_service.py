@@ -34,7 +34,7 @@ COMPLETED_GRAB_STATUSES = ('Selesai', 'Completed')
 SHOW_MUTATIONS_WITHOUT_PLATFORM_DATA = True
 # True: match Grab bank mutations only against completed disbursements.
 # False: fall back to the legacy matcher on dates without a disbursement.
-GRAB_DISBURSEMENT_FIRST_MATCHING = False
+GRAB_DISBURSEMENT_FIRST_MATCHING = True
 GRAB_DISBURSEMENT_MATCH_TOLERANCE = 5
 
 def _grab_report_datetime_col():
@@ -358,8 +358,8 @@ def get_report_data(outlet_code: str, start_date: datetime, end_date: datetime) 
     # Aggregate data
     _aggregate_gojek(daily_totals, gojek_reports)
     _aggregate_uv(daily_totals, uv_reports)
-    grab_totals = _aggregate_grab(daily_totals, grab_reports, outlet.brand)
     _aggregate_grab_disbursements(daily_totals, grab_disbursements)
+    grab_totals = _aggregate_grab(daily_totals, grab_reports, outlet.brand)
     _match_grab_disbursement_mutations(daily_totals, grab_disbursements)
     _aggregate_shopee(daily_totals, shopee_reports)
     _aggregate_shopeepay(daily_totals, shopeepay_reports)
@@ -506,11 +506,13 @@ def _aggregate_grab(daily_totals, reports, brand):
     for date in daily_totals:
         if mpr_calc.is_mp78_brand(brand):
             daily_totals[date]['Grab_Commission'] = (
-                daily_totals[date]['Grab_Net'] * mpr_calc.MP78_GRAB_MANAGEMENT_COMMISSION_RATE
+                (daily_totals[date].get('Grab_Disbursement') or 0) * mpr_calc.MP78_GRAB_MANAGEMENT_COMMISSION_RATE
             )
+        elif mpr_calc.is_mpr_brand(brand):
+            daily_totals[date]['Grab_Commission'] = mpr_calc.grab_payout_commission(daily_totals[date]) or 0
         elif brand not in ["Pukis & Martabak Kota Baru"]:
             daily_totals[date]['Grab_Commission'] = (
-                daily_totals[date]['Grab_Net'] * mpr_calc.MANAGEMENT_COMMISSION_RATE
+                (daily_totals[date].get('Grab_Disbursement') or 0) * mpr_calc.MANAGEMENT_COMMISSION_RATE
             )
         else:
             daily_totals[date]['Grab_Commission'] = 0
@@ -699,6 +701,9 @@ def _match_mutations(daily_totals, outlet_code, start_date, end_date):
 def _calculate_grand_totals(daily_totals):
     grand_totals = defaultdict(float)
     for day_totals in daily_totals.values():
+        food_payout = mpr_calc.grabfood_payout(day_totals)
+        if food_payout is not None:
+            grand_totals['GrabFood_Payout'] += food_payout
         for key, value in day_totals.items():
             if value is not None and isinstance(value, (int, float)):
                 grand_totals[key] += value

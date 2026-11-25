@@ -209,6 +209,8 @@ class ClosingSheet(BaseSheet):
         cell.fill = BLUE_FILL
 
     def _get_grand_total_with_fallback(self, header):
+        if header in ('Grab_Net', 'Grab_Net_Raw'):
+            return self.data['grand_totals'].get('Grab_Disbursement')
         grand_totals = self.data['grand_totals']
         value = grand_totals.get(header)
         if header.endswith('_Mutation') and not value:
@@ -337,7 +339,7 @@ class ClosingSheet(BaseSheet):
         self.ws.cell(row=row_start + 1, column=col_start).alignment = CENTER_ALIGN
         self.ws.cell(row=row_start + 1, column=col_start).fill = BLUE_FILL
 
-        grab_net_total = self._get_grand_total_with_fallback('Grab_Net') or 0
+        grab_net_total = self.data['grand_totals'].get('Grab_Disbursement')
         grab_management_expense = self._get_closing_grab_management_commission_expense(grab_net_total)
         mp78_income_total = self._get_mp78_mutation_total(mp78_mutations, 'income')
         mp78_expense_total = self._get_mp78_mutation_total(mp78_mutations, 'expense')
@@ -442,7 +444,7 @@ class ClosingSheet(BaseSheet):
                 mpr_value = self._get_shopee_sheet_value('mpr', header)
             else:
                 mpr_value = self._get_mpr_display_value(header)
-            if mpr_value is None:
+            if mpr_value is None and not (header == 'Grab_Net' and self.data.get('mpr_report_data')):
                 continue
 
             label_row = row_start + 1 + final_i + 1
@@ -876,6 +878,8 @@ class ClosingSheet(BaseSheet):
         if date is not None:
             totals = report_data.get('daily_totals', {}).get(date, {})
 
+        if header in ('Grab_Net', 'Grab_Net_Raw'):
+            return totals.get('Grab_Disbursement')
         value = totals.get(header)
         if header.endswith('_Mutation') and not value:
             net_key = header.replace('_Mutation', '_Net')
@@ -896,7 +900,7 @@ class ClosingSheet(BaseSheet):
             totals = self.data.get('daily_totals', {}).get(date, {})
 
         if header == 'Grab_Net_Raw':
-            return totals.get('Grab_Net', 0)
+            return totals.get('Grab_Disbursement')
 
         return None
 
@@ -918,7 +922,7 @@ class ClosingSheet(BaseSheet):
                 if self._is_mp78_brand()
                 else mpr_calc.MANAGEMENT_COMMISSION_RATE
             )
-            return mpr_calc.net_after_commission_value(totals, 'Grab_Net', rate)
+            return mpr_calc.grab_payout_after_commission(totals, rate)
         if header == 'Shopee_Mutation':
             return self._get_report_value_with_fallback(self.data, header, date)
         if header == 'ShopeePay_Mutation':
@@ -968,14 +972,12 @@ class ClosingSheet(BaseSheet):
     def _get_grab_management_commission_expense(self, grab_net_total):
         if self._is_mpr_brand():
             return self._get_mpr_grabfood_commission_expense()
-        if self._is_mpr_brand():
-            return grab_net_total - (self._get_direct_mpr_display_value('Grab_Net') or 0)
 
-        return grab_net_total * self._get_grab_management_commission_rate()
+        return (grab_net_total or 0) * self._get_grab_management_commission_rate()
 
     def _get_mpr_grabfood_commission_expense(self):
         totals = self.data.get('grand_totals', {})
-        return mpr_calc.grabfood_value(totals) * mpr_calc.MPR_GRAB_MANAGEMENT_COMMISSION_RATE
+        return mpr_calc.grab_payout_commission(totals) or 0
 
     def _get_grab_management_commission_label(self):
         if self._is_mpr_brand():
@@ -1008,6 +1010,8 @@ class ClosingSheet(BaseSheet):
 
         if header == 'Gojek_Mutation':
             return (mpr_calc.gofood_value(totals) * mpr_calc.MPR_STANDARD_NET_RATE) + mpr_calc.gojek_qris_value(totals)
+        if header == 'Grab_Net':
+            return mpr_calc.grab_net_ac_value(totals)
 
         ac_value = mpr_calc.mpr_ac_value_for_header(totals, header)
         if ac_value is not None:
@@ -1082,7 +1086,8 @@ class ClosingSheet(BaseSheet):
         if header == self.GOFOOD_AC_HEADER:
             return mpr_calc.gofood_value(totals) * mpr_calc.MPR_STANDARD_NET_RATE
         if header == self.GRABFOOD_AC_HEADER:
-            return mpr_calc.grabfood_value(totals) * mpr_calc.MPR_STANDARD_NET_RATE
+            food = mpr_calc.grabfood_payout(totals)
+            return None if food is None else food * mpr_calc.MPR_STANDARD_NET_RATE
 
         return None
 
@@ -1097,7 +1102,7 @@ class ClosingSheet(BaseSheet):
         if header == self.GOFOOD_COMMISSION_HEADER:
             return mpr_calc.gofood_value(totals) * mpr_calc.MPR_GRAB_MANAGEMENT_COMMISSION_RATE
         if header == self.GRABFOOD_COMMISSION_HEADER:
-            return mpr_calc.grabfood_value(totals) * mpr_calc.MPR_GRAB_MANAGEMENT_COMMISSION_RATE
+            return mpr_calc.grab_payout_commission(totals)
 
         return None
 
@@ -1109,7 +1114,7 @@ class ClosingSheet(BaseSheet):
         if date is not None:
             totals = self.data.get('daily_totals', {}).get(date, {})
 
-        return (mpr_calc.grabfood_value(totals) * mpr_calc.MPR_STANDARD_NET_RATE) + mpr_calc.grab_ovo_value(totals)
+        return mpr_calc.grab_net_ac_value(totals)
 
     def _get_mpr_gojek_ac_display_value(self, report_type, date=None):
         if report_type != 'main' or not self._is_mpr_brand():
@@ -1126,16 +1131,14 @@ class ClosingSheet(BaseSheet):
             return None
 
         if header == 'Grab_Net':
-            if grab_net_total is not None:
-                return grab_net_total
-            return self._get_platform_grand_total_with_fallback('main', header)
+            return self.data['grand_totals'].get('Grab_Disbursement')
 
         return self._get_platform_grand_total_with_fallback('main', header)
 
     def _get_closing_grand_total_income_value_for_label(self, label, header, grab_net_total=None):
         if self._is_mpr_brand():
             if label == 'Grab':
-                return grab_net_total if grab_net_total is not None else self._get_grand_total_with_fallback('Grab_Net')
+                return self._get_grand_total_with_fallback('Grab_Disbursement')
 
         return self._get_closing_grand_total_income_value(header, grab_net_total)
 

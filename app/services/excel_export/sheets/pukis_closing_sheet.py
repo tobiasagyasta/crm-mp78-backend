@@ -106,7 +106,7 @@ class PukisClosingSheet(BaseSheet):
                 date.strftime("%d-%b-%y"),
                 daily_totals[date]['Cash_Income'] - daily_totals[date]['Cash_Expense'],
                 gojek_value,
-                daily_totals[date]['Grab_Net'],
+                daily_totals[date].get('Grab_Disbursement'),
                 daily_totals[date]['Shopee_Net'],
                 daily_totals[date]['Tiktok_Net'],
                 self._get_qpon_closing_value(totals),  # QPON
@@ -147,7 +147,7 @@ class PukisClosingSheet(BaseSheet):
             "TOTAL",
             grand_totals.get('Cash_Income', 0) - grand_totals.get('Cash_Expense', 0),
             grand_totals.get('Gojek_Mutation') or grand_totals.get('Gojek_Net', 0),
-            grand_totals.get('Grab_Net', 0),
+            grand_totals.get('Grab_Disbursement'),
             grand_totals.get('Shopee_Net', 0),
             grand_totals.get('Tiktok_Net', 0),
             sum(

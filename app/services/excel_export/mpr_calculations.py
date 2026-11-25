@@ -129,8 +129,27 @@ def tiktok_net_ac_value(totals, is_mpr=False, commission_rate=None):
     return net - (net * commission_rate)
 
 
+def grabfood_payout(totals):
+    payout = totals.get('Grab_Disbursement')
+    if payout is None:
+        return None
+    # Period totals include only the OVO portion of days with a payout.
+    return totals.get('GrabFood_Payout', payout - totals.get('GrabOVO_Net', 0))
+
+
+def grab_payout_commission(totals):
+    food = grabfood_payout(totals)
+    return None if food is None else food * MPR_GRAB_MANAGEMENT_COMMISSION_RATE
+
+
+def grab_payout_after_commission(totals, rate):
+    payout = totals.get('Grab_Disbursement')
+    return None if payout is None else payout - payout * rate
+
+
 def grab_net_ac_value(totals):
-    return totals.get('Grab_Net', 0) * MPR_STANDARD_NET_RATE
+    payout = totals.get('Grab_Disbursement')
+    return None if payout is None else payout - grab_payout_commission(totals)
 
 
 def shopee_net_value(totals, is_mpr=False):
@@ -180,7 +199,7 @@ def mp78_ac_value_for_header(totals, header):
     if header == 'Gojek_Mutation':
         return management_net_ac_value(totals, 'Gojek_Net', 'Gojek_Mutation')
     if header == 'Grab_Net':
-        return net_after_commission_value(totals, 'Grab_Net', MP78_GRAB_MANAGEMENT_COMMISSION_RATE)
+        return grab_payout_after_commission(totals, MP78_GRAB_MANAGEMENT_COMMISSION_RATE)
     if header == 'Shopee_Net':
         return management_net_ac_value(totals, 'Shopee_Net', 'Shopee_Mutation')
     if header == 'ShopeePay_Net':

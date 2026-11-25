@@ -24,11 +24,11 @@ class ClosingDisabledPlatformStylesTest(TestCase):
             'outlet': outlet,
             'start_date': date(2026, 1, 1),
             'end_date': date(2026, 1, 31),
-            'grand_totals': {'Gojek_Net': 1000, 'Grab_Net': 500, 'UV': 0},
+            'grand_totals': {'Gojek_Net': 1000, 'Grab_Disbursement': 500, 'UV': 0},
             'manual_entries': [],
             'mpr_report_data': {
                 'outlet': mpr_outlet,
-                'grand_totals': {'Gojek_Net': 200, 'Grab_Net': 300},
+                'grand_totals': {'Gojek_Net': 200, 'Grab_Disbursement': 300},
             },
         }
         sheet = ClosingSheet(Workbook(), data)
