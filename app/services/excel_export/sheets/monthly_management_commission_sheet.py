@@ -22,7 +22,7 @@ class MonthlyManagementCommissionSheet(BaseSheet):
             "net_key": "gojek_net",
             "commission_key": "gojek_commission",
             "after_key": "gojek_net_after_commission",
-            "rate": 1 / 74,
+            "rate": mpr_calc.MONTHLY_GOJEK_COMMISSION_RATE,
         },
         {
             "key": "grab",
@@ -30,7 +30,7 @@ class MonthlyManagementCommissionSheet(BaseSheet):
             "net_key": "net_total",
             "commission_key": "commission_total",
             "after_key": "net_after_commission",
-            "rate": 1 / 74,
+            "rate": mpr_calc.NON_MPR_GRAB_COMMISSION_RATE,
         },
         {
             "key": "tiktok",

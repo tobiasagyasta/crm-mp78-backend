@@ -671,7 +671,7 @@ def generate_monthly_management_commission_data(
     year: int,
     start_date: date | None = None,
     end_date: date | None = None,
-    commission_divisor: float = 74,
+    commission_divisor: float = 1 / mpr_calc.NON_MPR_GRAB_COMMISSION_RATE,
 ) -> dict:
     """
     Generates monthly management commission data for a non-MPR brand.
@@ -748,7 +748,7 @@ def generate_monthly_management_commission_data_custom_range(
     brand_name: str,
     start_date: date,
     end_date: date,
-    commission_divisor: float = 74,
+    commission_divisor: float = 1 / mpr_calc.NON_MPR_GRAB_COMMISSION_RATE,
 ) -> dict:
     """
     Generates management commission data using the literal request date range.
@@ -770,7 +770,7 @@ def generate_monthly_management_commission_data_custom_range(
     periods = _month_range(start_date, end_date)
     outlet_codes = [str(outlet.outlet_code) for outlet in outlets]
     period_set = set(periods)
-    standard_rate = (1 / commission_divisor) if commission_divisor else 0
+    grab_rate = (1 / commission_divisor) if commission_divisor else 0
     tiktok_rate = mpr_calc.tiktok_commission_rate_for_brand(normalized_brand_name)
     qpon_rate = mpr_calc.QPON_COMMISSION_RATE
     webshop_rate = 0.03
@@ -855,7 +855,7 @@ def generate_monthly_management_commission_data_custom_range(
             "gojek_net",
             "gojek_commission",
             "gojek_net_after_commission",
-            standard_rate,
+            mpr_calc.MONTHLY_GOJEK_COMMISSION_RATE,
         )
 
     grab_reports = GrabFoodReport.query.filter(
@@ -875,7 +875,7 @@ def generate_monthly_management_commission_data_custom_range(
             "net_total",
             "commission_total",
             "net_after_commission",
-            standard_rate,
+            grab_rate,
         )
 
     tiktok_reports = TiktokReport.query.filter(
@@ -955,6 +955,6 @@ def generate_monthly_management_commission_data_custom_range(
         "periods": periods,
         "outlets": data,
         "commission_divisor": commission_divisor,
-        "commission_rate": standard_rate,
+        "commission_rate": grab_rate,
         "tiktok_commission_rate": tiktok_rate,
     }

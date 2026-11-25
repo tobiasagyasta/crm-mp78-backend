@@ -918,7 +918,7 @@ class ClosingSheet(BaseSheet):
             return mpr_calc.management_net_ac_value(totals, 'Gojek_Net', 'Gojek_Mutation')
         if header == 'Grab_Net':
             rate = (
-                mpr_calc.MP78_GRAB_MANAGEMENT_COMMISSION_RATE
+                mpr_calc.NON_MPR_GRAB_COMMISSION_RATE
                 if self._is_mp78_brand()
                 else mpr_calc.MANAGEMENT_COMMISSION_RATE
             )
@@ -955,10 +955,7 @@ class ClosingSheet(BaseSheet):
     def _get_grab_management_commission_rate(self):
         if self._is_mpr_brand():
             return mpr_calc.MPR_GRAB_MANAGEMENT_COMMISSION_RATE
-        if self._is_mp78_brand():
-            return mpr_calc.MP78_GRAB_MANAGEMENT_COMMISSION_RATE
-
-        return mpr_calc.MANAGEMENT_COMMISSION_RATE
+        return mpr_calc.NON_MPR_GRAB_COMMISSION_RATE
 
     def _get_gojek_commission_rate(self):
         return mpr_calc.MANAGEMENT_COMMISSION_RATE

@@ -1657,8 +1657,8 @@ def get_commission_totals():
 
         # Calculate totals and commission
         grab_total = sum(float(report.total or 0) for report in grab_query.all())
-        management_commission = round(grab_total * 1/74, 2)  # 1% commission
-        partner_commission = round(grab_total * 1/74, 2)    # 1% commission
+        management_commission = round(grab_total * mpr_calc.NON_MPR_GRAB_COMMISSION_RATE, 2)
+        partner_commission = round(grab_total * mpr_calc.NON_MPR_GRAB_COMMISSION_RATE, 2)
 
         response = {
             'period': {

@@ -238,10 +238,7 @@ class DailySheet(BaseSheet):
         if self._is_mpr_brand():
             return mpr_calc.mpr_ac_value_for_header(totals, 'Grab_Net')
 
-        if self._is_mp78_brand():
-            return mpr_calc.mp78_ac_value_for_header(totals, 'Grab_Net')
-
-        return mpr_calc.grab_payout_after_commission(totals, mpr_calc.MANAGEMENT_COMMISSION_RATE)
+        return mpr_calc.grab_payout_after_commission(totals, mpr_calc.NON_MPR_GRAB_COMMISSION_RATE)
 
     def _get_gofood_commission_value(self, totals):
         return self._get_gofood_value(totals) * self.MPR_COMMISSION_RATE

@@ -1,5 +1,5 @@
 from app.services.excel_export.base_sheet import BaseSheet
-from app.services.excel_export.mpr_calculations import grab_income, grabfood_payout
+from app.services.excel_export.mpr_calculations import NON_MPR_GRAB_COMMISSION_RATE, grab_income, grabfood_payout
 from app.services.excel_export.utils.excel_utils import (
     HEADER_FONT, BOLD_RED_FONT, YELLOW_FILL, GRAB_FILL, CASH_FILL, SHOPEE_FILL,
     COMMISSION_FILL, auto_fit_columns
@@ -171,7 +171,7 @@ class SummarySheet(BaseSheet):
 
         management_commission = 0
         if outlet.brand in ["MP78", "MP78 Express", "Martabak 777 Sinar Bulan", "Martabak 999 Asli Bandung", "Martabak Surya Kencana", "Martabak Akim"]:
-            management_commission = grabfood_net_total * 1/74
+            management_commission = grabfood_net_total * NON_MPR_GRAB_COMMISSION_RATE
 
         online_net_after_commission = online_net_total - management_commission
         cash_manual_net_total = (grand_totals['Cash_Income'] + manual_income) - (grand_totals['Cash_Expense'] + manual_expense)
@@ -217,8 +217,8 @@ class SummarySheet(BaseSheet):
 
         grand_totals = self.data['grand_totals']
         grabfood_net_total = grabfood_payout(grand_totals) or 0
-        management_commission = grabfood_net_total * 1/74
-        partner_commission = grabfood_net_total * 1/74
+        management_commission = grabfood_net_total * NON_MPR_GRAB_COMMISSION_RATE
+        partner_commission = grabfood_net_total * NON_MPR_GRAB_COMMISSION_RATE
         tiktok_commission = grand_totals['Tiktok_Net'] * 1/74
 
         commission_data = [
