@@ -1,5 +1,7 @@
 # CRM MP78 Backend
 
+[Panduan admin: tarif komisi per merek, platform, dan laporan](docs/panduan-komisi-admin.md)
+
 ## TikTok disbursement imports
 
 Apply `sql/20261125_create_tiktok_disbursements.sql` before deploying. Upload a
