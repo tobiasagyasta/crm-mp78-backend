@@ -9,7 +9,7 @@ Kelompok **MPR** meliputi MPR, MPR Mandiri, dan MPR Non MP78. Jika laporan outle
 | Platform | MPR | MP78, MP78 Express, dan non-MPR lainnya | Dasar perhitungan |
 |---|---|---|---|
 | Gojek | 8% GoFood; 0% QRIS | 1%, termasuk QRIS | MPR: Gojek Net dipisahkan menjadi GoFood dan QRIS. Non-MPR: mutasi, atau Gojek Net bila mutasi kosong atau nol. |
-| Grab | 8% GrabFood; 0% OVO | 1%, termasuk OVO | Pencairan selesai, atau Grab Net bila tidak ada pencairan. Pilih per hari. |
+| Grab | 8% GrabFood; 0% OVO | MP78: 1/74; lainnya (termasuk MP78 Express): 1%. Keduanya termasuk OVO. | Pencairan selesai, atau Grab Net bila tidak ada pencairan. Pilih per hari. |
 | ShopeeFood | 8% | 0% | Mutasi ShopeeFood, atau net bila mutasi kosong atau nol. |
 | ShopeePay | 8% | 0% | Mutasi ShopeePay, atau net bila mutasi kosong atau nol. Tarif bulanan MPR berbeda. |
 | TikTok | 5% | 5% | Net pesanan. Kolom pencairan TikTok hanya pembanding. |
@@ -33,7 +33,7 @@ Untuk setiap hari transaksi, gunakan jumlah pencairan selesai outlet untuk trans
 | Hari 1: ada pencairan | Rp1.000.000 | Rp950.000 | Rp150.000 | 8% × (Rp950.000 − Rp150.000) = Rp64.000 | Rp886.000 |
 | Hari 2: belum ada pencairan | Rp500.000 | — | Rp100.000 | 8% × (Rp500.000 − Rp100.000) = Rp32.000 | Rp468.000 |
 
-Komisi MPR dua hari itu Rp96.000. Pada closing MP78, OVO tidak dipisahkan: komisi untuk angka yang sama adalah **1% × (Rp950.000 + Rp500.000) = Rp14.500**.
+Komisi MPR dua hari itu Rp96.000. Pada closing MP78, OVO tidak dipisahkan: komisi untuk angka yang sama adalah **(Rp950.000 + Rp500.000) / 74 ≈ Rp19.595**.
 
 ## Contoh: GoFood MPR dengan QRIS
 
@@ -47,11 +47,11 @@ Bagian komisi khusus muncul untuk **MP78, MP78 Express, Martabak 777 Sinar Bulan
 
 | Baris ringkasan | Komisi |
 |---|---|
-| Management Commission (GrabFood) | 1% × (nilai Grab terpilih − OVO). Hanya potongan ini yang mengurangi total pendapatan online pada Summary. |
-| Partner Commission (GrabFood) | 1% dari dasar GrabFood yang sama, ditampilkan terpisah. |
+| Management Commission (GrabFood) | MP78: 1/74; lainnya: 1% dari (nilai Grab terpilih − OVO). Hanya potongan ini yang mengurangi total pendapatan online pada Summary. |
+| Partner Commission (GrabFood) | Tarif dan dasar GrabFood sama dengan komisi manajemen, ditampilkan terpisah. |
 | Management Commission (TikTok) | **1% dari TikTok Net**. Untuk net Rp100.000, komisi Summary Rp1.000. Tarif TikTok di closing dan laporan bulanan tetap 5%. |
 
-**Rekap total komisi Grab MP78/MP78 Express** menggabungkan kedua merek dan memakai transaksi Grab, bukan pencairan harian: **1% manajemen + 1% mitra**. Dengan tanggal awal dan akhir lengkap, hanya GrabFood yang dihitung; tanpa rentang lengkap, jenis transaksi tidak dibatasi.
+**Rekap total komisi Grab MP78/MP78 Express** menggabungkan kedua merek dan memakai transaksi Grab, bukan pencairan harian. Komisi manajemen dan mitra masing-masing memakai **1/74 untuk transaksi MP78** dan **1% untuk transaksi MP78 Express**. Dengan tanggal awal dan akhir lengkap, hanya GrabFood yang dihitung; tanpa rentang lengkap, jenis transaksi tidak dibatasi.
 
 ## Laporan komisi bulanan
 
@@ -60,7 +60,7 @@ Rekap bulanan memakai transaksi platform, bukan mutasi atau pencairan harian. **
 | Platform | Komisi MPR bulanan | Komisi Manajemen non-MPR bulanan / rentang tanggal |
 |---|---|---|
 | Gojek | 8% transaksi non-QRIS; 0% QRIS | **1% dari Gojek Net**, termasuk QRIS |
-| Grab | 8% transaksi selain OVO; 0% OVO | 1% dari total transaksi Grab, termasuk OVO |
+| Grab | 8% transaksi selain OVO; 0% OVO | MP78: 1/74; lainnya: 1% dari total transaksi Grab, termasuk OVO |
 | ShopeeFood | 8% dari pendapatan bersih; pesanan batal tidak dihitung | — |
 | ShopeePay | 0% dari nilai penyelesaian transaksi; penarikan saldo tidak dihitung | — |
 | TikTok | 5% dari net pesanan | 5% dari net pesanan |

@@ -671,7 +671,7 @@ def generate_monthly_management_commission_data(
     year: int,
     start_date: date | None = None,
     end_date: date | None = None,
-    commission_divisor: float = 1 / mpr_calc.NON_MPR_GRAB_COMMISSION_RATE,
+    commission_divisor: float | None = None,
 ) -> dict:
     """
     Generates monthly management commission data for a non-MPR brand.
@@ -685,6 +685,9 @@ def generate_monthly_management_commission_data(
         or normalized_brand_name.upper() in {brand.upper() for brand in mpr_calc.MPR_BRANDS}
     ):
         return {}
+
+    if commission_divisor is None:
+        commission_divisor = 1 / mpr_calc.non_mpr_grab_rate(normalized_brand_name)
 
     if start_date is None and end_date is None:
         monthly_income_data = generate_monthly_grab_net_income_data(
@@ -748,7 +751,7 @@ def generate_monthly_management_commission_data_custom_range(
     brand_name: str,
     start_date: date,
     end_date: date,
-    commission_divisor: float = 1 / mpr_calc.NON_MPR_GRAB_COMMISSION_RATE,
+    commission_divisor: float | None = None,
 ) -> dict:
     """
     Generates management commission data using the literal request date range.
@@ -770,6 +773,8 @@ def generate_monthly_management_commission_data_custom_range(
     periods = _month_range(start_date, end_date)
     outlet_codes = [str(outlet.outlet_code) for outlet in outlets]
     period_set = set(periods)
+    if commission_divisor is None:
+        commission_divisor = 1 / mpr_calc.non_mpr_grab_rate(normalized_brand_name)
     grab_rate = (1 / commission_divisor) if commission_divisor else 0
     tiktok_rate = mpr_calc.tiktok_commission_rate_for_brand(normalized_brand_name)
     qpon_rate = mpr_calc.QPON_COMMISSION_RATE

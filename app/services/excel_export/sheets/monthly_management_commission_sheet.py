@@ -284,6 +284,8 @@ class MonthlyManagementCommissionSheet(BaseSheet):
         return net_total, commission_total, net_after_commission
 
     def _platform_rate(self, platform):
+        if platform["key"] == "grab":
+            return self.data.get("commission_rate", mpr_calc.non_mpr_grab_rate(self.data.get("brand_name")))
         if platform["key"] == "tiktok":
             return self.data.get("tiktok_commission_rate", platform["rate"])
 

@@ -5,6 +5,7 @@ MPR_SHOPEE_NET_RATE = 0.92
 MPR_TIKTOK_NET_RATE = 0.95
 MANAGEMENT_COMMISSION_RATE = 0.01
 NON_MPR_GRAB_COMMISSION_RATE = MANAGEMENT_COMMISSION_RATE
+MP78_GRAB_COMMISSION_RATE = 1 / 74
 MONTHLY_GOJEK_COMMISSION_RATE = MANAGEMENT_COMMISSION_RATE
 TIKTOK_MANAGEMENT_COMMISSION_RATE = 0.05
 QPON_COMMISSION_RATE = 0.01
@@ -21,6 +22,14 @@ def is_mpr_brand(brand):
 
 def is_mp78_brand(brand):
     return (brand or '').strip().upper() == 'MP78'
+
+
+def non_mpr_grab_rate(brand):
+    return MP78_GRAB_COMMISSION_RATE if is_mp78_brand(brand) else NON_MPR_GRAB_COMMISSION_RATE
+
+
+def non_mpr_grab_rate_label(brand):
+    return '1/74' if is_mp78_brand(brand) else '1%'
 
 
 def tiktok_commission_rate_for_brand(brand):
@@ -206,7 +215,7 @@ def mp78_ac_value_for_header(totals, header):
     if header == 'Gojek_Mutation':
         return management_net_ac_value(totals, 'Gojek_Net', 'Gojek_Mutation')
     if header == 'Grab_Net':
-        return grab_payout_after_commission(totals, NON_MPR_GRAB_COMMISSION_RATE)
+        return grab_payout_after_commission(totals, MP78_GRAB_COMMISSION_RATE)
     if header == 'Shopee_Net':
         return management_net_ac_value(totals, 'Shopee_Net', 'Shopee_Mutation')
     if header == 'ShopeePay_Net':

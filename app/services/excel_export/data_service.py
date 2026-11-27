@@ -506,7 +506,7 @@ def _aggregate_grab(daily_totals, reports, brand):
     for date in daily_totals:
         if mpr_calc.is_mp78_brand(brand):
             daily_totals[date]['Grab_Commission'] = (
-                (mpr_calc.grab_income(daily_totals[date]) or 0) * mpr_calc.NON_MPR_GRAB_COMMISSION_RATE
+                (mpr_calc.grab_income(daily_totals[date]) or 0) * mpr_calc.MP78_GRAB_COMMISSION_RATE
             )
         elif mpr_calc.is_mpr_brand(brand):
             daily_totals[date]['Grab_Commission'] = mpr_calc.grab_payout_commission(daily_totals[date]) or 0

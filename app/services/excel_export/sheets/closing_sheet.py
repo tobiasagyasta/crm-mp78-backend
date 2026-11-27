@@ -757,7 +757,7 @@ class ClosingSheet(BaseSheet):
         expense_col_start = self.store_id_col_start or 1
         checklist_col_start = self.rekening_col_start or (expense_col_start + 4)
         expense_rows = [
-            ('Grab Manag 1%', f'={self.grab_management_cell}' if self.grab_management_cell else None),
+            (f"Grab Manag {mpr_calc.non_mpr_grab_rate_label(self.data['outlet'].brand)}", f'={self.grab_management_cell}' if self.grab_management_cell else None),
             ('Adm Kantor', None),
             ('Adm Gudang', None),
             ('Sosmed', None),
@@ -917,11 +917,7 @@ class ClosingSheet(BaseSheet):
         if header == 'Gojek_Mutation':
             return mpr_calc.management_net_ac_value(totals, 'Gojek_Net', 'Gojek_Mutation')
         if header == 'Grab_Net':
-            rate = (
-                mpr_calc.NON_MPR_GRAB_COMMISSION_RATE
-                if self._is_mp78_brand()
-                else mpr_calc.MANAGEMENT_COMMISSION_RATE
-            )
+            rate = mpr_calc.non_mpr_grab_rate(self.data['outlet'].brand)
             return mpr_calc.grab_payout_after_commission(totals, rate)
         if header == 'Shopee_Mutation':
             return self._get_report_value_with_fallback(self.data, header, date)
@@ -955,7 +951,7 @@ class ClosingSheet(BaseSheet):
     def _get_grab_management_commission_rate(self):
         if self._is_mpr_brand():
             return mpr_calc.MPR_GRAB_MANAGEMENT_COMMISSION_RATE
-        return mpr_calc.NON_MPR_GRAB_COMMISSION_RATE
+        return mpr_calc.non_mpr_grab_rate(self.data['outlet'].brand)
 
     def _get_gojek_commission_rate(self):
         return mpr_calc.MANAGEMENT_COMMISSION_RATE
@@ -980,7 +976,7 @@ class ClosingSheet(BaseSheet):
         if self._is_mpr_brand():
             return 'Grab Manag MPR'
 
-        return 'Grab Manag 1%'
+        return f"Grab Manag {mpr_calc.non_mpr_grab_rate_label(self.data['outlet'].brand)}"
 
     def _get_mp78_display_value(self, header, date=None):
         if header in ['Shopee_Net', 'ShopeePay_Net']:

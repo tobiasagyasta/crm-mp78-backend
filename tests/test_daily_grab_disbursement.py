@@ -101,6 +101,16 @@ class DailyGrabDisbursementTest(TestCase):
             self.assertEqual(closing._get_mpr_grab_ac_display_value('main', day), expected)
             self.assertEqual(closing._get_mpr_display_value('Grab_Net', day), expected)
 
+    def test_grab_commission_distinguishes_mp78_from_mp78_express(self):
+        totals = {'Grab_Disbursement': 74000, 'Grab_Net': 90000}
+        for brand, commission in [('MP78', 1000), ('MP78 Express', 740)]:
+            with self.subTest(brand=brand):
+                data = {'outlet': SimpleNamespace(brand=brand)}
+                daily = DailySheet(Workbook(), data)
+                closing = ClosingSheet(Workbook(), data)
+                self.assertAlmostEqual(daily._get_grab_net_ac_value(totals), 74000 - commission)
+                self.assertAlmostEqual(closing._get_grab_management_commission_expense(74000), commission)
+
     def test_flag_enables_exactly_one_grab_matching_path(self):
         for enabled, expected in ((True, ['gojek', 'shopee', 'shopeepay']),
                                   (False, ['gojek', 'grab', 'shopee', 'shopeepay'])):
