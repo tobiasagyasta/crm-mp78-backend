@@ -1,5 +1,5 @@
 from app.services.excel_export.base_sheet import BaseSheet
-from app.services.excel_export.mpr_calculations import MANAGEMENT_COMMISSION_RATE, non_mpr_grab_rate, non_mpr_grab_rate_label, grab_income, grabfood_payout
+from app.services.excel_export.mpr_calculations import MANAGEMENT_COMMISSION_RATE, non_mpr_grab_rate, grab_income, grabfood_payout
 from app.services.excel_export.utils.excel_utils import (
     HEADER_FONT, BOLD_RED_FONT, YELLOW_FILL, GRAB_FILL, CASH_FILL, SHOPEE_FILL,
     COMMISSION_FILL, auto_fit_columns
@@ -220,12 +220,11 @@ class SummarySheet(BaseSheet):
         brand = self.data['outlet'].brand
         management_commission = grabfood_net_total * non_mpr_grab_rate(brand)
         partner_commission = management_commission
-        grab_rate_label = non_mpr_grab_rate_label(brand)
         tiktok_commission = grand_totals['Tiktok_Net'] * MANAGEMENT_COMMISSION_RATE
 
         commission_data = [
-            ('Management Commission (GrabFood)', grab_rate_label, management_commission),
-            ('Partner Commission (GrabFood)', grab_rate_label, partner_commission),
+            ('Management Commission (GrabFood)', '1%', management_commission),
+            ('Partner Commission (GrabFood)', '1%', partner_commission),
             ('Management Commission (TikTok)', '1%', tiktok_commission),
         ]
 

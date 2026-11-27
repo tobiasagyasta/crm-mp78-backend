@@ -757,7 +757,7 @@ class ClosingSheet(BaseSheet):
         expense_col_start = self.store_id_col_start or 1
         checklist_col_start = self.rekening_col_start or (expense_col_start + 4)
         expense_rows = [
-            (f"Grab Manag {mpr_calc.non_mpr_grab_rate_label(self.data['outlet'].brand)}", f'={self.grab_management_cell}' if self.grab_management_cell else None),
+            ('Grab Manag 1%', f'={self.grab_management_cell}' if self.grab_management_cell else None),
             ('Adm Kantor', None),
             ('Adm Gudang', None),
             ('Sosmed', None),
@@ -976,7 +976,7 @@ class ClosingSheet(BaseSheet):
         if self._is_mpr_brand():
             return 'Grab Manag MPR'
 
-        return f"Grab Manag {mpr_calc.non_mpr_grab_rate_label(self.data['outlet'].brand)}"
+        return 'Grab Manag 1%'
 
     def _get_mp78_display_value(self, header, date=None):
         if header in ['Shopee_Net', 'ShopeePay_Net']:

@@ -28,10 +28,6 @@ def non_mpr_grab_rate(brand):
     return MP78_GRAB_COMMISSION_RATE if is_mp78_brand(brand) else NON_MPR_GRAB_COMMISSION_RATE
 
 
-def non_mpr_grab_rate_label(brand):
-    return '1/74' if is_mp78_brand(brand) else '1%'
-
-
 def tiktok_commission_rate_for_brand(brand):
     if is_mpr_brand(brand):
         return 1 - MPR_TIKTOK_NET_RATE
